@@ -1,0 +1,144 @@
+list_type,name,sort_order
+finished_product,"Marinated chicken",1
+finished_product,"Falafel",2
+finished_product,"Coated Cauliflower",3
+finished_product,"Aubergine / Sabich",4
+finished_product,"Lettuce",5
+finished_product,"Defrosted flatbread",6
+finished_product,"Regular pita with za'atar",7
+finished_product,"Wholewheat pita with za'atar",8
+finished_product,"Mediterranean salad / Medi salad",9
+finished_product,"Hummus",10
+finished_product,"Pickled onion",11
+finished_product,"Pickled cabbage",12
+finished_product,"Tzatziki",13
+finished_product,"Amba",14
+finished_product,"Tarator",15
+finished_product,"Srug",16
+finished_product,"Babe ghanouj",17
+finished_product,"Boiled eggs",18
+finished_product,"Pomegranate",19
+finished_product,"Feta",20
+finished_product,"Shifka peppers",21
+finished_product,"Mediterranean pickles",22
+finished_product,"Mint",23
+finished_product,"Parsley",24
+finished_product,"Rose lemonade",25
+finished_product,"Tahin brownie dough",26
+finished_product,"Za'atar flatbread chips",27
+finished_product,"Lebanese lentil soup",28
+finished_product,"Mudardara",29
+finished_product,"Turmeric rice",30
+finished_product,"Chicken marinade",31
+finished_product,"Pickling liquid",32
+raw_daily,"All purpose flour",33
+raw_daily,"Baking powder",34
+raw_daily,"Baking soda",35
+raw_daily,"Bulgur",36
+raw_daily,"Chickpeas",37
+raw_daily,"Green lentils",38
+raw_daily,"Red lentils",39
+raw_daily,"Rice basmati",40
+raw_daily,"Rice pandan",41
+raw_daily,"Rice flour",42
+raw_daily,"Eggs",43
+raw_daily,"Salt",44
+raw_daily,"Stock",45
+raw_daily,"Sugar brown",46
+raw_daily,"Sugar white",47
+raw_daily,"Tomato puree",48
+raw_daily,"Vanilla extract",49
+raw_daily,"Flaxseed broken",50
+raw_daily,"Cacao powder",51
+raw_daily,"MSG (Ve Tsin)",52
+raw_daily,"Chili powder",53
+raw_daily,"Coriander",54
+raw_daily,"Cumin",55
+raw_daily,"Black pepper",56
+raw_daily,"Cardamom",57
+raw_daily,"Mustard powder",58
+raw_daily,"Sumac",59
+raw_daily,"Turmeric",60
+raw_daily,"Za'atar",61
+raw_daily,"Cucumber",62
+raw_daily,"Carrot julienne",63
+raw_daily,"Celery brunoise",64
+raw_daily,"Aubergine",65
+raw_daily,"Garlic peeled",66
+raw_daily,"Garlic puree",67
+raw_daily,"Greek yoghurt 10%",68
+raw_daily,"Mint",69
+raw_daily,"Coriander (fresh)",70
+raw_daily,"Pomegranate seeds",71
+raw_daily,"Red cabbage shredded",72
+raw_daily,"Red onion sliced fine",73
+raw_daily,"Romaine lettuce",74
+raw_daily,"Onion peeled",75
+raw_daily,"Tomato",76
+raw_daily,"Parsley",77
+raw_daily,"Green chili",78
+raw_daily,"Chicken",79
+raw_daily,"Feta cheese",80
+raw_daily,"Yoghurt",81
+raw_daily,"Coca Cola",82
+raw_daily,"Coca Cola Zero",83
+raw_daily,"SOOF Cardamom",84
+raw_daily,"SOOF Lavender",85
+raw_daily,"SOOF Mint",86
+raw_daily,"Sparkling water",87
+raw_daily,"Still water",88
+raw_daily,"Flatbread",89
+raw_daily,"Pita bread 15 cm",90
+raw_daily,"Whole wheat pita bread 15 cm",91
+raw_daily,"Cauliflower",92
+raw_daily,"Mango",93
+raw_daily,"Eggplant puree",94
+raw_daily,"Shifka peppers",95
+raw_daily,"Middle Eastern pickles",96
+raw_daily,"Tahini",97
+raw_daily,"Kalamata olives",98
+raw_daily,"Lemon juice",99
+raw_daily,"Olive oil",100
+raw_daily,"Sunflower oil",101
+raw_daily,"Vinegar",102
+raw_daily,"Oat drink barista",103
+raw_weekly,"Aluminium foil",104
+raw_weekly,"Aluminium foil dispenser",105
+raw_weekly,"Bowl container",106
+raw_weekly,"Catering container",107
+raw_weekly,"Centerfeed paper roll",108
+raw_weekly,"Clingfilm",109
+raw_weekly,"Coffee cup",110
+raw_weekly,"Coffee lids",111
+raw_weekly,"Cutlery",112
+raw_weekly,"Falafel container",113
+raw_weekly,"Flatbreadchips bags with window",114
+raw_weekly,"Gloves large",115
+raw_weekly,"Gloves medium",116
+raw_weekly,"Gloves small",117
+raw_weekly,"Hand soap",118
+raw_weekly,"Lids (bowl)",119
+raw_weekly,"Lids (pita)",120
+raw_weekly,"Mezze container",121
+raw_weekly,"Mezze lids",122
+raw_weekly,"Microfiber cloth",123
+raw_weekly,"Napkins",124
+raw_weekly,"Paper bag (brownies)",125
+raw_weekly,"Paper bags large",126
+raw_weekly,"Paper bags small",127
+raw_weekly,"Pita container",128
+raw_weekly,"Pita pouches",129
+raw_weekly,"Rolling paper",130
+raw_weekly,"Sauce cup",131
+raw_weekly,"Sauce lid",132
+raw_weekly,"Soup container",133
+raw_weekly,"Soup lids",134
+raw_weekly,"Stirrer",135
+raw_weekly,"Toiletpaper",136
+raw_weekly,"Daysticker Friday",137
+raw_weekly,"Daysticker Monday",138
+raw_weekly,"Daysticker Saturday",139
+raw_weekly,"Daysticker Sunday",140
+raw_weekly,"Daysticker Thursday",141
+raw_weekly,"Daysticker Tuesday",142
+raw_weekly,"Daysticker Wednesday",143
