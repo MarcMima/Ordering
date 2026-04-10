@@ -126,6 +126,10 @@ export type HaccpBereidenRow = {
   serveertemp_nvt: boolean;
   serveertemp_warm: number | null;
   serveertemp_koud: number | null;
+  /** Product checked on warm line (serving temperature). */
+  serveertemp_warm_product?: string | null;
+  /** Product checked on cold line (serving temperature). */
+  serveertemp_koud_product?: string | null;
   serveertemp_paraaf: string | null;
   frituur_nvt: boolean;
   frituur_metingen: HaccpBereidenMetingRow[] | unknown;
@@ -136,6 +140,19 @@ export type HaccpBereidenRow = {
   buffet_warm: HaccpBereidenMetingRow[] | unknown;
   buffet_koud_nvt: boolean;
   buffet_koud: HaccpBereidenMetingRow[] | unknown;
+  created_at?: string;
+  updated_at?: string;
+};
+
+/** Row in `haccp_leveranciers` — supplier register + optional audit document in Storage. */
+export type HaccpLeverancierRow = {
+  id: string;
+  store_id: number;
+  naam: string;
+  adres?: string | null;
+  telefoon?: string | null;
+  email?: string | null;
+  audit_document_path?: string | null;
   created_at?: string;
   updated_at?: string;
 };

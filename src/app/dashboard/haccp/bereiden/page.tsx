@@ -51,8 +51,9 @@ function Inner() {
             </div>
           )}
           <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
-            Aligned with the paper form &ldquo;Registratie bereiden / serveren&rdquo;: cooling, core temperatures,
-            fryer, regeneration, and buffet lines.
+            Aligned with the paper form &ldquo;Registratie bereiden / serveren&rdquo;: cooling (hummus), core
+            temperatures, serving checks, reheat, and hot/cold lines. Fryer oil temperatures are on the weekly
+            equipment sheet.
           </p>
           {row === undefined ? (
             <p className="text-zinc-500">Loading…</p>

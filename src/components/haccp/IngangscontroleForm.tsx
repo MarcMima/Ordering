@@ -164,6 +164,7 @@ export function IngangscontroleForm({
       datum: checkDate,
       paraaf: signOff.trim() || null,
       tht_ok: r.tht_ok,
+      use_by_date: null,
     }));
 
     const { error } = await supabase.from("haccp_ingangscontrole").insert(payload);
@@ -251,16 +252,20 @@ export function IngangscontroleForm({
                       </select>
                     </td>
                     <td className="p-1">
-                      <input
-                        type="date"
-                        className="input w-full min-w-[9rem] py-1 text-sm"
-                        value={r.use_by_date?.slice(0, 10) ?? ""}
+                      <select
+                        className="input w-full min-w-[5rem] py-1 text-sm"
+                        value={r.tht_ok === null ? "" : r.tht_ok ? "1" : "0"}
                         onChange={(e) =>
                           updateFlat(i, {
-                            use_by_date: e.target.value ? e.target.value : null,
+                            tht_ok: e.target.value === "" ? null : e.target.value === "1",
+                            use_by_date: null,
                           })
                         }
-                      />
+                      >
+                        <option value="">—</option>
+                        <option value="1">OK</option>
+                        <option value="0">Not OK</option>
+                      </select>
                     </td>
                     <td className="p-1">
                       <select

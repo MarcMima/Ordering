@@ -22,7 +22,6 @@ export function isBereidenWeekComplete(row: HaccpBereidenRow | null): boolean {
   if (row.regenereer_tijd_minuten != null && Number.isFinite(Number(row.regenereer_tijd_minuten))) return true;
   if (jsonHasData(row.kerntemp_gegaard)) return true;
   if (jsonHasData(row.kerntemp_warmhoud)) return true;
-  if (jsonHasData(row.frituur_metingen)) return true;
   if (jsonHasData(row.regenereer_metingen)) return true;
   if (jsonHasData(row.buffet_warm)) return true;
   if (jsonHasData(row.buffet_koud)) return true;
