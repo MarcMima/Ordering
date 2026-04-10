@@ -4,9 +4,24 @@ import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
+import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
-import { HACCP_STORE_ID } from "@/lib/haccp/types";
+import type { HaccpWeeklyReading } from "@/lib/haccp/types";
+import { getHaccpStoreId } from "@/lib/haccp/types";
+import { APP_FORM_KEYS, type AppFormKey } from "@/lib/appFormKeys";
+import {
+  isThermometerQuietPeriod,
+  isThermometerRoutineDone,
+  thermometerQuietEndsDate,
+} from "@/lib/haccp/thermometerSchedule";
+import { isBereidenWeekComplete } from "@/lib/haccp/bereidenComplete";
 import { formatWeekYearParam, getISOWeekAndYear, parseWeekYearParam, shiftWeekYear } from "@/lib/haccp/week";
+import type { HaccpBereidenRow } from "@/lib/haccp/types";
+
+function parseWeeklyReadings(raw: unknown): HaccpWeeklyReading[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x) => x && typeof x === "object" && "equipment_id" in x) as HaccpWeeklyReading[];
+}
 
 type Card = {
   href: string;
@@ -14,9 +29,12 @@ type Card = {
   description: string;
   done: boolean | null;
   disabled?: boolean;
+  muted?: boolean;
+  formKey?: AppFormKey;
 };
 
 function HaccpOverviewContent() {
+  const { locations, locationId } = useLocation();
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const parsed = parseWeekYearParam(weekParam);
@@ -32,27 +50,31 @@ function HaccpOverviewContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storeId = HACCP_STORE_ID();
+    const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
-    const d90 = new Date();
-    d90.setDate(d90.getDate() - 90);
-    const d90s = d90.toISOString().slice(0, 10);
 
     void (async () => {
       try {
         const [
           tempRes,
+          equipRes,
           ingRes,
           schoonRes,
-          thermRes,
+          bereidenRes,
+          latestThermRes,
+          formVisRes,
         ] = await Promise.all([
           supabase
             .from("haccp_temperaturen")
-            .select("paraaf")
+            .select("paraaf, weekly_readings")
             .eq("store_id", storeId)
             .eq("week_number", week)
             .eq("year", year)
             .maybeSingle(),
+          supabase
+            .from("haccp_store_equipment")
+            .select("id", { count: "exact", head: true })
+            .eq("store_id", storeId),
           supabase
             .from("haccp_ingangscontrole")
             .select("id", { count: "exact", head: true })
@@ -67,69 +89,126 @@ function HaccpOverviewContent() {
             .eq("year", year)
             .maybeSingle(),
           supabase
-            .from("haccp_thermometers")
-            .select("id", { count: "exact", head: true })
+            .from("haccp_bereiden")
+            .select("*")
             .eq("store_id", storeId)
-            .gte("datum", d90s),
+            .eq("week_number", week)
+            .eq("year", year)
+            .maybeSingle(),
+          supabase
+            .from("haccp_thermometers")
+            .select("datum, afwijking, maatregel")
+            .eq("store_id", storeId)
+            .order("datum", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase.from("app_form_settings").select("form_key, visible"),
         ]);
 
         if (tempRes.error) throw tempRes.error;
+        if (equipRes.error) throw equipRes.error;
         if (ingRes.error) throw ingRes.error;
         if (schoonRes.error) throw schoonRes.error;
-        if (thermRes.error) throw thermRes.error;
+        if (bereidenRes.error) throw bereidenRes.error;
+        if (latestThermRes.error) throw latestThermRes.error;
 
-        const tempDone = !!(tempRes.data?.paraaf && String(tempRes.data.paraaf).trim().length > 0);
+        const equipCount = equipRes.count ?? 0;
+        const wr = parseWeeklyReadings(tempRes.data?.weekly_readings);
+        const readingsComplete =
+          equipCount > 0 &&
+          wr.length >= equipCount &&
+          wr.every((r) => r.temperature != null && Number.isFinite(Number(r.temperature)));
+        const tempDone =
+          !!(tempRes.data?.paraaf && String(tempRes.data.paraaf).trim().length > 0) && readingsComplete;
         const ingDone = (ingRes.count ?? 0) > 0;
         const schoonDone = !!(schoonRes.data?.uitgevoerd_door && String(schoonRes.data.uitgevoerd_door).trim().length > 0);
-        const thermDone = (thermRes.count ?? 0) > 0;
+        const bereidenDone = isBereidenWeekComplete(bereidenRes.data as HaccpBereidenRow | null);
 
-        setCards([
+        const latestTherm = latestThermRes.data as {
+          datum: string;
+          afwijking: number | null;
+          maatregel: string | null;
+        } | null;
+        const thermQuiet = isThermometerQuietPeriod(latestTherm);
+        const thermDone = isThermometerRoutineDone(latestTherm);
+
+        const visibility: Record<string, boolean> = {};
+        if (!formVisRes.error && formVisRes.data) {
+          for (const r of formVisRes.data as { form_key: string; visible: boolean }[]) {
+            visibility[r.form_key] = r.visible;
+          }
+        }
+        const vis = (key: AppFormKey) => visibility[key] !== false;
+
+        const thermDesc =
+          thermQuiet && latestTherm
+            ? `Quiet period after a passing test — full prominence again from ${thermometerQuietEndsDate(latestTherm.datum).toLocaleDateString(undefined, { dateStyle: "medium" })}.`
+            : "Boiling / melting checks (typically once per quarter).";
+
+        const allCards: Card[] = [
           {
+            formKey: APP_FORM_KEYS.haccp_temperatures,
             href: `/dashboard/haccp/temperaturen?week=${wy}`,
-            title: "Temperaturen",
-            description: "Koelingen, vriezers, vaatwasser, controles.",
+            title: "Temperatures",
+            description: "Weekly equipment checks (limits per appliance).",
             done: tempDone,
           },
           {
+            formKey: APP_FORM_KEYS.haccp_goods_in,
             href: `/dashboard/haccp/ingangscontrole?week=${wy}`,
-            title: "Ingangscontrole",
-            description: "Per levering regels toevoegen.",
+            title: "Goods in",
+            description: "Bidfood & Van Gelder lines per week.",
             done: ingDone,
           },
           {
-            href: `/dashboard/haccp/bereiden`,
-            title: "Bereiden & serveren",
-            description: "Nog niet in deze app — volgt.",
-            done: null,
-            disabled: true,
+            formKey: APP_FORM_KEYS.haccp_prepare,
+            href: `/dashboard/haccp/bereiden?week=${wy}`,
+            title: "Prepare & serve",
+            description: "Cooling, core temps, fryer, regenerate, buffet (per registration form).",
+            done: bereidenDone,
           },
           {
+            formKey: APP_FORM_KEYS.haccp_cleaning,
             href: `/dashboard/haccp/schoonmaak?week=${wy}`,
-            title: "Schoonmaak",
-            description: "Dagrooster per object.",
+            title: "Cleaning",
+            description: "Daily checklist by area.",
             done: schoonDone,
           },
           {
+            formKey: APP_FORM_KEYS.haccp_thermometers,
             href: `/dashboard/haccp/thermometers`,
-            title: "Thermometer-test",
-            description: "Kokend / smeltend (per meting).",
+            title: "Thermometer test",
+            description: thermDesc,
             done: thermDone,
+            muted: thermQuiet,
           },
           {
+            formKey: APP_FORM_KEYS.haccp_suppliers,
             href: `/dashboard/haccp/leveranciers`,
-            title: "Leveranciers",
-            description: "Vragenlijst per leverancier — volgt.",
+            title: "Suppliers",
+            description:
+              "Supplier questionnaire table exists; admin-style forms per supplier are not implemented yet.",
             done: null,
             disabled: true,
           },
-        ]);
+        ];
+
+        const filtered = allCards.filter((c) => !c.formKey || vis(c.formKey));
+        const sorted = [...filtered].sort((a, b) => {
+          if (Boolean(a.muted) === Boolean(b.muted)) return 0;
+          return a.muted ? 1 : -1;
+        });
+
+        setCards(sorted);
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Kon HACCP-status niet laden (tabellen aanwezig?).");
+        setError(
+          e instanceof Error ? e.message : "Could not load HACCP status (check DB migrations and RLS)."
+        );
         setCards([]);
       }
     })();
-  }, [week, year, wy]);
+  }, [week, year, wy, locations, locationId]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
@@ -163,7 +242,7 @@ function HaccpOverviewContent() {
 
         <h1 className="mb-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">HACCP</h1>
         <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
-          Weekoverzicht: open of afgerond (paraaf / uitgevoerd / regels ingevuld).
+          Week overview: open or complete (sign-off / completed / lines filled).
         </p>
 
         {error && (
@@ -182,18 +261,38 @@ function HaccpOverviewContent() {
                       <p className="font-medium text-zinc-700 dark:text-zinc-200">{c.title}</p>
                       <p className="mt-1 text-sm text-zinc-500">{c.description}</p>
                     </div>
-                    <span className="shrink-0 text-xs text-zinc-400">Binnenkort</span>
+                    <span className="shrink-0 text-xs text-zinc-400">Soon</span>
                   </div>
                 </div>
               ) : (
                 <Link
                   href={c.href}
-                  className="block rounded-xl border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
+                  className={`block rounded-xl border p-4 transition-colors ${
+                    c.muted
+                      ? "border-zinc-100 bg-zinc-50/90 opacity-75 hover:border-zinc-200 hover:bg-zinc-100/90 dark:border-zinc-800 dark:bg-zinc-900/60 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/60"
+                      : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium text-zinc-900 dark:text-zinc-50">{c.title}</p>
-                      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{c.description}</p>
+                      <p
+                        className={
+                          c.muted
+                            ? "text-sm font-medium text-zinc-600 dark:text-zinc-300"
+                            : "font-medium text-zinc-900 dark:text-zinc-50"
+                        }
+                      >
+                        {c.title}
+                      </p>
+                      <p
+                        className={
+                          c.muted
+                            ? "mt-1 text-xs text-zinc-500 dark:text-zinc-500"
+                            : "mt-1 text-sm text-zinc-500 dark:text-zinc-400"
+                        }
+                      >
+                        {c.description}
+                      </p>
                     </div>
                     <span
                       className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -204,7 +303,7 @@ function HaccpOverviewContent() {
                             : "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
                       }`}
                     >
-                      {c.done === true ? "Compleet" : c.done === false ? "Open" : "—"}
+                      {c.done === true ? "Done" : c.done === false ? "Open" : "—"}
                     </span>
                   </div>
                 </Link>
@@ -212,7 +311,7 @@ function HaccpOverviewContent() {
             </li>
           ))}
           {!cards && !error && (
-            <li className="text-sm text-zinc-500">Laden…</li>
+            <li className="text-sm text-zinc-500">Loading…</li>
           )}
         </ul>
       </main>
@@ -225,7 +324,7 @@ export default function HaccpDashboardPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-zinc-50 p-8 dark:bg-zinc-900">
-          <p className="text-zinc-500">Laden…</p>
+          <p className="text-zinc-500">Loading…</p>
         </div>
       }
     >

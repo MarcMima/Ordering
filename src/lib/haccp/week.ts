@@ -28,3 +28,16 @@ export function shiftWeekYear(week: number, year: number, deltaWeeks: number): {
 }
 
 export const WEEKDAY_LABELS_NL = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"] as const;
+
+/** ISO weekday: index 0 = Monday (1) … Sunday (7) */
+export const WEEKDAY_LABELS_EN = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
+
+export const WEEKDAY_LABELS_EN_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;

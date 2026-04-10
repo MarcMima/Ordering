@@ -1,18 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpIngangscontroleRow } from "@/lib/haccp/types";
-import { HACCP_STORE_ID } from "@/lib/haccp/types";
+import { getHaccpStoreId } from "@/lib/haccp/types";
 
-function emptyLine(week: number, year: number): Omit<HaccpIngangscontroleRow, "id" | "created_at"> {
-  const today = new Date().toISOString().slice(0, 10);
+const SUPPLIERS = ["Bidfood", "Van Gelder"] as const;
+const ROWS_PER_SUPPLIER = 5;
+
+type Soort = "V" | "C" | "D";
+
+type DraftRow = Omit<HaccpIngangscontroleRow, "id" | "created_at">;
+
+function normalizeSupplier(leverancier: string): (typeof SUPPLIERS)[number] | null {
+  const t = leverancier.trim().toLowerCase();
+  if (t.includes("bidfood")) return "Bidfood";
+  if (t.includes("gelder")) return "Van Gelder";
+  return null;
+}
+
+function defaultDatum(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function emptyRow(
+  supplier: (typeof SUPPLIERS)[number],
+  lineSlot: number,
+  week: number,
+  year: number,
+  storeId: number,
+  datum: string
+): DraftRow {
   return {
-    store_id: HACCP_STORE_ID(),
+    store_id: storeId,
     week_number: week,
     year,
-    datum: today,
-    leverancier: "",
+    datum,
+    leverancier: supplier,
+    line_slot: lineSlot,
     product: "",
     soort: "V",
     temperatuur: null,
@@ -21,8 +47,71 @@ function emptyLine(week: number, year: number): Omit<HaccpIngangscontroleRow, "i
     correct: null,
     opmerkingen: null,
     paraaf: null,
+    use_by_date: null,
   };
 }
+
+function buildDefaultRows(
+  week: number,
+  year: number,
+  storeId: number,
+  datum: string
+): DraftRow[] {
+  const out: DraftRow[] = [];
+  for (const supplier of SUPPLIERS) {
+    for (let slot = 0; slot < ROWS_PER_SUPPLIER; slot++) {
+      out.push(emptyRow(supplier, slot, week, year, storeId, datum));
+    }
+  }
+  return out;
+}
+
+function mergeInitial(
+  initialRows: HaccpIngangscontroleRow[],
+  week: number,
+  year: number,
+  storeId: number
+): DraftRow[] {
+  const datum =
+    initialRows.find((r) => r.datum)?.datum?.slice(0, 10) ?? defaultDatum();
+  const base = buildDefaultRows(week, year, storeId, datum);
+
+  for (const supplier of SUPPLIERS) {
+    const bucket = initialRows
+      .filter((r) => normalizeSupplier(r.leverancier) === supplier)
+      .sort((a, b) => {
+        if (a.line_slot != null && b.line_slot != null) return a.line_slot - b.line_slot;
+        if (a.line_slot != null) return -1;
+        if (b.line_slot != null) return 1;
+        return String(a.id).localeCompare(String(b.id));
+      });
+    for (let slot = 0; slot < ROWS_PER_SUPPLIER; slot++) {
+      const src = bucket[slot];
+      if (!src) continue;
+      const idx = SUPPLIERS.indexOf(supplier) * ROWS_PER_SUPPLIER + slot;
+      const { id: _id, created_at: _c, ...rest } = src;
+      base[idx] = {
+        ...base[idx],
+        ...rest,
+        leverancier: supplier,
+        line_slot: slot,
+        week_number: week,
+        year,
+        store_id: storeId,
+        datum: src.datum?.slice(0, 10) ?? datum,
+        use_by_date: src.use_by_date?.slice(0, 10) ?? null,
+      };
+    }
+  }
+
+  return base;
+}
+
+const TYPE_OPTIONS: { value: Soort; label: string }[] = [
+  { value: "V", label: "Fresh" },
+  { value: "D", label: "Frozen" },
+  { value: "C", label: "Dry" },
+];
 
 export function IngangscontroleForm({
   weekNumber,
@@ -33,19 +122,21 @@ export function IngangscontroleForm({
   year: number;
   initialRows: HaccpIngangscontroleRow[];
 }) {
-  const storeId = HACCP_STORE_ID();
-  const [rows, setRows] = useState<Omit<HaccpIngangscontroleRow, "id" | "created_at">[]>(() =>
-    initialRows.length > 0
-      ? initialRows.map(({ id: _id, created_at: _c, ...r }) => r)
-      : [emptyLine(weekNumber, year)]
+  const { locations, locationId } = useLocation();
+  const storeId = getHaccpStoreId(locations, locationId);
+
+  const merged = useMemo(
+    () => mergeInitial(initialRows, weekNumber, year, storeId),
+    [initialRows, weekNumber, year, storeId]
   );
+
+  const [rows, setRows] = useState<DraftRow[]>(merged);
+  const [checkDate, setCheckDate] = useState(() => merged[0]?.datum?.slice(0, 10) ?? defaultDatum());
+  const [signOff, setSignOff] = useState(() => merged.find((r) => r.paraaf)?.paraaf ?? "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  function update(
-    index: number,
-    patch: Partial<Omit<HaccpIngangscontroleRow, "id" | "created_at">>
-  ) {
+  function updateFlat(index: number, patch: Partial<DraftRow>) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
 
@@ -64,181 +155,170 @@ export function IngangscontroleForm({
       setMessage(delErr.message);
       return;
     }
-    const payload = rows
-      .filter((r) => r.leverancier.trim() || r.product.trim())
-      .map((r) => ({
-        ...r,
-        store_id: storeId,
-        week_number: weekNumber,
-        year,
-      }));
-    if (payload.length === 0) {
-      setSaving(false);
-      setMessage("Opgeslagen (geen regels).");
-      return;
-    }
+
+    const payload = rows.map((r) => ({
+      ...r,
+      store_id: storeId,
+      week_number: weekNumber,
+      year,
+      datum: checkDate,
+      paraaf: signOff.trim() || null,
+      tht_ok: r.tht_ok,
+    }));
+
     const { error } = await supabase.from("haccp_ingangscontrole").insert(payload);
     setSaving(false);
     if (error) setMessage(error.message);
-    else setMessage("Opgeslagen.");
+    else setMessage("Saved.");
   }
 
-  function addRow() {
-    setRows((prev) => [...prev, emptyLine(weekNumber, year)]);
-  }
+  function renderTable(supplierIndex: 0 | 1) {
+    const supplier = SUPPLIERS[supplierIndex];
+    const offset = supplierIndex * ROWS_PER_SUPPLIER;
 
-  function removeRow(index: number) {
-    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+    return (
+      <section className="space-y-2">
+        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{supplier}</h2>
+        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <table className="w-full min-w-[720px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-zinc-200 bg-zinc-50 text-left dark:border-zinc-600 dark:bg-zinc-800/90">
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">#</th>
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Product</th>
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Type</th>
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Temperature (°C)</th>
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Packaging</th>
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Use by date</th>
+                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Correct</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: ROWS_PER_SUPPLIER }, (_, j) => {
+                const i = offset + j;
+                const r = rows[i];
+                return (
+                  <tr key={`${supplier}-${j}`} className="border-b border-zinc-100 dark:border-zinc-700/80">
+                    <td className="px-2 py-1.5 tabular-nums text-zinc-500">{j + 1}</td>
+                    <td className="p-1">
+                      <input
+                        className="input w-full min-w-[8rem] py-1 text-sm"
+                        value={r.product}
+                        onChange={(e) => updateFlat(i, { product: e.target.value })}
+                        placeholder="—"
+                      />
+                    </td>
+                    <td className="p-1">
+                      <select
+                        className="input w-full min-w-[5.5rem] py-1 text-sm"
+                        value={r.soort}
+                        onChange={(e) => updateFlat(i, { soort: e.target.value as Soort })}
+                      >
+                        {TYPE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="input w-full min-w-[4rem] py-1 text-sm tabular-nums"
+                        value={r.temperatuur ?? ""}
+                        onChange={(e) => {
+                          const t = e.target.value.trim();
+                          updateFlat(i, {
+                            temperatuur: t === "" ? null : Number(t.replace(",", ".")),
+                          });
+                        }}
+                        placeholder="—"
+                      />
+                    </td>
+                    <td className="p-1">
+                      <select
+                        className="input w-full min-w-[5rem] py-1 text-sm"
+                        value={r.verpakking_ok === null ? "" : r.verpakking_ok ? "1" : "0"}
+                        onChange={(e) =>
+                          updateFlat(i, {
+                            verpakking_ok: e.target.value === "" ? null : e.target.value === "1",
+                          })
+                        }
+                      >
+                        <option value="">—</option>
+                        <option value="1">OK</option>
+                        <option value="0">Not OK</option>
+                      </select>
+                    </td>
+                    <td className="p-1">
+                      <input
+                        type="date"
+                        className="input w-full min-w-[9rem] py-1 text-sm"
+                        value={r.use_by_date?.slice(0, 10) ?? ""}
+                        onChange={(e) =>
+                          updateFlat(i, {
+                            use_by_date: e.target.value ? e.target.value : null,
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="p-1">
+                      <select
+                        className="input w-full min-w-[5rem] py-1 text-sm"
+                        value={r.correct === null ? "" : r.correct ? "1" : "0"}
+                        onChange={(e) =>
+                          updateFlat(i, {
+                            correct: e.target.value === "" ? null : e.target.value === "1",
+                          })
+                        }
+                      >
+                        <option value="">—</option>
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Voeg per levering een regel toe. Vers (V) / conserven (C) / diepvries (D).
+        Five products per supplier: Bidfood and Van Gelder. One check date applies to all lines.
       </p>
 
-      <div className="space-y-6">
-        {rows.map((r, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700 dark:bg-zinc-900/40"
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">Levering {i + 1}</span>
-              <button
-                type="button"
-                onClick={() => removeRow(i)}
-                className="text-xs text-red-600 hover:underline dark:text-red-400"
-              >
-                Verwijder regel
-              </button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Datum</span>
-                <input
-                  type="date"
-                  className="input"
-                  value={r.datum}
-                  onChange={(e) => update(i, { datum: e.target.value })}
-                />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Soort</span>
-                <select
-                  className="input"
-                  value={r.soort}
-                  onChange={(e) => update(i, { soort: e.target.value as "V" | "C" | "D" })}
-                >
-                  <option value="V">Vers</option>
-                  <option value="C">Conserven</option>
-                  <option value="D">Diepvries</option>
-                </select>
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Leverancier</span>
-                <input
-                  className="input"
-                  value={r.leverancier}
-                  onChange={(e) => update(i, { leverancier: e.target.value })}
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Product</span>
-                <input className="input" value={r.product} onChange={(e) => update(i, { product: e.target.value })} />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Temperatuur (°C)</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="input"
-                  value={r.temperatuur ?? ""}
-                  onChange={(e) => {
-                    const t = e.target.value.trim();
-                    update(i, { temperatuur: t === "" ? null : Number(t.replace(",", ".")) });
-                  }}
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Verpakking</span>
-                  <select
-                    className="input"
-                    value={r.verpakking_ok === null ? "" : r.verpakking_ok ? "1" : "0"}
-                    onChange={(e) =>
-                      update(i, {
-                        verpakking_ok:
-                          e.target.value === "" ? null : e.target.value === "1",
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    <option value="1">OK</option>
-                    <option value="0">Niet OK</option>
-                  </select>
-                </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">THT</span>
-                  <select
-                    className="input"
-                    value={r.tht_ok === null ? "" : r.tht_ok ? "1" : "0"}
-                    onChange={(e) =>
-                      update(i, {
-                        tht_ok: e.target.value === "" ? null : e.target.value === "1",
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    <option value="1">OK</option>
-                    <option value="0">Niet OK</option>
-                  </select>
-                </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Beoordeling</span>
-                  <select
-                    className="input"
-                    value={r.correct === null ? "" : r.correct ? "1" : "0"}
-                    onChange={(e) =>
-                      update(i, {
-                        correct: e.target.value === "" ? null : e.target.value === "1",
-                      })
-                    }
-                  >
-                    <option value="">—</option>
-                    <option value="1">Goed</option>
-                    <option value="0">Fout</option>
-                  </select>
-                </label>
-              </div>
-              <label className="text-sm sm:col-span-2">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Opmerkingen</span>
-                <input
-                  className="input"
-                  value={r.opmerkingen ?? ""}
-                  onChange={(e) => update(i, { opmerkingen: e.target.value || null })}
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Paraaf</span>
-                <input
-                  className="input"
-                  value={r.paraaf ?? ""}
-                  onChange={(e) => update(i, { paraaf: e.target.value || null })}
-                />
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
+      <label className="block max-w-xs text-sm">
+        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Check date</span>
+        <input
+          type="date"
+          className="input w-full"
+          value={checkDate}
+          onChange={(e) => {
+            const d = e.target.value;
+            setCheckDate(d);
+            setRows((prev) => prev.map((r) => ({ ...r, datum: d })));
+          }}
+        />
+      </label>
 
-      <button
-        type="button"
-        onClick={addRow}
-        className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 dark:border-zinc-600 dark:text-zinc-100"
-      >
-        + Regel toevoegen
-      </button>
+      {renderTable(0)}
+      {renderTable(1)}
+
+      <label className="block max-w-sm text-sm">
+        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Sign-off (initials)</span>
+        <input
+          className="input w-full"
+          value={signOff}
+          onChange={(e) => setSignOff(e.target.value)}
+          placeholder="Optional"
+        />
+      </label>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -247,7 +327,7 @@ export function IngangscontroleForm({
           disabled={saving}
           className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {saving ? "Opslaan…" : "Opslaan"}
+          {saving ? "Saving…" : "Save"}
         </button>
         {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
       </div>

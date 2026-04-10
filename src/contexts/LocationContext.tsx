@@ -35,7 +35,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     const supabase = createClient();
     const { data, error: e } = await supabase
       .from("locations")
-      .select("id, name, full_capacity_revenue, ordering_evening_day_fraction")
+      .select("id, name, full_capacity_revenue, ordering_evening_day_fraction, haccp_store_id")
       .order("name", { ascending: true });
     if (e) {
       setError(e.message);
@@ -52,7 +52,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       const supabase = createClient();
       const { data, error: e } = await supabase
         .from("locations")
-        .select("id, name, full_capacity_revenue, ordering_evening_day_fraction")
+        .select("id, name, full_capacity_revenue, ordering_evening_day_fraction, haccp_store_id")
         .order("name", { ascending: true });
       if (!mounted) return;
       if (e) {

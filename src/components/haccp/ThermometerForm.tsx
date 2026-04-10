@@ -1,15 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
-import { HACCP_STORE_ID } from "@/lib/haccp/types";
+import { getHaccpStoreId } from "@/lib/haccp/types";
 
 function calcAfwijking(kokend: number, smeltend: number): number {
   return Math.max(Math.abs(kokend - 100), Math.abs(smeltend - 0));
 }
 
 export function ThermometerForm() {
-  const storeId = HACCP_STORE_ID();
+  const { locations, locationId } = useLocation();
+  const storeId = getHaccpStoreId(locations, locationId);
   const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
   const [tempKokend, setTempKokend] = useState("");
   const [tempSmeltend, setTempSmeltend] = useState("");
@@ -29,7 +31,7 @@ export function ThermometerForm() {
 
   async function save() {
     if (!Number.isFinite(kok) || !Number.isFinite(sm)) {
-      setMessage("Vul beide temperaturen in.");
+      setMessage("Enter both temperatures.");
       return;
     }
     setSaving(true);
@@ -48,7 +50,7 @@ export function ThermometerForm() {
     setSaving(false);
     if (error) setMessage(error.message);
     else {
-      setMessage("Test opgeslagen.");
+      setMessage("Test saved.");
       setTempKokend("");
       setTempSmeltend("");
       setMaatregel("");
@@ -59,17 +61,17 @@ export function ThermometerForm() {
   return (
     <div className="max-w-lg space-y-5">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Kokend water norm ≥ 100 °C; ijs/smeltend norm 0 °C. Afwijking = grootste verschil met deze normen.
+        Boiling water target ≥ 100 °C; ice melting target 0 °C. Deviation = largest deviation from these targets.
       </p>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Datum test</span>
+        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Test date</span>
         <input type="date" className="input" value={datum} onChange={(e) => setDatum(e.target.value)} />
       </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Temperatuur kokend (°C)</span>
+          <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Boiling temperature (°C)</span>
           <input
             className="input"
             inputMode="decimal"
@@ -79,7 +81,7 @@ export function ThermometerForm() {
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Temperatuur smeltend ijs (°C)</span>
+          <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Ice melting temperature (°C)</span>
           <input
             className="input"
             inputMode="decimal"
@@ -98,22 +100,22 @@ export function ThermometerForm() {
               : "border-zinc-200 bg-zinc-50 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
           }`}
         >
-          <strong>Berekende afwijking:</strong> {afwijking.toFixed(2)} °C
+          <strong>Calculated deviation:</strong> {afwijking.toFixed(2)} °C
           {warn && (
             <span className="mt-1 block text-xs">
-              &gt; 1 °C — noteer maatregel (bijv. thermometer kalibreren/vervangen).
+              &gt; 1 °C — record corrective action (e.g. calibrate or replace thermometer).
             </span>
           )}
         </div>
       )}
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Maatregel (optioneel)</span>
+        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Corrective action (optional)</span>
         <textarea className="input min-h-[72px]" value={maatregel} onChange={(e) => setMaatregel(e.target.value)} />
       </label>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Paraaf</span>
+        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Initials</span>
         <input className="input" value={paraaf} onChange={(e) => setParaaf(e.target.value)} />
       </label>
 
@@ -124,7 +126,7 @@ export function ThermometerForm() {
           disabled={saving}
           className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {saving ? "Opslaan…" : "Test opslaan"}
+          {saving ? "Saving…" : "Save test"}
         </button>
         {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
       </div>

@@ -23,7 +23,7 @@ export function HaccpPageHeader({ title, week, year, basePath }: Props) {
             href="/dashboard/haccp"
             className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
           >
-            ← HACCP weekoverzicht
+            ← HACCP overview
           </Link>
         </div>
         <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1 dark:border-zinc-600 dark:bg-zinc-800">

@@ -56,6 +56,12 @@ export function TopNav() {
           Dashboard
         </Link>
         <Link
+          href="/kitchen"
+          className="rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 sm:px-3"
+        >
+          Kitchen
+        </Link>
+        <Link
           href="/dashboard/haccp"
           className="rounded-md px-2 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/50 sm:px-3"
         >

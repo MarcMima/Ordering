@@ -142,10 +142,22 @@ export default function AdminPage() {
               Recipes
             </button>
           </nav>
-          <div className="border-t border-zinc-200 p-3 dark:border-zinc-700">
+          <div className="space-y-2 border-t border-zinc-200 p-3 dark:border-zinc-700">
+            <Link
+              href="/admin/haccp-equipment"
+              className="block text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+            >
+              HACCP equipment
+            </Link>
+            <Link
+              href="/admin/form-visibility"
+              className="block text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+            >
+              Form visibility
+            </Link>
             <Link
               href="/dashboard"
-              className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
+              className="block text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
             >
               ← Dashboard
             </Link>

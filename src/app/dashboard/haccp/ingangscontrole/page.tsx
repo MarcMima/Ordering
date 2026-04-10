@@ -2,15 +2,19 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { HaccpFormGate } from "@/components/HaccpFormGate";
 import { TopNav } from "@/components/TopNav";
+import { APP_FORM_KEYS } from "@/lib/appFormKeys";
 import { HaccpPageHeader } from "@/components/haccp/HaccpPageHeader";
 import { IngangscontroleForm } from "@/components/haccp/IngangscontroleForm";
 import { createClient } from "@/lib/supabase";
 import type { HaccpIngangscontroleRow } from "@/lib/haccp/types";
-import { HACCP_STORE_ID } from "@/lib/haccp/types";
+import { useLocation } from "@/contexts/LocationContext";
+import { getHaccpStoreId } from "@/lib/haccp/types";
 import { getISOWeekAndYear, parseWeekYearParam } from "@/lib/haccp/week";
 
 function Inner() {
+  const { locations, locationId } = useLocation();
   const searchParams = useSearchParams();
   const parsed = parseWeekYearParam(searchParams.get("week"));
   const fb = getISOWeekAndYear(new Date());
@@ -20,7 +24,7 @@ function Inner() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    const storeId = HACCP_STORE_ID();
+    const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
     void (async () => {
       const { data, error } = await supabase
@@ -33,30 +37,32 @@ function Inner() {
       if (error) setErr(error.message);
       setRows((data as HaccpIngangscontroleRow[]) ?? []);
     })();
-  }, [week, year]);
+  }, [week, year, locations, locationId]);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
-      <TopNav />
-      <main className="mx-auto max-w-3xl px-4 py-6 pb-24 sm:px-6">
-        <HaccpPageHeader title="Ingangscontrole" week={week} year={year} basePath="/dashboard/haccp/ingangscontrole" />
-        {err && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
-            {err}
-          </div>
-        )}
-        {rows === undefined ? (
-          <p className="text-zinc-500">Laden…</p>
-        ) : (
-          <IngangscontroleForm
-            key={rows === undefined ? "loading" : `${week}-${year}-${rows.map((r) => r.id).join(",")}`}
-            weekNumber={week}
-            year={year}
-            initialRows={rows}
-          />
-        )}
-      </main>
-    </div>
+    <HaccpFormGate formKey={APP_FORM_KEYS.haccp_goods_in}>
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+        <TopNav />
+        <main className="mx-auto max-w-3xl px-4 py-6 pb-24 sm:px-6">
+          <HaccpPageHeader title="Goods in" week={week} year={year} basePath="/dashboard/haccp/ingangscontrole" />
+          {err && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+              {err}
+            </div>
+          )}
+          {rows === undefined ? (
+            <p className="text-zinc-500">Loading…</p>
+          ) : (
+            <IngangscontroleForm
+              key={rows === undefined ? "loading" : `${week}-${year}-${rows.map((r) => r.id).join(",")}`}
+              weekNumber={week}
+              year={year}
+              initialRows={rows}
+            />
+          )}
+        </main>
+      </div>
+    </HaccpFormGate>
   );
 }
 
@@ -65,7 +71,7 @@ export default function IngangscontrolePage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-zinc-50 p-8 dark:bg-zinc-900">
-          <p className="text-zinc-500">Laden…</p>
+          <p className="text-zinc-500">Loading…</p>
         </div>
       }
     >

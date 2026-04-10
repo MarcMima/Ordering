@@ -3,34 +3,35 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import type { HaccpSchoonmaakRow } from "@/lib/haccp/types";
-import { HACCP_STORE_ID } from "@/lib/haccp/types";
-import { WEEKDAY_LABELS_NL } from "@/lib/haccp/week";
+import { useLocation } from "@/contexts/LocationContext";
+import { getHaccpStoreId } from "@/lib/haccp/types";
+import { WEEKDAY_LABELS_EN_SHORT } from "@/lib/haccp/week";
 
 const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string }[] = [
-  { key: "vriezers", label: "Vriezers" },
-  { key: "verdampers", label: "Verdampers" },
-  { key: "magazijnstellingen", label: "Magazijnstellingen" },
-  { key: "schappen", label: "Schappen" },
-  { key: "koelingen", label: "Koelingen" },
-  { key: "frituren", label: "Frituren" },
-  { key: "afzuiging", label: "Afzuiging" },
-  { key: "wanden", label: "Wanden" },
+  { key: "vriezers", label: "Freezers" },
+  { key: "verdampers", label: "Evaporators" },
+  { key: "magazijnstellingen", label: "Warehouse shelving" },
+  { key: "schappen", label: "Shelves" },
+  { key: "koelingen", label: "Cooling units" },
+  { key: "frituren", label: "Fryers" },
+  { key: "afzuiging", label: "Extraction" },
+  { key: "wanden", label: "Walls" },
   { key: "bain_marie", label: "Bain-marie" },
-  { key: "saladiere", label: "Saladière" },
+  { key: "saladiere", label: "Salad bar" },
   { key: "grill", label: "Grill" },
-  { key: "werkbanken", label: "Werkbanken" },
-  { key: "vloer", label: "Vloer" },
-  { key: "vaatwasser", label: "Vaatwasser" },
-  { key: "afvalbakken", label: "Afvalbakken" },
-  { key: "schoonmaakmateriaal", label: "Schoonmaakmateriaal" },
-  { key: "handcontactpunten", label: "Handcontactpunten" },
-  { key: "handenwas", label: "Handenwas" },
-  { key: "spoelbakken", label: "Spoelbakken" },
-  { key: "magnetron", label: "Magnetron" },
-  { key: "snijgereedschap", label: "Snijgereedschap" },
-  { key: "snijplanken", label: "Snijplanken" },
-  { key: "keukenmachines", label: "Keukenmachines" },
-  { key: "kleine_materialen", label: "Kleine materialen" },
+  { key: "werkbanken", label: "Work benches" },
+  { key: "vloer", label: "Floor" },
+  { key: "vaatwasser", label: "Dishwasher" },
+  { key: "afvalbakken", label: "Waste bins" },
+  { key: "schoonmaakmateriaal", label: "Cleaning supplies" },
+  { key: "handcontactpunten", label: "Hand-touch points" },
+  { key: "handenwas", label: "Hand wash" },
+  { key: "spoelbakken", label: "Sinks" },
+  { key: "magnetron", label: "Microwave" },
+  { key: "snijgereedschap", label: "Cutting tools" },
+  { key: "snijplanken", label: "Cutting boards" },
+  { key: "keukenmachines", label: "Kitchen machines" },
+  { key: "kleine_materialen", label: "Small items" },
 ];
 
 function bool7(v: unknown): (boolean | null)[] {
@@ -63,7 +64,8 @@ export function SchoonmaakForm({
   year: number;
   initial: Partial<HaccpSchoonmaakRow> | null;
 }) {
-  const storeId = HACCP_STORE_ID();
+  const { locations, locationId } = useLocation();
+  const storeId = getHaccpStoreId(locations, locationId);
   const empty = (): (boolean | null)[] => Array.from({ length: 7 }, () => null);
 
   const [row, setRow] = useState<Record<string, (boolean | null)[] | string | number | null>>(() => {
@@ -105,22 +107,22 @@ export function SchoonmaakForm({
     });
     setSaving(false);
     if (error) setMessage(error.message);
-    else setMessage("Opgeslagen.");
+    else setMessage("Saved.");
   }
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Tik per cel: · → ✓ → ✗ → · (niet van toepassing / schoon / niet schoon).
+        Tap each cell: · → ✓ → ✗ → · (n/a / clean / not clean).
       </p>
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
         <table className="w-full min-w-[900px] border-collapse text-xs sm:text-sm">
           <thead>
             <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/80">
               <th className="sticky left-0 z-10 bg-zinc-50 px-2 py-2 text-left font-medium dark:bg-zinc-800">
-                Object
+                Area
               </th>
-              {WEEKDAY_LABELS_NL.map((d) => (
+              {WEEKDAY_LABELS_EN_SHORT.map((d) => (
                 <th key={d} className="min-w-[2.5rem] px-0.5 py-2 text-center font-medium text-zinc-600">
                   {d}
                 </th>
@@ -133,14 +135,14 @@ export function SchoonmaakForm({
                 <td className="sticky left-0 z-10 bg-white px-2 py-1 font-medium text-zinc-800 dark:bg-zinc-900">
                   {o.label}
                 </td>
-                {WEEKDAY_LABELS_NL.map((_, day) => {
+                {WEEKDAY_LABELS_EN_SHORT.map((_, day) => {
                   const arr = (row[o.key] as (boolean | null)[]) ?? empty();
                   const v = arr[day];
                   return (
                     <td key={day} className="p-0.5 text-center">
                       <button
                         type="button"
-                        title="Klik om te wisselen"
+                        title="Tap to cycle"
                         onClick={() => setDay(o.key, day)}
                         className={`h-9 w-full rounded-md border text-base font-semibold ${
                           v === true
@@ -162,7 +164,7 @@ export function SchoonmaakForm({
       </div>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Uitgevoerd door</span>
+        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Completed by</span>
         <input
           className="input"
           value={(row.uitgevoerd_door as string) ?? ""}
@@ -177,7 +179,7 @@ export function SchoonmaakForm({
           disabled={saving}
           className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {saving ? "Opslaan…" : "Opslaan"}
+          {saving ? "Saving…" : "Save"}
         </button>
         {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
       </div>

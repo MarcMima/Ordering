@@ -4,6 +4,8 @@ export interface Location {
   full_capacity_revenue?: number | null;
   /** Fraction of one day need for the single evening after ~17:00 (added once: need × (this + cover days)). Default 2/3. */
   ordering_evening_day_fraction?: number | null;
+  /** Shared HACCP equipment / weekly temperature records (integer profile id). */
+  haccp_store_id?: number | null;
   created_at?: string;
   updated_at?: string;
 }
