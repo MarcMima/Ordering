@@ -2,10 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLocation } from "@/contexts/LocationContext";
+import { createClient } from "@/lib/supabase";
 
 export function TopNav() {
+  const router = useRouter();
   const { locationId, locationOptions } = useLocation();
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
   const currentName = locationOptions.find((l) => l.id === locationId)?.name ?? "Select location";
 
   return (
@@ -13,7 +23,8 @@ export function TopNav() {
       <div className="flex min-w-0 flex-1 items-center gap-4">
         <Link
           href="/dashboard"
-          className="relative shrink-0 rounded-md bg-white"
+          className="relative shrink-0 rounded-md bg-white dark:bg-white"
+          style={{ backgroundColor: "#ffffff" }}
           aria-label="Mima — Fresh Mediterranean"
         >
           <Image
@@ -24,6 +35,7 @@ export function TopNav() {
             className="block h-9 w-auto max-w-[min(200px,42vw)] object-contain object-left"
             priority
             sizes="(max-width: 640px) 42vw, 200px"
+            unoptimized
           />
         </Link>
         <span className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
@@ -36,12 +48,18 @@ export function TopNav() {
           </Link>
         </span>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <Link
           href="/dashboard"
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          className="rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 sm:px-3"
         >
           Dashboard
+        </Link>
+        <Link
+          href="/dashboard/haccp"
+          className="rounded-md px-2 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/50 sm:px-3"
+        >
+          HACCP
         </Link>
         <Link
           href="/admin"
@@ -51,10 +69,10 @@ export function TopNav() {
         </Link>
         <button
           type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-sm font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
-          aria-label="User menu"
+          onClick={() => void handleSignOut()}
+          className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
-          U
+          Sign out
         </button>
       </div>
     </nav>

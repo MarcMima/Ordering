@@ -19,6 +19,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { TopNav } from "@/components/TopNav";
+import { DailyWorkflowStepper } from "@/components/DailyWorkflowStepper";
 import { SortableStocktakeItem } from "@/components/stocktake/SortableStocktakeItem";
 import { StocktakeRawRow } from "@/components/stocktake/StocktakeRawRow";
 import { useLocation } from "@/contexts/LocationContext";
@@ -607,6 +608,8 @@ export default function StocktakePage() {
           </Link>
         </div>
 
+        <DailyWorkflowStepper />
+
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
             {error}
@@ -818,16 +821,9 @@ export default function StocktakePage() {
         {allVisibleRaws.length > 0 && (
           <>
             <section className="mt-12 border-t border-zinc-200 pt-10 dark:border-zinc-700">
-              <h2 className="mb-1 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+              <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
                 2. Raw ingredients
               </h2>
-              <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
-                <strong>Daily</strong> only lists ingredients whose next supplier delivery is{" "}
-                <strong>tomorrow</strong> (same logic as the Ordering page), so you do not count stock for items you
-                cannot place an order for yet. Use <strong>Weekly</strong> for items you count on a fixed weekday
-                (master column J). Count in the unit shown under each line. See{" "}
-                <code className="text-xs">docs/MASTER_SHEET_MAPPING.md</code>.
-              </p>
               {stocktakeDeliveryMeta?.skipFilter && (
                 <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                   Could not load supplier schedules; showing all daily ingredients. Check your connection and try

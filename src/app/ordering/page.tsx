@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
+import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
+import { DailyWorkflowStepper } from "@/components/DailyWorkflowStepper";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { Supplier, RawIngredient, IngredientPackSize, PrepItem } from "@/lib/types";
@@ -22,6 +24,7 @@ import {
 import { formatDecimal2, formatOrderAmount, formatPrepQuantity } from "@/lib/format";
 import { localCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
+import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import {
   basePerOneStocktakeInputUnit,
   packSizeToBaseAmount,
@@ -289,6 +292,10 @@ export default function OrderingPage() {
   /** Set when suggestion queries fail (RLS/network) so the page is not silently empty. */
   const [suggestionLoadError, setSuggestionLoadError] = useState<string | null>(null);
   /** Why the suggestion is empty / what was loaded (local date + counts). */
+  /** Same rule as Dashboard: every location prep row has a count row for today (local date). */
+  const [prepStocktakeComplete, setPrepStocktakeComplete] = useState(false);
+  /** Same prep-based soak total as prep list (local calendar date). */
+  const [soakDryChickpeasKg, setSoakDryChickpeasKg] = useState(0);
   const [suggestionInsight, setSuggestionInsight] = useState<{
     dateUsed: string;
     prepLinkedCount: number;
@@ -403,6 +410,7 @@ export default function OrderingPage() {
   // Load prep-based suggestion: daily need × cover until delivery *after* the next one (+ evening) − stock → packs
   useEffect(() => {
     if (!locationId || rawIngredients.length === 0) {
+      setPrepStocktakeComplete(false);
       setSuggestedOrder({});
       setSuggestionSupplierByRaw({});
       setSuggestionOrderKindByRaw({});
@@ -429,6 +437,7 @@ export default function OrderingPage() {
         .eq("location_id", locationId);
       if (!alive) return;
       if (lpiRes.error) {
+        setPrepStocktakeComplete(false);
         setSuggestedOrder({});
         setSuggestionSupplierByRaw({});
         setSuggestionOrderKindByRaw({});
@@ -451,7 +460,7 @@ export default function OrderingPage() {
       }
       const prepIdsAtLocation = [...new Set(lpi.map((row) => row.prep_item_id))];
 
-      const [revCents, locRes, recipeRes, stockRes, supRes, siRes] = await Promise.all([
+      const [revCents, locRes, recipeRes, stockRes, supRes, siRes, prepCountRes] = await Promise.all([
         ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d),
         supabase
           .from("locations")
@@ -475,8 +484,18 @@ export default function OrderingPage() {
           .from("supplier_ingredients")
           .select("supplier_id, raw_ingredient_id, is_preferred")
           .in("raw_ingredient_id", rawIdList),
+        supabase
+          .from("daily_prep_counts")
+          .select("id", { count: "exact", head: true })
+          .eq("location_id", locationId)
+          .eq("date", d),
       ]);
       if (!alive) return;
+
+      const countedPrepForDate =
+        prepCountRes.error != null ? 0 : (prepCountRes.count ?? 0);
+      const prepComplete = lpi.length > 0 && countedPrepForDate >= lpi.length;
+      setPrepStocktakeComplete(prepComplete);
 
       const err =
         locRes.error ||
@@ -485,6 +504,7 @@ export default function OrderingPage() {
         supRes.error ||
         siRes.error;
       if (err) {
+        setPrepStocktakeComplete(false);
         setSuggestedOrder({});
         setSuggestionSupplierByRaw({});
         setSuggestionOrderKindByRaw({});
@@ -688,11 +708,25 @@ export default function OrderingPage() {
           kindByRaw[rid] = "recipe";
         }
       }
-      const packConversionLineCount = Object.keys(packCounts).length;
-      const baseFallbackLineCount = Object.values(kindByRaw).filter(
+      const suppressSupplierIds = new Set(
+        suppliers.filter((s) => isOnDemandSupplierName(s.name)).map((s) => s.id)
+      );
+      let suggestedForUi: Record<string, number> = { ...finalSuggested };
+      let kindForUi: Record<string, SuggestionOrderKind> = { ...kindByRaw };
+      if (!prepComplete) {
+        for (const rid of Object.keys(suggestedForUi)) {
+          const sid = preferredSupplierByRawId[rid];
+          if (sid && suppressSupplierIds.has(sid)) {
+            delete suggestedForUi[rid];
+            delete kindForUi[rid];
+          }
+        }
+      }
+      const suggestionLineCount = Object.keys(suggestedForUi).length;
+      const packConversionLineCount = Object.values(kindForUi).filter((k) => k === "pack").length;
+      const baseFallbackLineCount = Object.values(kindForUi).filter(
         (k) => k === "stocktake" || k === "recipe"
       ).length;
-      const suggestionLineCount = Object.keys(finalSuggested).length;
       const unassigned: string[] = [];
       for (const rawId of Object.keys(baseSuggested)) {
         if (!preferredSupplierByRawId[rawId]) unassigned.push(rawId);
@@ -701,8 +735,8 @@ export default function OrderingPage() {
       const baseOrderNeedSum = Object.values(baseSuggested).reduce((a, b) => a + b, 0);
       if (!alive) return;
       setSupplementalPackSizes(supplementalPacks);
-      setSuggestedOrder(finalSuggested);
-      setSuggestionOrderKindByRaw(kindByRaw);
+      setSuggestedOrder(suggestedForUi);
+      setSuggestionOrderKindByRaw(kindForUi);
       setSuggestionSupplierByRaw(preferredSupplierByRawId);
       setSuggestedUnassignedRawIds(unassigned);
       setSuggestionInsight({
@@ -722,6 +756,7 @@ export default function OrderingPage() {
       });
     })().catch(() => {
       if (!alive) return;
+      setPrepStocktakeComplete(false);
       setSuggestedOrder({});
       setSuggestionSupplierByRaw({});
       setSuggestionOrderKindByRaw({});
@@ -734,7 +769,27 @@ export default function OrderingPage() {
     return () => {
       alive = false;
     };
-  }, [locationId, rawIngredients, schedules, packSizes]);
+  }, [locationId, rawIngredients, schedules, packSizes, suppliers]);
+
+  const onDemandSupplierIdSet = useMemo(
+    () => new Set(suppliers.filter((s) => isOnDemandSupplierName(s.name)).map((s) => s.id)),
+    [suppliers]
+  );
+
+  useEffect(() => {
+    if (prepStocktakeComplete || onDemandSupplierIdSet.size === 0) return;
+    setOrderBySupplier((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const sid of onDemandSupplierIdSet) {
+        if (next[sid]?.length) {
+          delete next[sid];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [prepStocktakeComplete, onDemandSupplierIdSet, orderBySupplier]);
 
   const schedulesBySupplier = useMemo(() => {
     const m: Record<string, number[]> = {};
@@ -744,6 +799,68 @@ export default function OrderingPage() {
     }
     return m;
   }, [schedules]);
+
+  useEffect(() => {
+    if (!locationId) {
+      setSoakDryChickpeasKg(0);
+      return;
+    }
+    let alive = true;
+    const d = localCalendarDateString();
+    const supabase = createClient();
+    void (async () => {
+      const revCents = await ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d);
+      const [lpiRes, countRes, locRes] = await Promise.all([
+        supabase
+          .from("location_prep_items")
+          .select("prep_item_id, base_quantity, display_order, prep_items(*)")
+          .eq("location_id", locationId)
+          .order("display_order")
+          .order("prep_item_id"),
+        supabase
+          .from("daily_prep_counts")
+          .select("prep_item_id, quantity")
+          .eq("location_id", locationId)
+          .eq("date", d),
+        supabase.from("locations").select("full_capacity_revenue").eq("id", locationId).single(),
+      ]);
+      if (!alive) return;
+      if (lpiRes.error || countRes.error) {
+        setSoakDryChickpeasKg(0);
+        return;
+      }
+      const raw =
+        (lpiRes.data as unknown as {
+          prep_item_id: string;
+          base_quantity?: number | null;
+          display_order?: number | null;
+          prep_items: PrepItem | PrepItem[] | null;
+        }[]) ?? [];
+      const locationPrepItems = raw.map((row) => ({
+        prep_item_id: row.prep_item_id,
+        base_quantity: row.base_quantity,
+        display_order: row.display_order,
+        prep_items: Array.isArray(row.prep_items) ? row.prep_items[0] ?? null : row.prep_items,
+      }));
+      const countsList = (countRes.data as { prep_item_id: string; quantity: number }[]) ?? [];
+      const todayCounts = Object.fromEntries(countsList.map((c) => [c.prep_item_id, Number(c.quantity)]));
+      const loc = locRes.data as { full_capacity_revenue?: number | null } | null;
+      const revenueMultiplier = getRevenueMultiplier({
+        todayRevenueCents: revCents,
+        fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
+      });
+      setSoakDryChickpeasKg(
+        soakDryChickpeasKgFromPrepState({
+          locationPrepItems,
+          todayCounts,
+          revenueMultiplier,
+        })
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [locationId]);
 
   const daysUntil = (supplierId: string) =>
     daysUntilNextDelivery({
@@ -818,6 +935,7 @@ export default function OrderingPage() {
     try {
       for (const [supplierId, lines] of Object.entries(orderBySupplier)) {
         if (lines.length === 0) continue;
+        if (!prepStocktakeComplete && onDemandSupplierIdSet.has(supplierId)) continue;
         const { data: order, error: orderErr } = await supabase
           .from("orders")
           .insert({
@@ -850,7 +968,14 @@ export default function OrderingPage() {
     }
   };
 
-  const hasAnyLines = Object.values(orderBySupplier).some((arr) => arr.length > 0);
+  const hasAnyLines = useMemo(() => {
+    return Object.entries(orderBySupplier).some(([supplierId, arr]) => {
+      if (arr.length === 0) return false;
+      if (!prepStocktakeComplete && onDemandSupplierIdSet.has(supplierId)) return false;
+      return true;
+    });
+  }, [orderBySupplier, prepStocktakeComplete, onDemandSupplierIdSet]);
+
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
 
   return (
@@ -865,6 +990,8 @@ export default function OrderingPage() {
             Dashboard
           </Link>
         </div>
+
+        <DailyWorkflowStepper />
 
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
@@ -893,6 +1020,8 @@ export default function OrderingPage() {
             </span>
           </p>
         )}
+
+        <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
 
         {suggestedUnassignedRawIds.length > 0 && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
@@ -1008,11 +1137,15 @@ export default function OrderingPage() {
           <div className="mt-6 space-y-8">
             {sortedSuppliers.map((sup) => {
               const days = daysUntil(sup.id);
+              const suppressedCard =
+                !prepStocktakeComplete && isOnDemandSupplierName(sup.name);
               const lines = orderBySupplier[sup.id] ?? [];
               const suggestedForSup = Object.entries(suggestedOrder).filter(
                 ([rawId, qty]) => qty > 0 && suggestionSupplierByRaw[rawId] === sup.id
               );
-              const hasOrderWork = lines.length > 0 || suggestedForSup.length > 0;
+              const hasOrderWork =
+                !suppressedCard && (lines.length > 0 || suggestedForSup.length > 0);
+              const linesToShow = suppressedCard ? [] : lines;
 
               return (
                 <section
@@ -1050,7 +1183,7 @@ export default function OrderingPage() {
                   )}
 
                   <ul className="space-y-2">
-                    {lines.map((line, idx) => {
+                    {linesToShow.map((line, idx) => {
                       const ing = rawIngredients.find((r) => r.id === line.raw_ingredient_id);
                       const kind = suggestionOrderKindByRaw[line.raw_ingredient_id] ?? "pack";
                       const row = orderLineRowView(

@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
+import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
+import { DailyWorkflowStepper } from "@/components/DailyWorkflowStepper";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import { localCalendarDateString } from "@/lib/date";
@@ -16,6 +18,7 @@ import {
   type PrepPriority,
 } from "@/lib/calculations";
 import { formatDecimal2, formatEuroFromCents, formatPrepQuantity } from "@/lib/format";
+import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 
 type LocationPrepItemRow = {
   id: string;
@@ -174,6 +177,19 @@ export default function PrepListPage() {
     return { todayRows, tomorrowRows };
   }, [locationPrepItems, todayCounts, revenueMultiplier]);
 
+  const soakDryChickpeasKg = useMemo(() => {
+    return soakDryChickpeasKgFromPrepState({
+      locationPrepItems: locationPrepItems.map((row) => ({
+        prep_item_id: row.prep_item_id,
+        base_quantity: row.base_quantity,
+        display_order: row.display_order,
+        prep_items: row.prep_items,
+      })),
+      todayCounts,
+      revenueMultiplier,
+    });
+  }, [locationPrepItems, todayCounts, revenueMultiplier]);
+
   const toggleDone = (prepItemId: string) => {
     setCompleted((prev) => {
       const next = { ...prev, [prepItemId]: !prev[prepItemId] };
@@ -198,6 +214,8 @@ export default function PrepListPage() {
             Dashboard
           </Link>
         </div>
+
+        <DailyWorkflowStepper />
 
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
@@ -240,6 +258,7 @@ export default function PrepListPage() {
           <p className="py-8 text-zinc-500">No prep items to show, or all items are fully stocked.</p>
         ) : (
           <>
+            <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
             <div className="mt-6 flex gap-2 no-print">
               <button
                 type="button"
