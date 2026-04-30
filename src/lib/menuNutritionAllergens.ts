@@ -499,13 +499,6 @@ export async function computeMenuNutritionAndAllergens(
       return false;
     }
 
-    if (lines && lines.length > 0) {
-      const res = addPrepNutritionFromRecipe(nutrition, portionGrams, meta, lines, rawNut);
-      if (!res.contributed) nutritionIncomplete = true;
-      else if (res.missingSomeRawNutrition) nutritionIncomplete = true;
-      return;
-    }
-
     if (row && row.kcal_per_100g != null) {
       addPrepPer100(nutrition, row, portionGrams);
       nutritionIncomplete = true;
