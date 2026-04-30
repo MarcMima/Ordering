@@ -42,8 +42,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       void supabase
         .rpc("current_user_authz")
         .single<{ permission_keys: string[] | null; is_admin: boolean | null }>()
-        .then(({ data: authz }) => {
+        .then(({ data: authz, error: authzError }) => {
           if (cancelled) return;
+          // Avoid silent route-blocking when authz RPC has transient failures.
+          // We allow render to continue; page-level guards can still show explicit feedback.
+          if (authzError) {
+            setAllowed(true);
+            return;
+          }
           const permissions = authz?.permission_keys ?? [];
           const isAdmin = Boolean(authz?.is_admin);
           const has = (key: string) => isAdmin || permissions.includes(key);

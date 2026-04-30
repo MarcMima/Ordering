@@ -71,7 +71,12 @@ export async function updateSession(request: NextRequest) {
     }
 
     if (user && !isLogin) {
-      const { data: authz } = await supabase.rpc("current_user_authz").single<AuthzRow>();
+      const { data: authz, error: authzError } = await supabase.rpc("current_user_authz").single<AuthzRow>();
+      // Avoid silent "no-op" navigation loops when authz RPC has transient issues.
+      // In that case, let the request continue and let page-level checks render feedback.
+      if (authzError) {
+        return supabaseResponse;
+      }
       const permissions = authz?.permission_keys ?? [];
       const isAdmin = Boolean(authz?.is_admin);
 
