@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCan, PERMISSIONS } from "@/hooks/useCan";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "⌂" },
@@ -22,8 +23,9 @@ function isKitchenPath(pathname: string): boolean {
 
 export function BottomNav() {
   const pathname = usePathname();
-
-  const colCount = navItems.length;
+  const { allowed: canViewAdmin } = useCan(PERMISSIONS.settingsManage);
+  const visibleItems = canViewAdmin ? navItems : navItems.filter((item) => item.href !== "/admin");
+  const colCount = visibleItems.length;
 
   return (
     <nav
@@ -38,7 +40,7 @@ export function BottomNav() {
           gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
         }}
       >
-        {navItems.map(({ href, label, icon }) => {
+        {visibleItems.map(({ href, label, icon }) => {
           const isActive =
             href === "/dashboard"
               ? pathname === "/dashboard" || pathname === "/dashboard/"

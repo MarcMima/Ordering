@@ -4,11 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocation } from "@/contexts/LocationContext";
+import { useCan, PERMISSIONS } from "@/hooks/useCan";
 import { createClient } from "@/lib/supabase";
 
 export function TopNav() {
   const router = useRouter();
   const { locationId, locationOptions } = useLocation();
+  const { allowed: canViewAdmin } = useCan(PERMISSIONS.settingsManage);
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -67,12 +69,14 @@ export function TopNav() {
         >
           HACCP
         </Link>
-        <Link
-          href="/admin"
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          Admin
-        </Link>
+        {canViewAdmin && (
+          <Link
+            href="/admin"
+            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            Admin
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => void handleSignOut()}

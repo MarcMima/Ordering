@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import { getHaccpStoreId } from "@/lib/haccp/types";
+import { gteMinStatus, lteMaxStatus, temperatureInputClass } from "@/lib/haccp/temperatureFieldStyle";
 
 function calcAfwijking(kokend: number, smeltend: number): number {
   return Math.max(Math.abs(kokend - 100), Math.abs(smeltend - 0));
@@ -22,6 +23,8 @@ export function ThermometerForm() {
 
   const kok = Number(tempKokend.replace(",", "."));
   const sm = Number(tempSmeltend.replace(",", "."));
+  const kokSt = Number.isFinite(kok) ? gteMinStatus(kok, 100) : "empty";
+  const smSt = Number.isFinite(sm) ? lteMaxStatus(sm, 0) : "empty";
   const afwijking = useMemo(() => {
     if (!Number.isFinite(kok) || !Number.isFinite(sm)) return null;
     return calcAfwijking(kok, sm);
@@ -73,7 +76,7 @@ export function ThermometerForm() {
         <label className="text-sm">
           <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Boiling temperature (°C)</span>
           <input
-            className="input"
+            className={temperatureInputClass(kokSt)}
             inputMode="decimal"
             value={tempKokend}
             onChange={(e) => setTempKokend(e.target.value)}
@@ -83,7 +86,7 @@ export function ThermometerForm() {
         <label className="text-sm">
           <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Ice melting temperature (°C)</span>
           <input
-            className="input"
+            className={temperatureInputClass(smSt)}
             inputMode="decimal"
             value={tempSmeltend}
             onChange={(e) => setTempSmeltend(e.target.value)}

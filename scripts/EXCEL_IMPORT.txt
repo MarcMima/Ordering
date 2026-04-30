@@ -1,0 +1,26 @@
+Excel → repo workflow (Mima)
+============================
+
+1) Paden (pas aan of zet environment variables)
+   Standaard in mima_xlsx_parse.py:
+   - Menu:  ~/Documents/Marc/Mima/Menu/Menu/251126_Menu.xlsx
+   - Voeding: ~/Documents/Marc/Mima/Menu/Nutritional values/260309_Voedingswaarde Mima.xlsx
+
+2) Parseer .xlsx zonder openpyxl (stdlib):
+   python3 scripts/mima_xlsx_parse.py
+   → schrijft scripts/parsed_<bestandsnaam>.json (staat in .gitignore als >repo)
+
+3) Gerechten-totalen (flatbread/pita) voor menu_item_nutrition:
+   python3 scripts/extract_gerechten_declared_nutrition.py
+   → scripts/gerechten_declared_nutrition.json (in repo; bron voor migratie 078)
+
+4) Grondstoffen naam-hints t.o.v. subset DB (migratie 034):
+   python3 scripts/compare_excel_grondstoffen_to_db_hints.py
+   → scripts/grondstoffen_mapping_hints.txt
+
+5) Database:
+   supabase db push
+   Migratie 078 vult menu_item_nutrition voor 8 flatbread/pita-gerechten uit Excel Gerechten.
+
+Let op: Bowls / Mezze in het Excel-bestand hebben complexere blokken (meerdere bases);
+die staan niet automatisch in 078 — apart modelleren of handmatig declared rows.

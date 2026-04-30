@@ -187,9 +187,8 @@ function HaccpOverviewContent() {
             href: `/dashboard/haccp/leveranciers`,
             title: "Suppliers",
             description:
-              "Supplier questionnaire table exists; admin-style forms per supplier are not implemented yet.",
+              "Upload questionnaires, certificates, and other supplier documents (from your Admin supplier list).",
             done: null,
-            disabled: true,
           },
         ];
 

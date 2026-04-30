@@ -31,6 +31,7 @@ import {
   isRawDeliverableTomorrow,
   supplierScheduleDayToJsDay,
 } from "@/lib/calculations";
+import { formatDecimal2 } from "@/lib/format";
 
 type StocktakeDeliveryMeta = {
   schedules: { supplier_id: string; day_of_week: number }[];
@@ -84,6 +85,51 @@ function reorderRawListByIds(
   );
   const updates = orderedTabIds.map((id, i) => ({ id, stocktake_display_order: i * 10 }));
   return { next, updates };
+}
+
+function PrepCountField({
+  prepItemId,
+  quantity,
+  onCommit,
+  isSaving,
+  label,
+}: {
+  prepItemId: string;
+  quantity: number | undefined;
+  onCommit: (prepItemId: string, n: number) => void;
+  isSaving: boolean;
+  label: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const display =
+    draft !== null
+      ? draft
+      : quantity === undefined
+        ? ""
+        : formatDecimal2(quantity);
+
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        placeholder="0"
+        value={display}
+        onFocus={() => setDraft(quantity === undefined ? "" : formatDecimal2(quantity))}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const raw = (draft ?? (quantity === undefined ? "" : formatDecimal2(quantity))).trim().replace(",", ".");
+          setDraft(null);
+          const n = raw === "" || raw === "." ? 0 : parseFloat(raw);
+          onCommit(prepItemId, !Number.isFinite(n) || n < 0 ? 0 : n);
+        }}
+        className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+        aria-label={`Count for ${label}`}
+      />
+      {isSaving && <span className="text-xs text-zinc-400">Saving</span>}
+    </div>
+  );
 }
 
 export default function StocktakePage() {
@@ -339,11 +385,10 @@ export default function StocktakePage() {
     [locationId, date]
   );
 
-  const handleCountChange = useCallback(
-    (prepItemId: string, value: string) => {
-      const num = value === "" ? 0 : (parseFloat(value) || 0);
-      setCounts((c) => ({ ...c, [prepItemId]: num }));
-      saveCount(prepItemId, num);
+  const commitPrepCount = useCallback(
+    (prepItemId: string, n: number) => {
+      setCounts((c) => ({ ...c, [prepItemId]: n }));
+      saveCount(prepItemId, n);
     },
     [saveCount]
   );
@@ -377,9 +422,11 @@ export default function StocktakePage() {
 
   const handleRawCountChange = useCallback(
     (rawIngredientId: string, value: string) => {
-      const num = value === "" ? 0 : (parseFloat(value) || 0);
-      setRawCounts((c) => ({ ...c, [rawIngredientId]: num }));
-      saveRawCount(rawIngredientId, num);
+      const raw = value.trim().replace(",", ".");
+      const num = raw === "" || raw === "." ? 0 : parseFloat(raw);
+      const final = !Number.isFinite(num) || num < 0 ? 0 : num;
+      setRawCounts((c) => ({ ...c, [rawIngredientId]: final }));
+      saveRawCount(rawIngredientId, final);
     },
     [saveRawCount]
   );
@@ -715,7 +762,6 @@ export default function StocktakePage() {
                 {locationPrepItems.map((row) => {
                   const item = row.prep_items;
                   if (!item) return null;
-                  const value = counts[item.id] ?? "";
                   const isSaving = countSaving[item.id];
                   const cat = item.category?.trim() || "All finished products";
                   return (
@@ -738,20 +784,13 @@ export default function StocktakePage() {
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            step="any"
-                            min="0"
-                            placeholder="0"
-                            value={value === 0 ? "0" : value}
-                            onChange={(e) => handleCountChange(item.id, e.target.value)}
-                            className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-                            aria-label={`Count for ${item.name}`}
-                          />
-                          {isSaving && <span className="text-xs text-zinc-400">Saving</span>}
-                        </div>
+                        <PrepCountField
+                          prepItemId={item.id}
+                          quantity={counts[item.id]}
+                          onCommit={commitPrepCount}
+                          isSaving={!!isSaving}
+                          label={item.name}
+                        />
                       </div>
                     </SortableStocktakeItem>
                   );
@@ -770,7 +809,6 @@ export default function StocktakePage() {
                   {itemsByCategory[category]!.map((row) => {
                     const item = row.prep_items;
                     if (!item) return null;
-                    const value = counts[item.id] ?? "";
                     const isSaving = countSaving[item.id];
                     return (
                       <li
@@ -791,22 +829,13 @@ export default function StocktakePage() {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step="any"
-                              min="0"
-                              placeholder="0"
-                              value={value === 0 ? "0" : value}
-                              onChange={(e) => handleCountChange(item.id, e.target.value)}
-                              className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-                              aria-label={`Count for ${item.name}`}
-                            />
-                            {isSaving && (
-                              <span className="text-xs text-zinc-400">Saving</span>
-                            )}
-                          </div>
+                          <PrepCountField
+                            prepItemId={item.id}
+                            quantity={counts[item.id]}
+                            onCommit={commitPrepCount}
+                            isSaving={!!isSaving}
+                            label={item.name}
+                          />
                         </div>
                       </li>
                     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HaccpFormGate } from "@/components/HaccpFormGate";
 import { TopNav } from "@/components/TopNav";
@@ -23,7 +23,7 @@ function Inner() {
   const [row, setRow] = useState<HaccpTemperaturenRow | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refetchWeek = useCallback(() => {
     const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
     void (async () => {
@@ -35,9 +35,14 @@ function Inner() {
         .eq("year", year)
         .maybeSingle();
       if (error) setErr(error.message);
+      else setErr(null);
       setRow(data as HaccpTemperaturenRow | null);
     })();
   }, [week, year, locations, locationId]);
+
+  useEffect(() => {
+    refetchWeek();
+  }, [refetchWeek]);
 
   return (
     <HaccpFormGate formKey={APP_FORM_KEYS.haccp_temperatures}>
@@ -53,7 +58,13 @@ function Inner() {
           {row === undefined ? (
             <p className="text-zinc-500">Loading…</p>
           ) : (
-            <TemperaturenForm key={`${week}-${year}`} weekNumber={week} year={year} initial={row} />
+            <TemperaturenForm
+              key={`${week}-${year}`}
+              weekNumber={week}
+              year={year}
+              initial={row}
+              onSaved={refetchWeek}
+            />
           )}
         </main>
       </div>

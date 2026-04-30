@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpIngangscontroleRow } from "@/lib/haccp/types";
 import { getHaccpStoreId } from "@/lib/haccp/types";
+import { lteMaxStatus, temperatureInputClass } from "@/lib/haccp/temperatureFieldStyle";
 
 const SUPPLIERS = ["Bidfood", "Van Gelder"] as const;
 const ROWS_PER_SUPPLIER = 5;
@@ -117,10 +118,12 @@ export function IngangscontroleForm({
   weekNumber,
   year,
   initialRows,
+  onSaved,
 }: {
   weekNumber: number;
   year: number;
   initialRows: HaccpIngangscontroleRow[];
+  onSaved?: () => void;
 }) {
   const { locations, locationId } = useLocation();
   const storeId = getHaccpStoreId(locations, locationId);
@@ -135,6 +138,12 @@ export function IngangscontroleForm({
   const [signOff, setSignOff] = useState(() => merged.find((r) => r.paraaf)?.paraaf ?? "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRows(merged);
+    setCheckDate(merged[0]?.datum?.slice(0, 10) ?? defaultDatum());
+    setSignOff(merged.find((r) => r.paraaf)?.paraaf ?? "");
+  }, [merged]);
 
   function updateFlat(index: number, patch: Partial<DraftRow>) {
     setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
@@ -170,7 +179,10 @@ export function IngangscontroleForm({
     const { error } = await supabase.from("haccp_ingangscontrole").insert(payload);
     setSaving(false);
     if (error) setMessage(error.message);
-    else setMessage("Saved.");
+    else {
+      setMessage("Saved.");
+      onSaved?.();
+    }
   }
 
   function renderTable(supplierIndex: 0 | 1) {
@@ -197,6 +209,10 @@ export function IngangscontroleForm({
               {Array.from({ length: ROWS_PER_SUPPLIER }, (_, j) => {
                 const i = offset + j;
                 const r = rows[i];
+                const chillStatus =
+                  r.soort === "V" && r.temperatuur != null && Number.isFinite(r.temperatuur)
+                    ? lteMaxStatus(r.temperatuur, 7)
+                    : "empty";
                 return (
                   <tr key={`${supplier}-${j}`} className="border-b border-zinc-100 dark:border-zinc-700/80">
                     <td className="px-2 py-1.5 tabular-nums text-zinc-500">{j + 1}</td>
@@ -225,7 +241,10 @@ export function IngangscontroleForm({
                       <input
                         type="text"
                         inputMode="decimal"
-                        className="input w-full min-w-[4rem] py-1 text-sm tabular-nums"
+                        className={temperatureInputClass(
+                          r.soort === "V" ? chillStatus : "empty",
+                          "min-w-[4rem] py-1 text-sm"
+                        )}
                         value={r.temperatuur ?? ""}
                         onChange={(e) => {
                           const t = e.target.value.trim();
@@ -233,7 +252,7 @@ export function IngangscontroleForm({
                             temperatuur: t === "" ? null : Number(t.replace(",", ".")),
                           });
                         }}
-                        placeholder="—"
+                        placeholder={r.soort === "V" ? "≤7" : "—"}
                       />
                     </td>
                     <td className="p-1">
@@ -295,7 +314,8 @@ export function IngangscontroleForm({
   return (
     <div className="space-y-8">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Five products per supplier: Bidfood and Van Gelder. One check date applies to all lines.
+        Five products per supplier: Bidfood and Van Gelder. One check date applies to all lines. Fresh (V): temperature
+        colours follow max 7 °C (green below, amber on 7 °C, red above 7,1 °C).
       </p>
 
       <label className="block max-w-xs text-sm">

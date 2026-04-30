@@ -174,3 +174,67 @@ export interface OrderLineItem {
   created_at?: string;
   updated_at?: string;
 }
+
+/** EU-allergenen referentie — `allergen_types` (migration 075). */
+export interface AllergenType {
+  id: string;
+  code: string;
+  label_nl: string;
+  sort_order: number;
+}
+
+/** Per 100 g/ml — `ingredient_nutritional_values` (migration 069). */
+export interface IngredientNutritionalValues {
+  id: string;
+  raw_ingredient_id: string;
+  kcal_per_100g?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  sugar_g?: number | null;
+  fat_g?: number | null;
+  sat_fat_g?: number | null;
+  fiber_g?: number | null;
+  salt_g?: number | null;
+  source?: string | null;
+}
+
+/** Menu dish — `menu_items` (migration 069). */
+export interface MenuItem {
+  id: string;
+  name: string;
+  category: string;
+  subcategory?: string | null;
+  price_cents?: number | null;
+  active: boolean;
+  description?: string | null;
+  sides_product_id?: string | null;
+  display_order: number;
+}
+
+/** Recipe line on a menu dish — `menu_item_components`. */
+export interface MenuItemComponent {
+  id: string;
+  menu_item_id: string;
+  prep_item_id?: string | null;
+  raw_ingredient_id?: string | null;
+  bowl_base_option_id?: string | null;
+  quantity_grams: number;
+  portion_label?: string | null;
+  option_group?: string | null;
+  is_optional?: boolean | null;
+  default_selected?: boolean | null;
+  display_order: number;
+}
+
+/** Aggregated POS sales — `daily_sales` (Sides / manual import). */
+export interface DailySale {
+  id: string;
+  location_id: string;
+  date: string;
+  menu_item_id?: string | null;
+  menu_item_name?: string | null;
+  quantity_sold: number;
+  revenue_cents: number;
+  channel?: string | null;
+  sides_order_id?: string | null;
+}

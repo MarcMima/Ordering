@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
 import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
+import { ChickenMarinadeCallout, rawIngredientIsChickenForMarinade } from "@/components/ChickenMarinadeCallout";
 import { DailyWorkflowStepper } from "@/components/DailyWorkflowStepper";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
@@ -976,6 +977,20 @@ export default function OrderingPage() {
     });
   }, [orderBySupplier, prepStocktakeComplete, onDemandSupplierIdSet]);
 
+  const showChickenMarinadeHint = useMemo(() => {
+    const byId = new Map(rawIngredients.map((r) => [r.id, r.name]));
+    for (const [rid, q] of Object.entries(suggestedOrder)) {
+      if (q <= 0) continue;
+      if (rawIngredientIsChickenForMarinade(byId.get(rid))) return true;
+    }
+    for (const lines of Object.values(orderBySupplier)) {
+      for (const line of lines) {
+        if (rawIngredientIsChickenForMarinade(line.raw_ingredient_name)) return true;
+      }
+    }
+    return false;
+  }, [suggestedOrder, orderBySupplier, rawIngredients]);
+
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
 
   return (
@@ -1022,6 +1037,8 @@ export default function OrderingPage() {
         )}
 
         <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
+
+        <ChickenMarinadeCallout visible={showChickenMarinadeHint} />
 
         {suggestedUnassignedRawIds.length > 0 && (
           <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
@@ -1146,39 +1163,45 @@ export default function OrderingPage() {
               const hasOrderWork =
                 !suppressedCard && (lines.length > 0 || suggestedForSup.length > 0);
               const linesToShow = suppressedCard ? [] : lines;
+              /** Scheduled weekday suppliers: only strong emphasis on an actual delivery day (or no fixed schedule / on-demand). */
+              const deliveryDaysForSup = schedulesBySupplier[sup.id] ?? [];
+              const hasWeekdaySchedule = deliveryDaysForSup.length > 0;
+              const onDemandSup = isOnDemandSupplierName(sup.name);
+              const isDeliveryToday = days === 0;
+              const cardEmphasized =
+                hasOrderWork &&
+                (!hasWeekdaySchedule || onDemandSup || isDeliveryToday);
+
+              const sectionClass = !hasOrderWork
+                ? "rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 dark:border-zinc-600 dark:bg-zinc-900/60"
+                : cardEmphasized
+                  ? "rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800"
+                  : "rounded-xl border border-dashed border-zinc-300 bg-zinc-50/90 p-4 dark:border-zinc-600 dark:bg-zinc-900/50";
+              const headingClass = !hasOrderWork
+                ? "font-medium text-zinc-500 dark:text-zinc-400"
+                : cardEmphasized
+                  ? "font-semibold text-zinc-900 dark:text-zinc-100"
+                  : "font-medium text-zinc-600 dark:text-zinc-400";
+              const deliveryMetaClass = !hasOrderWork
+                ? "text-sm text-zinc-400 dark:text-zinc-500"
+                : cardEmphasized
+                  ? "text-sm text-zinc-500 dark:text-zinc-400"
+                  : "text-sm text-zinc-500 dark:text-zinc-500";
 
               return (
-                <section
-                  key={sup.id}
-                  className={
-                    hasOrderWork
-                      ? "rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800"
-                      : "rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 dark:border-zinc-600 dark:bg-zinc-900/60"
-                  }
-                >
+                <section key={sup.id} className={sectionClass}>
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h2
-                      className={
-                        hasOrderWork
-                          ? "font-semibold text-zinc-900 dark:text-zinc-100"
-                          : "font-medium text-zinc-500 dark:text-zinc-400"
-                      }
-                    >
-                      {sup.name}
-                    </h2>
-                    <span
-                      className={
-                        hasOrderWork
-                          ? "text-sm text-zinc-500 dark:text-zinc-400"
-                          : "text-sm text-zinc-400 dark:text-zinc-500"
-                      }
-                    >
-                      {nextDeliveryLabel(sup.name, days)}
-                    </span>
+                    <h2 className={headingClass}>{sup.name}</h2>
+                    <span className={deliveryMetaClass}>{nextDeliveryLabel(sup.name, days)}</span>
                   </div>
                   {!hasOrderWork && (
                     <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
                       No order suggestion and no lines — nothing to do here for now.
+                    </p>
+                  )}
+                  {hasOrderWork && !cardEmphasized && (
+                    <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
+                      Not a delivery day today — for planning only.
                     </p>
                   )}
 

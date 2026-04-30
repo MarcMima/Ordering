@@ -5,6 +5,12 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpBereidenMetingRow, HaccpBereidenRow } from "@/lib/haccp/types";
 import { getHaccpStoreId } from "@/lib/haccp/types";
+import {
+  gteMinStatus,
+  lteMaxStatus,
+  temperatureInputClass,
+  type TempFieldStatus,
+} from "@/lib/haccp/temperatureFieldStyle";
 
 const COOKED_OPTIONS = [
   "Grilled chicken",
@@ -152,9 +158,36 @@ type Props = {
   weekNumber: number;
   year: number;
   initial: HaccpBereidenRow | null;
+  onSaved?: () => void;
 };
 
-export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
+/** Haal grenswaarde uit normtekst zoals "≥ 75 °C" of "≤ 7 °C". */
+function parseNormLimits(norm: string): { lte?: number; gte?: number } {
+  const n = norm.replace(/\u00a0/g, " ").trim();
+  const lteU = n.match(/≤\s*([\d.,]+)|<=\s*([\d.,]+)/);
+  if (lteU) {
+    const v = lteU[1] || lteU[2];
+    return { lte: Number(String(v).replace(",", ".")) };
+  }
+  const gteU = n.match(/≥\s*([\d.,]+)|>=\s*([\d.,]+)/);
+  if (gteU) {
+    const v = gteU[1] || gteU[2];
+    return { gte: Number(String(v).replace(",", ".")) };
+  }
+  return {};
+}
+
+function tempStatusFromNorm(
+  temp: number | null | undefined,
+  limits: { lte?: number; gte?: number }
+): TempFieldStatus {
+  if (temp == null || !Number.isFinite(temp)) return "empty";
+  if (limits.lte != null) return lteMaxStatus(temp, limits.lte);
+  if (limits.gte != null) return gteMinStatus(temp, limits.gte);
+  return "empty";
+}
+
+export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Props) {
   const { locations, locationId } = useLocation();
   const storeId = getHaccpStoreId(locations, locationId);
   const [row, setRow] = useState<HaccpBereidenRow>(() =>
@@ -162,6 +195,10 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRow(mergeInitial(initial, weekNumber, year, storeId));
+  }, [initial, weekNumber, year, storeId]);
 
   function setMetingen(
     key:
@@ -251,7 +288,10 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
 
     setSaving(false);
     if (err) setMessage(err.message);
-    else setMessage("Saved.");
+    else {
+      setMessage("Saved.");
+      onSaved?.();
+    }
   }
 
   const g = row.kerntemp_gegaard as HaccpBereidenMetingRow[];
@@ -301,7 +341,10 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
                   <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Start temp (°C)</span>
                   <span className="mb-1 block text-xs text-zinc-500">Norm ≥ 75 °C</span>
                   <input
-                    className="input w-full tabular-nums"
+                    className={temperatureInputClass(
+                      gteMinStatus(row.terugkoelen_temp_begin, 75),
+                      "w-full tabular-nums"
+                    )}
                     inputMode="decimal"
                     value={row.terugkoelen_temp_begin ?? ""}
                     onChange={(e) =>
@@ -313,7 +356,10 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
                   <span className="mb-1 block text-zinc-600 dark:text-zinc-400">After 2 h (°C)</span>
                   <span className="mb-1 block text-xs text-zinc-500">Target ≤ 20 °C</span>
                   <input
-                    className="input w-full tabular-nums"
+                    className={temperatureInputClass(
+                      lteMaxStatus(row.terugkoelen_temp_2uur, 20),
+                      "w-full tabular-nums"
+                    )}
                     inputMode="decimal"
                     value={row.terugkoelen_temp_2uur ?? ""}
                     onChange={(e) =>
@@ -325,7 +371,10 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
                   <span className="mb-1 block text-zinc-600 dark:text-zinc-400">After 5 h (°C)</span>
                   <span className="mb-1 block text-xs text-zinc-500">Target ≤ 7 °C</span>
                   <input
-                    className="input w-full tabular-nums"
+                    className={temperatureInputClass(
+                      lteMaxStatus(row.terugkoelen_temp_5uur, 7),
+                      "w-full tabular-nums"
+                    )}
                     inputMode="decimal"
                     value={row.terugkoelen_temp_5uur ?? ""}
                     onChange={(e) =>
@@ -442,7 +491,7 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
                 <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Warm (°C)</span>
                 <span className="mb-1 block text-xs text-zinc-500">≥ 60 °C</span>
                 <input
-                  className="input tabular-nums"
+                  className={temperatureInputClass(gteMinStatus(row.serveertemp_warm, 60), "tabular-nums")}
                   inputMode="decimal"
                   value={row.serveertemp_warm ?? ""}
                   onChange={(e) =>
@@ -454,7 +503,7 @@ export function BereidenServerenForm({ weekNumber, year, initial }: Props) {
                 <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Cold (°C)</span>
                 <span className="mb-1 block text-xs text-zinc-500">≤ 7 °C</span>
                 <input
-                  className="input tabular-nums"
+                  className={temperatureInputClass(lteMaxStatus(row.serveertemp_koud, 7), "tabular-nums")}
                   inputMode="decimal"
                   value={row.serveertemp_koud ?? ""}
                   onChange={(e) =>
@@ -660,6 +709,8 @@ function MetingenTable({
   norm: string;
   productOptions?: readonly string[];
 }) {
+  const limits = parseNormLimits(norm);
+
   function patch(i: number, patchRow: Partial<HaccpBereidenMetingRow>) {
     const next = [...rows];
     next[i] = { ...next[i], ...patchRow };
@@ -714,7 +765,10 @@ function MetingenTable({
               </td>
               <td className="py-1.5 pr-2">
                 <input
-                  className="input py-1 tabular-nums"
+                  className={temperatureInputClass(
+                    tempStatusFromNorm(line.temp, limits),
+                    "py-1 tabular-nums"
+                  )}
                   inputMode="decimal"
                   value={line.temp ?? ""}
                   onChange={(e) => patch(i, { temp: parseNum(e.target.value) })}

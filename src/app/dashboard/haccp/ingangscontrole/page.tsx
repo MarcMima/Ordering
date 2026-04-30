@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HaccpFormGate } from "@/components/HaccpFormGate";
 import { TopNav } from "@/components/TopNav";
@@ -23,7 +23,7 @@ function Inner() {
   const [rows, setRows] = useState<HaccpIngangscontroleRow[] | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refetchWeek = useCallback(() => {
     const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
     void (async () => {
@@ -35,9 +35,14 @@ function Inner() {
         .eq("year", year)
         .order("datum");
       if (error) setErr(error.message);
+      else setErr(null);
       setRows((data as HaccpIngangscontroleRow[]) ?? []);
     })();
   }, [week, year, locations, locationId]);
+
+  useEffect(() => {
+    refetchWeek();
+  }, [refetchWeek]);
 
   return (
     <HaccpFormGate formKey={APP_FORM_KEYS.haccp_goods_in}>
@@ -58,6 +63,7 @@ function Inner() {
               weekNumber={week}
               year={year}
               initialRows={rows}
+              onSaved={refetchWeek}
             />
           )}
         </main>

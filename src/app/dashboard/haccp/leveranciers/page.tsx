@@ -25,7 +25,7 @@ export default function LeveranciersPage() {
           </Link>
           <h1 className="mt-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">Suppliers</h1>
           <div className="mt-6">
-            <LeveranciersDocumentsPanel storeId={storeId} />
+            <LeveranciersDocumentsPanel storeId={storeId} locationId={locationId} />
           </div>
         </main>
       </div>

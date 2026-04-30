@@ -1,37 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import type { HaccpSchoonmaakRow } from "@/lib/haccp/types";
 import { useLocation } from "@/contexts/LocationContext";
 import { getHaccpStoreId } from "@/lib/haccp/types";
 import { WEEKDAY_LABELS_EN_SHORT } from "@/lib/haccp/week";
 
-const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string }[] = [
-  { key: "vriezers", label: "Freezers" },
-  { key: "verdampers", label: "Evaporators" },
-  { key: "magazijnstellingen", label: "Warehouse shelving" },
-  { key: "schappen", label: "Shelves" },
-  { key: "koelingen", label: "Cooling units" },
-  { key: "frituren", label: "Fryers" },
-  { key: "afzuiging", label: "Extraction" },
-  { key: "wanden", label: "Walls" },
-  { key: "bain_marie", label: "Bain-marie" },
-  { key: "saladiere", label: "Salad bar" },
-  { key: "grill", label: "Grill" },
-  { key: "werkbanken", label: "Work benches" },
-  { key: "vloer", label: "Floor" },
-  { key: "vaatwasser", label: "Dishwasher" },
-  { key: "afvalbakken", label: "Waste bins" },
-  { key: "schoonmaakmateriaal", label: "Cleaning supplies" },
-  { key: "handcontactpunten", label: "Hand-touch points" },
-  { key: "handenwas", label: "Hand wash" },
-  { key: "spoelbakken", label: "Sinks" },
-  { key: "magnetron", label: "Microwave" },
-  { key: "snijgereedschap", label: "Cutting tools" },
-  { key: "snijplanken", label: "Cutting boards" },
-  { key: "keukenmachines", label: "Kitchen machines" },
-  { key: "kleine_materialen", label: "Small items" },
+/** Afstemming op KHN schoonmaakschema: D=dagelijks W=wekelijks M=maandelijks N=na gebruik */
+const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string; frequency: string }[] = [
+  { key: "vriezers", label: "Vriezers", frequency: "D · M" },
+  { key: "verdampers", label: "Verdampers", frequency: "D · M" },
+  { key: "magazijnstellingen", label: "Magazijnstellingen", frequency: "D · M" },
+  { key: "schappen", label: "Schappen / stellingen", frequency: "D · M" },
+  { key: "koelingen", label: "Koelingen", frequency: "D" },
+  { key: "frituren", label: "Frituren", frequency: "D · W" },
+  { key: "afzuiging", label: "Afzuiging (incl. roosters)", frequency: "D · W" },
+  { key: "wanden", label: "Wanden", frequency: "D · W" },
+  { key: "bain_marie", label: "Bain-marie", frequency: "D · W" },
+  { key: "saladiere", label: "Saladiere", frequency: "D" },
+  { key: "grill", label: "Grill", frequency: "D" },
+  { key: "werkbanken", label: "Werkbanken", frequency: "D" },
+  { key: "vloer", label: "Vloer", frequency: "D" },
+  { key: "vaatwasser", label: "Vaatwasser", frequency: "D" },
+  { key: "afvalbakken", label: "Afvalbakken", frequency: "D" },
+  { key: "schoonmaakmateriaal", label: "Schoonmaakmateriaal", frequency: "D" },
+  { key: "handcontactpunten", label: "Handcontactpunten", frequency: "D" },
+  { key: "handenwas", label: "Handenwasgelegenheid", frequency: "D" },
+  { key: "spoelbakken", label: "Spoelbakken", frequency: "D" },
+  { key: "magnetron", label: "Magnetron", frequency: "D · N" },
+  { key: "snijgereedschap", label: "Snijgereedschap", frequency: "D · N" },
+  { key: "snijplanken", label: "Snijplanken", frequency: "D · N" },
+  { key: "keukenmachines", label: "Keukenmachines", frequency: "D · N" },
+  { key: "kleine_materialen", label: "Kleine productiematerialen", frequency: "D · N" },
 ];
 
 function bool7(v: unknown): (boolean | null)[] {
@@ -55,34 +56,50 @@ function triLabel(v: boolean | null): string {
   return "·";
 }
 
+function emptyWeek(): (boolean | null)[] {
+  return Array.from({ length: 7 }, () => null);
+}
+
+function rowFromInitial(
+  initial: Partial<HaccpSchoonmaakRow> | null,
+  emptyFn: () => (boolean | null)[]
+): Record<string, (boolean | null)[] | string | number | null> {
+  const base: Record<string, (boolean | null)[] | string | null> = {
+    uitgevoerd_door: initial?.uitgevoerd_door ?? "",
+  };
+  for (const o of OBJECTS) {
+    base[o.key] = initial?.[o.key] ? bool7(initial[o.key]) : emptyFn();
+  }
+  return base;
+}
+
 export function SchoonmaakForm({
   weekNumber,
   year,
   initial,
+  onSaved,
 }: {
   weekNumber: number;
   year: number;
   initial: Partial<HaccpSchoonmaakRow> | null;
+  onSaved?: () => void;
 }) {
   const { locations, locationId } = useLocation();
   const storeId = getHaccpStoreId(locations, locationId);
-  const empty = (): (boolean | null)[] => Array.from({ length: 7 }, () => null);
 
-  const [row, setRow] = useState<Record<string, (boolean | null)[] | string | number | null>>(() => {
-    const base: Record<string, (boolean | null)[] | string | null> = {
-      uitgevoerd_door: initial?.uitgevoerd_door ?? "",
-    };
-    for (const o of OBJECTS) {
-      base[o.key] = initial?.[o.key] ? bool7(initial[o.key]) : empty();
-    }
-    return base;
-  });
+  const [row, setRow] = useState<Record<string, (boolean | null)[] | string | number | null>>(() =>
+    rowFromInitial(initial, emptyWeek)
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    setRow(rowFromInitial(initial, emptyWeek));
+  }, [initial, weekNumber, year]);
+
   function setDay(key: string, day: number) {
     setRow((prev) => {
-      const arr = [...((prev[key] as (boolean | null)[]) ?? empty())];
+      const arr = [...((prev[key] as (boolean | null)[]) ?? emptyWeek())];
       arr[day] = nextTri(arr[day] ?? null);
       return { ...prev, [key]: arr };
     });
@@ -107,20 +124,27 @@ export function SchoonmaakForm({
     });
     setSaving(false);
     if (error) setMessage(error.message);
-    else setMessage("Saved.");
+    else {
+      setMessage("Saved.");
+      onSaved?.();
+    }
   }
 
   return (
     <div className="space-y-6">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Tap each cell: · → ✓ → ✗ → · (n/a / clean / not clean).
+        Tap each cell: · → ✓ → ✗ → · (n/a / clean / not clean). Frequentie volgens schoonmaakschema (D=dagelijks,
+        W=wekelijks, M=maandelijks, N=na gebruik).
       </p>
       <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
-        <table className="w-full min-w-[900px] border-collapse text-xs sm:text-sm">
+        <table className="w-full min-w-[980px] border-collapse text-xs sm:text-sm">
           <thead>
             <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/80">
               <th className="sticky left-0 z-10 bg-zinc-50 px-2 py-2 text-left font-medium dark:bg-zinc-800">
-                Area
+                Object
+              </th>
+              <th className="whitespace-nowrap px-1 py-2 text-left text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
+                Freq.
               </th>
               {WEEKDAY_LABELS_EN_SHORT.map((d) => (
                 <th key={d} className="min-w-[2.5rem] px-0.5 py-2 text-center font-medium text-zinc-600">
@@ -135,8 +159,11 @@ export function SchoonmaakForm({
                 <td className="sticky left-0 z-10 bg-white px-2 py-1 font-medium text-zinc-800 dark:bg-zinc-900">
                   {o.label}
                 </td>
+                <td className="whitespace-nowrap px-1 py-1 text-[10px] leading-tight text-zinc-500 dark:text-zinc-400">
+                  {o.frequency}
+                </td>
                 {WEEKDAY_LABELS_EN_SHORT.map((_, day) => {
-                  const arr = (row[o.key] as (boolean | null)[]) ?? empty();
+                  const arr = (row[o.key] as (boolean | null)[]) ?? emptyWeek();
                   const v = arr[day];
                   return (
                     <td key={day} className="p-0.5 text-center">

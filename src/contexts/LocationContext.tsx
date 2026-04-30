@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase";
 import type { Location } from "@/lib/types";
 
 const STORAGE_KEY = "mima-current-location-id";
+const DEFAULT_TEST_LOCATION_NAME = "Mima TEST";
 
 type LocationContextValue = {
   locationId: string;
@@ -70,9 +71,12 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       if (stored && valid) {
         setLocationIdState(stored);
       } else if (list.length > 0) {
-        const first = list[0].id;
-        setLocationIdState(first);
-        if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, first);
+        // Prefer the TEST location for fresh sessions to keep production locations safe.
+        const preferred =
+          list.find((l) => l.name.toLowerCase() === DEFAULT_TEST_LOCATION_NAME.toLowerCase()) ??
+          list[0];
+        setLocationIdState(preferred.id);
+        if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, preferred.id);
       }
       setLoading(false);
     })();

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import type { IngredientPackSize, RawIngredient } from "@/lib/types";
 import { formatDecimal2 } from "@/lib/format";
 import {
@@ -14,6 +14,14 @@ import { SortableStocktakeItem } from "./SortableStocktakeItem";
 
 const rawCardClass =
   "rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800";
+
+function parseNonNegativeAmount(text: string): number {
+  const t = text.trim().replace(",", ".");
+  if (t === "" || t === ".") return 0;
+  const n = parseFloat(t);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
 
 export type StocktakeRawRowProps = {
   ing: RawIngredient;
@@ -36,6 +44,8 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
   saveRawCount,
   handleRawCountChange,
 }: StocktakeRawRowProps) {
+  const [draft, setDraft] = useState<string | null>(null);
+
   const ru = rawUnitLower(ing);
   const packListSt = packsForStocktake(packs);
   const boxForGram = getGramStockBoxPack(ing, packListSt);
@@ -88,6 +98,52 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
     value = rawCounts[ing.id] === undefined ? "" : formatDecimal2(baseStock);
   }
 
+  const displayValue = draft !== null ? draft : value;
+
+  const commitFromText = (text: string) => {
+    const n = parseNonNegativeAmount(text);
+    if (countGramsAsBoxes && boxForGram) {
+      const grams = n * boxForGram.baseAmount;
+      setRawCounts((c) => ({ ...c, [ing.id]: grams }));
+      saveRawCount(ing.id, grams);
+      return;
+    }
+    if (countWithMaster && masterBase != null) {
+      const baseQty = n * masterBase;
+      setRawCounts((c) => ({ ...c, [ing.id]: baseQty }));
+      saveRawCount(ing.id, baseQty);
+      return;
+    }
+    if (countWithDefPack && defPack) {
+      const baseQty = n * defPack.baseAmount;
+      setRawCounts((c) => ({ ...c, [ing.id]: baseQty }));
+      saveRawCount(ing.id, baseQty);
+      return;
+    }
+    if (countGramsPlain) {
+      setRawCounts((c) => ({ ...c, [ing.id]: n }));
+      saveRawCount(ing.id, n);
+      return;
+    }
+    if (countKg) {
+      setRawCounts((c) => ({ ...c, [ing.id]: n }));
+      saveRawCount(ing.id, n);
+      return;
+    }
+    if (countMlPlain) {
+      setRawCounts((c) => ({ ...c, [ing.id]: n }));
+      saveRawCount(ing.id, n);
+      return;
+    }
+    if (!defPack || defPack.baseAmount <= 0) {
+      handleRawCountChange(ing.id, text.trim());
+      return;
+    }
+    const baseQtyLoose = n * defPack.baseAmount;
+    setRawCounts((c) => ({ ...c, [ing.id]: baseQtyLoose }));
+    saveRawCount(ing.id, baseQtyLoose);
+  };
+
   const isSaving = rawCountSaving[ing.id];
   const inner = (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -97,58 +153,16 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
       </div>
       <div className="flex items-center gap-3">
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
-          step="any"
-          min="0"
+          autoComplete="off"
           placeholder="0"
-          value={value}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (countGramsAsBoxes && boxForGram) {
-              const boxes = v === "" ? 0 : parseFloat(v) || 0;
-              const grams = boxes * boxForGram.baseAmount;
-              setRawCounts((c) => ({ ...c, [ing.id]: grams }));
-              saveRawCount(ing.id, grams);
-              return;
-            }
-            if (countWithMaster && masterBase != null) {
-              const n = v === "" ? 0 : parseFloat(v) || 0;
-              const baseQty = n * masterBase;
-              setRawCounts((c) => ({ ...c, [ing.id]: baseQty }));
-              saveRawCount(ing.id, baseQty);
-              return;
-            }
-            if (countWithDefPack && defPack) {
-              const packsNum = v === "" ? 0 : parseFloat(v) || 0;
-              const baseQty = packsNum * defPack.baseAmount;
-              setRawCounts((c) => ({ ...c, [ing.id]: baseQty }));
-              saveRawCount(ing.id, baseQty);
-              return;
-            }
-            if (countGramsPlain) {
-              const grams = v === "" ? 0 : parseFloat(v) || 0;
-              setRawCounts((c) => ({ ...c, [ing.id]: grams }));
-              saveRawCount(ing.id, grams);
-              return;
-            }
-            if (countKg) {
-              const kg = v === "" ? 0 : parseFloat(v) || 0;
-              setRawCounts((c) => ({ ...c, [ing.id]: kg }));
-              saveRawCount(ing.id, kg);
-              return;
-            }
-            if (countMlPlain) {
-              const ml = v === "" ? 0 : parseFloat(v) || 0;
-              setRawCounts((c) => ({ ...c, [ing.id]: ml }));
-              saveRawCount(ing.id, ml);
-              return;
-            }
-            if (!defPack || defPack.baseAmount <= 0) return handleRawCountChange(ing.id, v);
-            const packsLoose = v === "" ? 0 : parseFloat(v) || 0;
-            const baseQtyLoose = packsLoose * defPack.baseAmount;
-            setRawCounts((c) => ({ ...c, [ing.id]: baseQtyLoose }));
-            saveRawCount(ing.id, baseQtyLoose);
+          value={displayValue}
+          onFocus={() => setDraft(value)}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            commitFromText(draft ?? value);
+            setDraft(null);
           }}
           className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
           aria-label={`Stock ${ing.name}`}

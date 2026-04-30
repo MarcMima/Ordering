@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# gegenereerd uit lokale Excel (groot; opnieuw met scripts/mima_xlsx_parse.py)
+/scripts/parsed_*.json

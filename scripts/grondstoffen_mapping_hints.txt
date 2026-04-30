@@ -1,0 +1,78 @@
+Grondstoffen Excel vs DB (hints; DB-lijst = subset migratie 034)
+============================================================
+
+[!! geen match] Excel="Za'atar"
+[OK exact] Baking soda
+[!! geen match] Excel='Brown sugar'
+[!! geen match] Excel='Chocalate chip'
+[!! geen match] Excel='Cacao powder'
+[? meerdere] Excel='Egg' -> kandidaten: eggplant puree, eggs
+[? meerdere] Excel='Flour' -> kandidaten: all purpose flour, rice flour
+[~ misschien] Excel='Greek yoghurt' -> DB zou kunnen: greek yoghurt 10%
+[OK exact] Olive oil
+[OK exact] Salt
+[OK exact] Sugar white
+[OK exact] Vanilla extract
+[OK exact] Black pepper
+[OK exact] Bulgur
+[~ misschien] Excel='Cardamom (ground)' -> DB zou kunnen: cardamom
+[~ misschien] Excel='Chicken tights' -> DB zou kunnen: chicken
+[!! geen match] Excel='Chili (ground)'
+[~ misschien] Excel='Coriander (fresh)' -> DB zou kunnen: coriander
+[~ misschien] Excel='Coriander (ground)' -> DB zou kunnen: coriander
+[OK exact] Cumin
+[~ misschien] Excel='Dried chickpeas' -> DB zou kunnen: chickpeas
+[~ misschien] Excel='Chickpeas soaked' -> DB zou kunnen: chickpeas
+[OK exact] Flatbread
+[~ misschien] Excel='Green lentils (cooked)' -> DB zou kunnen: green lentils
+[~ misschien] Excel='Grilled aubergine' -> DB zou kunnen: aubergine
+[!! geen match] Excel='Kurkuma'
+[~ misschien] Excel='Mint (fresh)' -> DB zou kunnen: mint
+[~ misschien] Excel='Mint (dried)' -> DB zou kunnen: mint
+[OK exact] Mustard powder
+[!! geen match] Excel='Paprika (smoked)'
+[OK exact] Parsley
+[OK exact] Rice flour
+[OK exact] Sumac
+[OK exact] Tahini
+[!! geen match] Excel='Baharat'
+[!! geen match] Excel='Dill (dried)'
+[!! geen match] Excel='Onion powder'
+[!! geen match] Excel='Onion white (peeled)'
+[!! geen match] Excel='Onion (red)'
+[~ misschien] Excel='Cabbage' -> DB zou kunnen: red cabbage shredded
+[!! geen match] Excel='Cauliflower'
+[OK exact] Cucumber
+[~ misschien] Excel='Eggplant' -> DB zou kunnen: eggplant puree
+[OK exact] Garlic puree
+[OK exact] Lemon juice
+[!! geen match] Excel='Paprika (sweet)'
+[OK exact] Pomegranate seeds
+[OK exact] Romaine lettuce
+[!! geen match] Excel='Spring onion'
+[OK exact] Tomato
+[!! geen match] Excel='Flaxseed ground'
+[!! geen match] Excel='Water'
+[~ misschien] Excel='Feta' -> DB zou kunnen: feta cheese
+[~ misschien] Excel='Green chilis' -> DB zou kunnen: green chili
+[!! geen match] Excel='Tomatenpuree'
+[!! geen match] Excel='Pita (white)'
+[!! geen match] Excel='Pita (white)'
+[!! geen match] Excel='Mango (frozen)'
+[!! geen match] Excel='Mediterranean pickles'
+[!! geen match] Excel='Shifka peppers'
+[? meerdere] Excel='Flour' -> kandidaten: all purpose flour, rice flour
+[? meerdere] Excel='Garlic' -> kandidaten: garlic peeled, garlic puree
+[OK exact] Baking powder
+[!! geen match] Excel='Xantana'
+[~ misschien] Excel='Sunflower' -> DB zou kunnen: sunflower oil
+[!! geen match] Excel='Lentils green'
+[!! geen match] Excel='Gekookte linzen'
+[!! geen match] Excel='Carrots'
+[~ misschien] Excel='Celery' -> DB zou kunnen: celery brunoise
+[!! geen match] Excel='Rice parboiled'
+[OK exact] Stock
+[!! geen match] Excel='Rice pandan'
+[!! geen match] Excel='Pickling liquid'
+[OK exact] Vinegar
+[!! geen match] Excel='Lentils red'

@@ -10,8 +10,16 @@ import {
   parseBaseQuantityCsvText,
 } from "@/lib/baseQuantityCsv";
 import { createClient } from "@/lib/supabase";
+import { useCan, PERMISSIONS } from "@/hooks/useCan";
 import { formatDecimal2 } from "@/lib/format";
-import type { Location, Supplier, PrepItem, RawIngredient, PrepItemIngredient } from "@/lib/types";
+import type {
+  Location,
+  Supplier,
+  PrepItem,
+  RawIngredient,
+  PrepItemIngredient,
+  AllergenType,
+} from "@/lib/types";
 
 const DAYS = [
   { value: 0, label: "Monday (1)" },
@@ -28,12 +36,16 @@ type Section = "locations" | "suppliers" | "products" | "ingredients" | "recipes
 type RawIngredientWithLocation = RawIngredient & { location_name?: string };
 
 export default function AdminPage() {
+  const { allowed: canManageSettings, loading: authzLoading } = useCan(PERMISSIONS.settingsManage);
+  const { allowed: canManageUsers } = useCan(PERMISSIONS.usersManage);
   const { locationId: contextLocationId, locationOptions } = useLocation();
   const [section, setSection] = useState<Section>("locations");
   const [locations, setLocations] = useState<Location[]>([]);
   const [suppliers, setSuppliers] = useState<(Supplier & { location_name?: string })[]>([]);
   const [prepItems, setPrepItems] = useState<PrepItem[]>([]);
   const [rawIngredients, setRawIngredients] = useState<RawIngredientWithLocation[]>([]);
+  const [allergenTypes, setAllergenTypes] = useState<AllergenType[]>([]);
+  const [rawAllergenMap, setRawAllergenMap] = useState<Map<string, string[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +87,24 @@ export default function AdminPage() {
           location_name: r.locations?.name ?? "",
         }))
       );
+
+      const atRes = await supabase
+        .from("allergen_types")
+        .select("id, code, label_nl, sort_order")
+        .order("sort_order", { ascending: true });
+      const iaRes = await supabase.from("raw_ingredient_allergens").select("raw_ingredient_id, allergen_id");
+      if (!atRes.error && atRes.data) setAllergenTypes(atRes.data as AllergenType[]);
+      else setAllergenTypes([]);
+      if (!iaRes.error && iaRes.data) {
+        const m = new Map<string, string[]>();
+        for (const row of iaRes.data as { raw_ingredient_id: string; allergen_id: string }[]) {
+          if (!m.has(row.raw_ingredient_id)) m.set(row.raw_ingredient_id, []);
+          m.get(row.raw_ingredient_id)!.push(row.allergen_id);
+        }
+        setRawAllergenMap(m);
+      } else {
+        setRawAllergenMap(new Map());
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -83,6 +113,30 @@ export default function AdminPage() {
   }
 
   const contextLocationName = locationOptions.find((l) => l.id === contextLocationId)?.name ?? "";
+
+  if (authzLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+        <TopNav />
+        <main className="mx-auto max-w-4xl px-4 py-8">
+          <p className="text-sm text-zinc-500">Checking permissions…</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!canManageSettings) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+        <TopNav />
+        <main className="mx-auto max-w-4xl px-4 py-8">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+            Je hebt geen toegang tot de admin-pagina.
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
@@ -156,6 +210,20 @@ export default function AdminPage() {
               Form visibility
             </Link>
             <Link
+              href="/admin/prices"
+              className="block text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+            >
+              Ingredient prices
+            </Link>
+            {canManageUsers && (
+              <Link
+                href="/admin/users"
+                className="block text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+              >
+                Users & roles
+              </Link>
+            )}
+            <Link
               href="/dashboard"
               className="block text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
             >
@@ -194,6 +262,8 @@ export default function AdminPage() {
           ) : section === "ingredients" ? (
             <IngredientsSection
               rawIngredients={rawIngredients.filter((r) => r.location_id === contextLocationId)}
+              allergenTypes={allergenTypes}
+              rawAllergenMap={rawAllergenMap}
               locations={locations}
               currentLocationId={contextLocationId}
               currentLocationName={contextLocationName}
@@ -854,6 +924,8 @@ function LocationsSection({
 
 function IngredientsSection({
   rawIngredients,
+  allergenTypes,
+  rawAllergenMap,
   locations,
   currentLocationId,
   currentLocationName,
@@ -862,6 +934,8 @@ function IngredientsSection({
   setLoading,
 }: {
   rawIngredients: RawIngredientWithLocation[];
+  allergenTypes: AllergenType[];
+  rawAllergenMap: Map<string, string[]>;
   locations: Location[];
   currentLocationId: string;
   currentLocationName: string;
@@ -886,6 +960,13 @@ function IngredientsSection({
     stocktake_visible: true,
     stocktake_day_of_week: "" as string,
   });
+  const [editingAllergenIds, setEditingAllergenIds] = useState<Set<string>>(new Set());
+
+  const allergenById = useMemo(() => {
+    const m = new Map<string, AllergenType>();
+    for (const a of allergenTypes) m.set(a.id, a);
+    return m;
+  }, [allergenTypes]);
 
   useEffect(() => {
     if (currentLocationId) setForm((f) => ({ ...f, location_id: currentLocationId }));
@@ -949,11 +1030,38 @@ function IngredientsSection({
         stocktake_day_of_week: dowEdit,
       })
       .eq("id", editing.id);
-    if (error) alert(error.message);
-    else {
-      setEditing(null);
-      onReload();
+    if (error) {
+      alert(error.message);
+      setLoading(false);
+      return;
     }
+
+    if (allergenTypes.length > 0) {
+      const { error: delErr } = await supabase
+        .from("raw_ingredient_allergens")
+        .delete()
+        .eq("raw_ingredient_id", editing.id);
+      if (delErr) {
+        alert(delErr.message);
+        setLoading(false);
+        return;
+      }
+      const ids = [...editingAllergenIds];
+      if (ids.length > 0) {
+        const { error: insErr } = await supabase.from("raw_ingredient_allergens").insert(
+          ids.map((allergen_id) => ({ raw_ingredient_id: editing.id, allergen_id })),
+        );
+        if (insErr) {
+          alert(insErr.message);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
+    setEditing(null);
+    setEditingAllergenIds(new Set());
+    onReload();
     setLoading(false);
   }
 
@@ -989,8 +1097,14 @@ function IngredientsSection({
         <p className="mb-4 text-sm text-amber-700 dark:text-amber-400">Select a location on the Dashboard first.</p>
       )}
       <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
-        Raw ingredients for this location. Used on the Ordering and Stocktake screens. The <strong>Unit</strong> is the unit you count/track (e.g. <code>g</code>, <code>ml</code>, <code>pcs</code>). <strong>Order planning (days)</strong>: leave empty for &quot;today only&quot;; use <code>7</code> for weekly items (e.g. spices) so suggested order quantities scale up. <strong>Show on stocktake</strong> and <strong>stocktake weekday</strong> match master columns I and J (see <code>docs/MASTER_SHEET_MAPPING.md</code>).
+        Raw ingredients for this location. Used on the Ordering and Stocktake screens. The <strong>Unit</strong> is the unit you count/track (e.g. <code>g</code>, <code>ml</code>, <code>pcs</code>). <strong>Order planning (days)</strong>: leave empty for &quot;today only&quot;; use <code>7</code> for weekly items (e.g. spices) so suggested order quantities scale up. <strong>Show on stocktake</strong> and <strong>stocktake weekday</strong> match master columns I and J (see <code>docs/MASTER_SHEET_MAPPING.md</code>).{" "}
+        <strong>Allergenen</strong> (EU) stel je per grondstof in; gerechten in Kitchen → Menu tonen de unie via recepten en directe componenten.
       </p>
+      {allergenTypes.length === 0 && (
+        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          Allergenen niet geladen — draai migratie <code className="text-xs">075_allergen_types_and_raw_ingredient_allergens.sql</code> (Supabase db push).
+        </p>
+      )}
       {adding ? (
         <div className="mb-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="mb-3 text-sm font-medium">New ingredient (for {currentLocationName || "current location"})</h2>
@@ -1077,13 +1191,14 @@ function IngredientsSection({
               <th className="px-4 py-2 text-left font-medium text-zinc-700 dark:text-zinc-300">Order days</th>
               <th className="px-4 py-2 text-left font-medium text-zinc-700 dark:text-zinc-300">Stocktake</th>
               <th className="px-4 py-2 text-left font-medium text-zinc-700 dark:text-zinc-300">ST day</th>
+              <th className="px-4 py-2 text-left font-medium text-zinc-700 dark:text-zinc-300">Allergenen</th>
               <th className="px-4 py-2 text-right font-medium text-zinc-700 dark:text-zinc-300">Actions</th>
             </tr>
           </thead>
           <tbody>
             {rawIngredients.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-zinc-500">
+                <td colSpan={7} className="px-4 py-6 text-center text-zinc-500">
                   No ingredients yet. Add one above.
                 </td>
               </tr>
@@ -1091,7 +1206,7 @@ function IngredientsSection({
               rawIngredients.map((ing) =>
                 editing?.id === ing.id ? (
                   <tr key={ing.id} className="border-t border-zinc-200 dark:border-zinc-700">
-                    <td colSpan={6} className="px-4 py-3">
+                    <td colSpan={7} className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <input
                           value={editForm.name}
@@ -1132,8 +1247,43 @@ function IngredientsSection({
                           ))}
                         </select>
                         <button onClick={() => handleSaveEdit()} disabled={loading} className="rounded bg-zinc-900 px-2 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-900">Save</button>
-                        <button onClick={() => setEditing(null)} className="rounded border px-2 py-1 text-xs dark:border-zinc-600">Cancel</button>
+                        <button
+                          onClick={() => {
+                            setEditing(null);
+                            setEditingAllergenIds(new Set());
+                          }}
+                          className="rounded border px-2 py-1 text-xs dark:border-zinc-600"
+                        >
+                          Cancel
+                        </button>
                       </div>
+                      {allergenTypes.length > 0 && (
+                        <div className="mt-3 max-h-48 overflow-y-auto border-t border-zinc-200 pt-3 dark:border-zinc-600">
+                          <div className="mb-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                            Allergenen (EU, per grondstof)
+                          </div>
+                          <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                            {allergenTypes.map((a) => (
+                              <label key={a.id} className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-700 dark:text-zinc-300">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-zinc-300"
+                                  checked={editingAllergenIds.has(a.id)}
+                                  onChange={(e) => {
+                                    setEditingAllergenIds((prev) => {
+                                      const n = new Set(prev);
+                                      if (e.target.checked) n.add(a.id);
+                                      else n.delete(a.id);
+                                      return n;
+                                    });
+                                  }}
+                                />
+                                {a.label_nl}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -1153,10 +1303,17 @@ function IngredientsSection({
                         ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][ing.stocktake_day_of_week]
                         : "—"}
                     </td>
+                    <td className="max-w-[12rem] px-4 py-2 text-xs text-zinc-600 dark:text-zinc-400">
+                      {(rawAllergenMap.get(ing.id) ?? [])
+                        .map((aid) => allergenById.get(aid)?.code)
+                        .filter(Boolean)
+                        .join(", ") || "—"}
+                    </td>
                     <td className="px-4 py-2 text-right">
                       <button
                         onClick={() => {
                           setEditing(ing);
+                          setEditingAllergenIds(new Set(rawAllergenMap.get(ing.id) ?? []));
                           setEditForm({
                             name: ing.name,
                             unit: ing.unit,

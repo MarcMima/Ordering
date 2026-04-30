@@ -4,6 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
+type AuthzRow = {
+  permission_keys: string[] | null;
+  is_admin: boolean | null;
+};
+
 function normalizePath(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) {
     return pathname.slice(0, -1) || "/";
@@ -63,6 +68,29 @@ export async function updateSession(request: NextRequest) {
       url.pathname = safeNext;
       url.search = "";
       return NextResponse.redirect(url);
+    }
+
+    if (user && !isLogin) {
+      const { data: authz } = await supabase.rpc("current_user_authz").single<AuthzRow>();
+      const permissions = authz?.permission_keys ?? [];
+      const isAdmin = Boolean(authz?.is_admin);
+
+      const needsUsersManage = pathname.startsWith("/admin/users");
+      const needsSettingsManage = pathname.startsWith("/admin");
+      const needsHaccpManage = pathname.startsWith("/dashboard/haccp/leveranciers");
+
+      const has = (key: string) => isAdmin || permissions.includes(key);
+      const allowed =
+        (!needsUsersManage || has("users.manage")) &&
+        (!needsSettingsManage || has("settings.manage")) &&
+        (!needsHaccpManage || has("haccp.manage"));
+
+      if (!allowed) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/dashboard";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
     }
 
     return supabaseResponse;

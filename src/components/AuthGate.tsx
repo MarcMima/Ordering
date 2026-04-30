@@ -15,6 +15,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (pathname === "/login") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAllowed(true);
       return;
     }
@@ -29,7 +30,33 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         router.replace(`/login?next=${encodeURIComponent(next || "/dashboard")}`);
         return;
       }
-      setAllowed(true);
+      const needsUsersManage = pathname.startsWith("/admin/users");
+      const needsSettingsManage = pathname.startsWith("/admin");
+      const needsHaccpManage = pathname.startsWith("/dashboard/haccp/leveranciers");
+
+      if (!needsUsersManage && !needsSettingsManage && !needsHaccpManage) {
+        setAllowed(true);
+        return;
+      }
+
+      void supabase
+        .rpc("current_user_authz")
+        .single<{ permission_keys: string[] | null; is_admin: boolean | null }>()
+        .then(({ data: authz }) => {
+          if (cancelled) return;
+          const permissions = authz?.permission_keys ?? [];
+          const isAdmin = Boolean(authz?.is_admin);
+          const has = (key: string) => isAdmin || permissions.includes(key);
+          const ok =
+            (!needsUsersManage || has("users.manage")) &&
+            (!needsSettingsManage || has("settings.manage")) &&
+            (!needsHaccpManage || has("haccp.manage"));
+          if (!ok) {
+            router.replace("/dashboard");
+            return;
+          }
+          setAllowed(true);
+        });
     });
 
     return () => {

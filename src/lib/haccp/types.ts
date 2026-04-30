@@ -144,7 +144,7 @@ export type HaccpBereidenRow = {
   updated_at?: string;
 };
 
-/** Row in `haccp_leveranciers` — supplier register + optional audit document in Storage. */
+/** Row in `haccp_leveranciers` — supplier register + audit documents in Storage. */
 export type HaccpLeverancierRow = {
   id: string;
   store_id: number;
@@ -152,7 +152,10 @@ export type HaccpLeverancierRow = {
   adres?: string | null;
   telefoon?: string | null;
   email?: string | null;
+  /** @deprecated Prefer `audit_document_paths`; kept for older rows. */
   audit_document_path?: string | null;
+  /** Paths in `haccp-supplier-docs` (e.g. questionnaire + certificate). */
+  audit_document_paths?: string[] | null;
   created_at?: string;
   updated_at?: string;
 };

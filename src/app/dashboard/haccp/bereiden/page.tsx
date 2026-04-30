@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BereidenServerenForm } from "@/components/haccp/BereidenServerenForm";
 import { HaccpFormGate } from "@/components/HaccpFormGate";
@@ -23,7 +23,7 @@ function Inner() {
   const [row, setRow] = useState<HaccpBereidenRow | null | undefined>(undefined);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refetchWeek = useCallback(() => {
     const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
     void (async () => {
@@ -35,9 +35,14 @@ function Inner() {
         .eq("year", year)
         .maybeSingle();
       if (error) setErr(error.message);
+      else setErr(null);
       setRow((data as HaccpBereidenRow | null) ?? null);
     })();
   }, [week, year, locations, locationId]);
+
+  useEffect(() => {
+    refetchWeek();
+  }, [refetchWeek]);
 
   return (
     <HaccpFormGate formKey={APP_FORM_KEYS.haccp_prepare}>
@@ -58,7 +63,13 @@ function Inner() {
           {row === undefined ? (
             <p className="text-zinc-500">Loading…</p>
           ) : (
-            <BereidenServerenForm key={`${week}-${year}`} weekNumber={week} year={year} initial={row} />
+            <BereidenServerenForm
+              key={`${week}-${year}`}
+              weekNumber={week}
+              year={year}
+              initial={row}
+              onSaved={refetchWeek}
+            />
           )}
         </main>
       </div>

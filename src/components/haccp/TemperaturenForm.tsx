@@ -8,8 +8,13 @@ import {
   type HaccpStoreEquipmentRow,
   type HaccpTemperaturenRow,
   type HaccpWeeklyReading,
-  isTemperatureWithinNorm,
 } from "@/lib/haccp/types";
+import {
+  gteMinStatus,
+  lteMaxStatus,
+  temperatureInputClass,
+  type TempFieldStatus,
+} from "@/lib/haccp/temperatureFieldStyle";
 import { WEEKDAY_LABELS_EN } from "@/lib/haccp/week";
 
 function parseReadings(raw: unknown): HaccpWeeklyReading[] {
@@ -51,14 +56,25 @@ function mergeReadings(
   });
 }
 
+function normStatus(
+  kind: "lte" | "gte",
+  norm: number,
+  temp: number | null | undefined
+): TempFieldStatus {
+  return kind === "lte" ? lteMaxStatus(temp, norm) : gteMinStatus(temp, norm);
+}
+
 export function TemperaturenForm({
   weekNumber,
   year,
   initial,
+  onSaved,
 }: {
   weekNumber: number;
   year: number;
   initial: HaccpTemperaturenRow | null;
+  /** Na geslaagde save: parent kan opnieuw fetchen zodat data zichtbaar blijft na week-wissel. */
+  onSaved?: () => void;
 }) {
   const { locations, locationId } = useLocation();
   const storeId = getHaccpStoreId(locations, locationId);
@@ -102,7 +118,7 @@ export function TemperaturenForm({
     for (const r of readings) {
       const eq = equipment.find((e) => e.id === r.equipment_id);
       if (!eq || r.temperature == null || !Number.isFinite(r.temperature)) continue;
-      if (!isTemperatureWithinNorm(eq.norm_kind, eq.norm_value, r.temperature)) n++;
+      if (normStatus(eq.norm_kind, eq.norm_value, r.temperature) === "bad") n++;
     }
     return n;
   }, [readings, equipment]);
@@ -153,14 +169,20 @@ export function TemperaturenForm({
       const { error } = await supabase.from("haccp_temperaturen").update(payload).eq("id", existing.id);
       setSaving(false);
       if (error) setMessage(error.message);
-      else setMessage("Saved.");
+      else {
+        setMessage("Saved.");
+        onSaved?.();
+      }
       return;
     }
 
     const { error } = await supabase.from("haccp_temperaturen").insert(payload);
     setSaving(false);
     if (error) setMessage(error.message);
-    else setMessage("Saved.");
+    else {
+      setMessage("Saved.");
+      onSaved?.();
+    }
   }
 
   return (
@@ -180,8 +202,8 @@ export function TemperaturenForm({
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Weekly temperature check</h2>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Record once per week. Pick the day of the check, then fill one row per appliance. Green = within limit;
-          red = outside limit.
+          Record once per week. Pick the day of the check, then fill one row per appliance. Koeling: groen onder de
+          norm, amber op de grens (±0,1 °C), rood te warm. Warmte: groen vanaf minimum, amber net te laag, rood te koud.
         </p>
         <label className="block max-w-xs text-sm">
           <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Day of check</span>
@@ -221,9 +243,12 @@ export function TemperaturenForm({
                 if (!row) return null;
                 const t = row.temperature;
                 const hasTemp = t != null && Number.isFinite(t);
-                const ok =
-                  hasTemp && isTemperatureWithinNorm(eq.norm_kind, eq.norm_value, t as number);
-                const bad = hasTemp && !ok;
+                const st = hasTemp ? normStatus(eq.norm_kind, eq.norm_value, t as number) : "empty";
+                const bad = st === "bad";
+                const exactSt =
+                  eq.show_exact_temp && row.exact_temperature != null && Number.isFinite(row.exact_temperature)
+                    ? normStatus(eq.norm_kind, eq.norm_value, row.exact_temperature as number)
+                    : "empty";
                 return (
                   <tr key={eq.id} className="border-b border-zinc-100 dark:border-zinc-700/80">
                     <td className="whitespace-nowrap px-2 py-2 font-medium text-zinc-800 dark:text-zinc-100">
@@ -236,15 +261,7 @@ export function TemperaturenForm({
                       <input
                         type="text"
                         inputMode="decimal"
-                        className={`input w-full min-w-[4rem] tabular-nums ${
-                          !hasTemp
-                            ? ""
-                            : ok
-                              ? "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-100"
-                              : bad
-                                ? "border-red-500 bg-red-50 text-red-900 dark:border-red-500 dark:bg-red-950/50 dark:text-red-100"
-                                : ""
-                        }`}
+                        className={temperatureInputClass(st, "min-w-[4rem]")}
                         value={row.temperature == null ? "" : String(row.temperature)}
                         onChange={(e) =>
                           patchReading(eq.id, { temperature: parseNum(e.target.value) })
@@ -257,7 +274,7 @@ export function TemperaturenForm({
                         <input
                           type="text"
                           inputMode="decimal"
-                          className="input w-full min-w-[4rem] tabular-nums"
+                          className={temperatureInputClass(exactSt, "min-w-[4rem]")}
                           value={row.exact_temperature == null ? "" : String(row.exact_temperature)}
                           onChange={(e) =>
                             patchReading(eq.id, { exact_temperature: parseNum(e.target.value) })
@@ -270,7 +287,13 @@ export function TemperaturenForm({
                     <td className="p-1 text-center">
                       {eq.show_fifo ? (
                         <select
-                          className="input inline-block w-[4.5rem] py-1 text-xs"
+                          className={`input inline-block w-[4.5rem] py-1 text-xs ${
+                            row.fifo_ok === true
+                              ? "border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30"
+                              : row.fifo_ok === false
+                                ? "border-red-500 bg-red-50 dark:border-red-500 dark:bg-red-950/50"
+                                : ""
+                          }`}
                           value={
                             row.fifo_ok === true ? "yes" : row.fifo_ok === false ? "no" : ""
                           }
@@ -291,7 +314,13 @@ export function TemperaturenForm({
                     </td>
                     <td className="p-1 text-center">
                       <select
-                        className="input inline-block w-[4.5rem] py-1 text-xs"
+                        className={`input inline-block w-[4.5rem] py-1 text-xs ${
+                          row.clean_ok === true
+                            ? "border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30"
+                            : row.clean_ok === false
+                              ? "border-red-500 bg-red-50 dark:border-red-500 dark:bg-red-950/50"
+                              : ""
+                        }`}
                         value={row.clean_ok === true ? "yes" : row.clean_ok === false ? "no" : ""}
                         onChange={(e) => {
                           const v = e.target.value;
