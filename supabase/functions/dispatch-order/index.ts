@@ -98,10 +98,77 @@ type DispatchResult = {
   message_body?: string;
 };
 
+type SupplierIngredientDetails = {
+  raw_ingredient_id: string;
+  supplier_sku: string | null;
+};
+
 function pickSupplierChannel(value: ChannelConfig | ChannelConfig[] | null | undefined): ChannelConfig | null {
   if (!value) return null;
   if (Array.isArray(value)) return value[0] ?? null;
   return value;
+}
+
+function inferChannelFromSupplierName(name: string | undefined): ChannelConfig | null {
+  const n = (name ?? "").toLowerCase().trim();
+  if (n === "van gelder") {
+    return {
+      channel: "van_gelder_api",
+      api_base_url: null,
+      api_customer_code: null,
+      email_to: null,
+      email_cc: null,
+      email_subject_template: null,
+      whatsapp_phone: null,
+      whatsapp_use_api: false,
+      auto_send: false,
+    };
+  }
+  if (n === "bidfood") {
+    return {
+      channel: "bidfood_api",
+      api_base_url: null,
+      api_customer_code: null,
+      email_to: null,
+      email_cc: null,
+      email_subject_template: null,
+      whatsapp_phone: null,
+      whatsapp_use_api: false,
+      auto_send: false,
+    };
+  }
+  return null;
+}
+
+function parseSkuToSupplierFields(sku: string | null): OrderLine["supplier_ingredient"] {
+  if (!sku) return null;
+  const compact = sku.trim().replace(/\s+/g, "");
+  const digitsOnly = compact.replace(/\D/g, "");
+
+  const fromSku: NonNullable<OrderLine["supplier_ingredient"]> = {
+    ean_code: null,
+    supplier_article_code: null,
+    supplier_article_name: null,
+    order_unit: null,
+    order_unit_size: null,
+  };
+
+  if (/^\d{6}[A-Za-z]{2}$/.test(compact)) {
+    fromSku.supplier_article_code = compact.slice(0, 6);
+    fromSku.order_unit = compact.slice(6).toUpperCase();
+    return fromSku;
+  }
+  if (/^\d{6}$/.test(digitsOnly)) {
+    fromSku.supplier_article_code = digitsOnly;
+    return fromSku;
+  }
+  if (/^\d{13,14}$/.test(digitsOnly)) {
+    fromSku.ean_code = digitsOnly;
+    return fromSku;
+  }
+  // Keep raw value as article code fallback for custom formats.
+  fromSku.supplier_article_code = compact;
+  return fromSku;
 }
 
 // ─── Van Gelder (Order-JSON v2.1) ─────────────────────────────────────────────
@@ -193,7 +260,7 @@ async function dispatchVanGelder(
   const missingEan = order.order_line_items.filter(
     (l) => !l.supplier_ingredient?.ean_code
   );
-  if (missingEan.length > 0) {
+  if (missingEan.length > 0 && !dryRun) {
     return {
       success: false,
       channel: "van_gelder_api",
@@ -221,18 +288,26 @@ async function dispatchVanGelder(
       Landcode: deliveryCountry,
       Telefoonnummer: deliveryPhone,
     },
-    Regels: order.order_line_items.map((line, idx) => ({
+    Regels: order.order_line_items
+      .filter((line) => Boolean(line.supplier_ingredient?.ean_code))
+      .map((line, idx) => ({
       Regelnummer: String(idx + 1),
       EANCode: line.supplier_ingredient!.ean_code!,
       Aantal: Math.ceil(line.quantity),
-    })),
+      })),
   };
 
   if (dryRun) {
+    const warning =
+      missingEan.length > 0
+        ? `Waarschuwing: EAN-code ontbreekt voor ${missingEan.length} regel(s): ${missingEan
+            .map((l) => l.raw_ingredient.name)
+            .join(", ")}`
+        : undefined;
     return {
       success: true,
       channel: "van_gelder_api",
-      message: "Dry run — niet verstuurd",
+      message: warning ? `Dry run — niet verstuurd. ${warning}` : "Dry run — niet verstuurd",
       message_body: JSON.stringify(orderPayload, null, 2),
     };
   }
@@ -304,7 +379,7 @@ async function dispatchBidfood(
       !l.supplier_ingredient?.supplier_article_code &&
       !l.supplier_ingredient?.ean_code
   );
-  if (missingCode.length > 0) {
+  if (missingCode.length > 0 && !dryRun) {
     return {
       success: false,
       channel: "bidfood_api",
@@ -313,7 +388,13 @@ async function dispatchBidfood(
   }
 
   // Bouw Bidfood order payload (A0022 OrderCreate schema)
-  const products = order.order_line_items.map((line, idx) => {
+  const products = order.order_line_items
+    .filter(
+      (line) =>
+        Boolean(line.supplier_ingredient?.supplier_article_code) ||
+        Boolean(line.supplier_ingredient?.ean_code)
+    )
+    .map((line, idx) => {
     const si = line.supplier_ingredient!;
     const qty = Math.ceil(line.quantity);
 
@@ -338,7 +419,7 @@ async function dispatchBidfood(
       orderLineReference: String(idx + 1),
       quantityOrdered: qty,
     };
-  });
+    });
 
   const orderPayload = {
     orderReference: `MIMA-${order.id.slice(0, 8).toUpperCase()}`,
@@ -347,10 +428,16 @@ async function dispatchBidfood(
   };
 
   if (dryRun) {
+    const warning =
+      missingCode.length > 0
+        ? `Waarschuwing: artikelcode ontbreekt voor ${missingCode.length} regel(s): ${missingCode
+            .map((l) => l.raw_ingredient.name)
+            .join(", ")}`
+        : undefined;
     return {
       success: true,
       channel: "bidfood_api",
-      message: "Dry run — niet verstuurd",
+      message: warning ? `Dry run — niet verstuurd. ${warning}` : "Dry run — niet verstuurd",
       message_body: JSON.stringify(orderPayload, null, 2),
     };
   }
@@ -634,14 +721,7 @@ Deno.serve(async (req: Request) => {
       ),
       order_line_items (
         *,
-        raw_ingredient:raw_ingredients (name),
-        supplier_ingredient:supplier_ingredients (
-          ean_code,
-          supplier_article_code,
-          supplier_article_name,
-          order_unit,
-          order_unit_size
-        )
+        raw_ingredient:raw_ingredients (name)
       )
     `)
       .eq("id", order_id)
@@ -655,17 +735,49 @@ Deno.serve(async (req: Request) => {
     }
 
     const typedOrder = order as Order & { supplier_id: string };
-    const channel = pickSupplierChannel(typedOrder.supplier?.supplier_order_channels);
+    const channel =
+      pickSupplierChannel(typedOrder.supplier?.supplier_order_channels) ??
+      inferChannelFromSupplierName(typedOrder.supplier?.name);
 
     if (!channel) {
       return new Response(
         JSON.stringify({
           error: "Geen bestelkanaal geconfigureerd voor deze leverancier.",
-          detail: "supplier_order_channels row ontbreekt of kon niet worden gelezen.",
+          detail:
+            "supplier_order_channels row ontbreekt of kon niet worden gelezen, en supplier name geeft geen bekende fallback.",
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const lineItems = typedOrder.order_line_items ?? [];
+    const rawIds = [...new Set(lineItems.map((l) => l.raw_ingredient_id).filter(Boolean))];
+    let supplierIngredientByRawId: Record<string, SupplierIngredientDetails> = {};
+    if (rawIds.length > 0) {
+      const { data: siRows, error: siError } = await supabase
+        .from("supplier_ingredients")
+        .select("raw_ingredient_id, supplier_sku")
+        .eq("supplier_id", typedOrder.supplier_id)
+        .in("raw_ingredient_id", rawIds);
+      if (siError) {
+        return new Response(
+          JSON.stringify({
+            error: "Kon supplier_ingredients niet laden voor orderregels.",
+            detail: siError.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      supplierIngredientByRawId = Object.fromEntries(
+        ((siRows as SupplierIngredientDetails[]) ?? []).map((r) => [r.raw_ingredient_id, r])
+      );
+    }
+    typedOrder.order_line_items = lineItems.map((line) => ({
+      ...line,
+      supplier_ingredient: parseSkuToSupplierFields(
+        supplierIngredientByRawId[line.raw_ingredient_id]?.supplier_sku ?? null
+      ),
+    }));
 
     // Maak dispatch log entry
     const { data: dispatch, error: dispatchInsertError } = await supabase
