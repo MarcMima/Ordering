@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   closestCenter,
@@ -91,12 +92,14 @@ function PrepCountField({
   prepItemId,
   quantity,
   onCommit,
+  onClear,
   isSaving,
   label,
 }: {
   prepItemId: string;
   quantity: number | undefined;
   onCommit: (prepItemId: string, n: number) => void;
+  onClear: (prepItemId: string) => void;
   isSaving: boolean;
   label: string;
 }) {
@@ -114,14 +117,18 @@ function PrepCountField({
         type="text"
         inputMode="decimal"
         autoComplete="off"
-        placeholder="0"
+        placeholder="—"
         value={display}
         onFocus={() => setDraft(quantity === undefined ? "" : formatDecimal2(quantity))}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          const raw = (draft ?? (quantity === undefined ? "" : formatDecimal2(quantity))).trim().replace(",", ".");
+        onBlur={(e) => {
+          const raw = e.currentTarget.value.trim().replace(",", ".");
           setDraft(null);
-          const n = raw === "" || raw === "." ? 0 : parseFloat(raw);
+          if (raw === "" || raw === ".") {
+            onClear(prepItemId);
+            return;
+          }
+          const n = parseFloat(raw);
           onCommit(prepItemId, !Number.isFinite(n) || n < 0 ? 0 : n);
         }}
         className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
@@ -133,6 +140,7 @@ function PrepCountField({
 }
 
 export default function StocktakePage() {
+  const router = useRouter();
   const { locationId } = useLocation();
   const [date] = useState(() => localCalendarDateString());
   const [expectedRevenue, setExpectedRevenue] = useState("");
@@ -157,6 +165,17 @@ export default function StocktakePage() {
   const [stocktakeDeliveryMeta, setStocktakeDeliveryMeta] = useState<StocktakeDeliveryMeta | null>(
     null
   );
+  const [showOnlyMissing, setShowOnlyMissing] = useState(false);
+
+  const STOCKTAKE_LEAVE_INCOMPLETE_MSG =
+    "Stocktake is nog niet compleet (finished products en/of raw ingredients). Toch doorgaan naar de volgende stap?";
+
+  useEffect(() => {
+    if (showOnlyMissing) {
+      setPrepReorderMode(false);
+      setRawReorderMode(false);
+    }
+  }, [showOnlyMissing]);
 
   // Load prep items + prep counts + raw ingredients + raw stock counts
   useEffect(() => {
@@ -385,6 +404,33 @@ export default function StocktakePage() {
     [locationId, date]
   );
 
+  const clearPrepCount = useCallback(
+    (prepItemId: string) => {
+      if (!locationId || !date) return;
+      setCounts((c) => {
+        const next = { ...c };
+        delete next[prepItemId];
+        return next;
+      });
+      setCountSaving((s) => ({ ...s, [prepItemId]: true }));
+      const supabase = createClient();
+      void supabase
+        .from("daily_prep_counts")
+        .delete()
+        .eq("location_id", locationId)
+        .eq("date", date)
+        .eq("prep_item_id", prepItemId)
+        .then(
+          ({ error }) => {
+            if (error) setError(error.message);
+            setCountSaving((s) => ({ ...s, [prepItemId]: false }));
+          },
+          () => setCountSaving((s) => ({ ...s, [prepItemId]: false }))
+        );
+    },
+    [locationId, date]
+  );
+
   const commitPrepCount = useCallback(
     (prepItemId: string, n: number) => {
       setCounts((c) => ({ ...c, [prepItemId]: n }));
@@ -420,15 +466,46 @@ export default function StocktakePage() {
     [locationId, date]
   );
 
+  const clearRawCount = useCallback(
+    (rawIngredientId: string) => {
+      if (!locationId || !date) return;
+      setRawCounts((c) => {
+        const next = { ...c };
+        delete next[rawIngredientId];
+        return next;
+      });
+      setRawCountSaving((s) => ({ ...s, [rawIngredientId]: true }));
+      const supabase = createClient();
+      void supabase
+        .from("daily_stock_counts")
+        .delete()
+        .eq("location_id", locationId)
+        .eq("date", date)
+        .eq("raw_ingredient_id", rawIngredientId)
+        .then(
+          ({ error }) => {
+            if (error) setError(error.message);
+            setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }));
+          },
+          () => setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }))
+        );
+    },
+    [locationId, date]
+  );
+
   const handleRawCountChange = useCallback(
     (rawIngredientId: string, value: string) => {
       const raw = value.trim().replace(",", ".");
-      const num = raw === "" || raw === "." ? 0 : parseFloat(raw);
+      if (raw === "" || raw === ".") {
+        clearRawCount(rawIngredientId);
+        return;
+      }
+      const num = parseFloat(raw);
       const final = !Number.isFinite(num) || num < 0 ? 0 : num;
       setRawCounts((c) => ({ ...c, [rawIngredientId]: final }));
       saveRawCount(rawIngredientId, final);
     },
-    [saveRawCount]
+    [saveRawCount, clearRawCount]
   );
 
   const sensors = useSensors(
@@ -639,6 +716,49 @@ export default function StocktakePage() {
   const countedRaw = rawIngredientsForTab.filter((r) => rawCounts[r.id] !== undefined).length;
   const progressRawPercent = totalRaw ? Math.round((countedRaw / totalRaw) * 100) : 0;
 
+  const displayedItemsByCategory = useMemo(() => {
+    if (!showOnlyMissing) return itemsByCategory;
+    const out: Record<string, LocationPrepItem[]> = {};
+    for (const [cat, rows] of Object.entries(itemsByCategory)) {
+      const f = rows.filter((row) => counts[row.prep_item_id] === undefined);
+      if (f.length) out[cat] = f;
+    }
+    return out;
+  }, [itemsByCategory, showOnlyMissing, counts]);
+
+  const categoryOrderDisplayed = useMemo(
+    () =>
+      Object.keys(displayedItemsByCategory).sort((a, b) => {
+        if (a === "All finished products" && b !== "All finished products") return -1;
+        if (b === "All finished products" && a !== "All finished products") return 1;
+        return a.localeCompare(b);
+      }),
+    [displayedItemsByCategory]
+  );
+
+  const rawTabList = useMemo(() => {
+    if (!showOnlyMissing) return rawIngredientsForTab;
+    return rawIngredientsForTab.filter((r) => rawCounts[r.id] === undefined);
+  }, [rawIngredientsForTab, showOnlyMissing, rawCounts]);
+
+  const missingPrepCount = useMemo(
+    () => locationPrepItems.filter((row) => counts[row.prep_item_id] === undefined).length,
+    [locationPrepItems, counts]
+  );
+  const missingRawCountForTab = useMemo(
+    () => rawIngredientsForTab.filter((r) => rawCounts[r.id] === undefined).length,
+    [rawIngredientsForTab, rawCounts]
+  );
+
+  const stocktakeFullyComplete = useMemo(() => {
+    if (!locationId || loading) return true;
+    const prepOk =
+      totalItems === 0 || locationPrepItems.every((row) => counts[row.prep_item_id] !== undefined);
+    const rawOk =
+      allVisibleRaws.length === 0 || allVisibleRaws.every((r) => rawCounts[r.id] !== undefined);
+    return prepOk && rawOk;
+  }, [locationId, loading, totalItems, locationPrepItems, counts, allVisibleRaws, rawCounts]);
+
   return (
     <div className="min-h-screen bg-zinc-50 pb-24 dark:bg-zinc-900">
       <TopNav />
@@ -655,7 +775,10 @@ export default function StocktakePage() {
           </Link>
         </div>
 
-        <DailyWorkflowStepper />
+        <DailyWorkflowStepper
+          warnStocktakeIncompleteNext={!loading && !!locationId && !stocktakeFullyComplete}
+          stocktakeIncompleteMessage={STOCKTAKE_LEAVE_INCOMPLETE_MSG}
+        />
 
         {error && (
           <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
@@ -693,6 +816,29 @@ export default function StocktakePage() {
           )}
         </section>
 
+        {!loading && locationId && (totalItems > 0 || allVisibleRaws.length > 0) && (
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowOnlyMissing((v) => !v)}
+              className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${
+                showOnlyMissing
+                  ? "bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100"
+                  : "border border-zinc-300 bg-white text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+              }`}
+              aria-pressed={showOnlyMissing}
+            >
+              {showOnlyMissing ? "Toon alles" : "Alleen nog niet ingevuld"}
+            </button>
+            {showOnlyMissing && (
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Finished: {missingPrepCount} open · {rawSubtab === "daily" ? "Daily" : "Weekly"} raw:{" "}
+                {missingRawCountForTab} open
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Group 1: Finished / ready products */}
         {totalItems > 0 && (
           <section className="mb-6">
@@ -717,12 +863,14 @@ export default function StocktakePage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
+                    disabled={showOnlyMissing}
+                    title={showOnlyMissing ? "Zet filter op “Toon alles” om te herschikken" : undefined}
                     onClick={() => setPrepReorderMode((v) => !v)}
                     className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${
                       prepReorderMode
                         ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                         : "border border-zinc-300 bg-white text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-pressed={prepReorderMode}
                   >
                     {prepReorderMode ? "Done reordering" : "Reorder list (drag)"}
@@ -788,6 +936,7 @@ export default function StocktakePage() {
                           prepItemId={item.id}
                           quantity={counts[item.id]}
                           onCommit={commitPrepCount}
+                          onClear={clearPrepCount}
                           isSaving={!!isSaving}
                           label={item.name}
                         />
@@ -800,13 +949,18 @@ export default function StocktakePage() {
           </DndContext>
         ) : (
           <div className="space-y-8">
-            {categoryOrder.map((category) => (
+            {categoryOrderDisplayed.length === 0 && showOnlyMissing && totalItems > 0 ? (
+              <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-sm text-zinc-600 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-400">
+                Alle finished products voor deze locatie zijn ingevuld.
+              </p>
+            ) : (
+              categoryOrderDisplayed.map((category) => (
               <section key={category}>
                 <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                   {category}
                 </h3>
                 <ul className="space-y-4">
-                  {itemsByCategory[category]!.map((row) => {
+                  {displayedItemsByCategory[category]!.map((row) => {
                     const item = row.prep_items;
                     if (!item) return null;
                     const isSaving = countSaving[item.id];
@@ -833,6 +987,7 @@ export default function StocktakePage() {
                             prepItemId={item.id}
                             quantity={counts[item.id]}
                             onCommit={commitPrepCount}
+                            onClear={clearPrepCount}
                             isSaving={!!isSaving}
                             label={item.name}
                           />
@@ -842,7 +997,8 @@ export default function StocktakePage() {
                   })}
                 </ul>
               </section>
-            ))}
+            ))
+            )}
           </div>
         )}
 
@@ -905,12 +1061,14 @@ export default function StocktakePage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
+                    disabled={showOnlyMissing}
+                    title={showOnlyMissing ? "Zet filter op “Toon alles” om te herschikken" : undefined}
                     onClick={() => setRawReorderMode((v) => !v)}
                     className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${
                       rawReorderMode
                         ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                         : "border border-zinc-300 bg-white text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-pressed={rawReorderMode}
                   >
                     {rawReorderMode ? "Done reordering" : "Reorder list (drag)"}
@@ -937,6 +1095,10 @@ export default function StocktakePage() {
                     ? "No ingredients match “delivery tomorrow” for today, or none are linked to a supplier with a schedule. Check Admin → Suppliers (delivery days) and ingredient–supplier links. Use the Weekly tab for other counts."
                     : "No weekly items yet. Set master column J to 1 (or set a stocktake weekday in Admin) for products you only count weekly."}
                 </p>
+              ) : rawTabList.length === 0 && showOnlyMissing ? (
+                <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-sm text-zinc-600 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-400">
+                  Alles in dit tabblad is ingevuld.
+                </p>
               ) : rawReorderMode && totalRaw > 1 ? (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleRawDragEnd}>
                   <SortableContext
@@ -954,6 +1116,7 @@ export default function StocktakePage() {
                           rawCountSaving={rawCountSaving}
                           setRawCounts={setRawCounts}
                           saveRawCount={saveRawCount}
+                          clearRawCount={clearRawCount}
                           handleRawCountChange={handleRawCountChange}
                         />
                       ))}
@@ -962,7 +1125,7 @@ export default function StocktakePage() {
                 </DndContext>
               ) : (
                 <ul className="space-y-4">
-                  {rawIngredientsForTab.map((ing) => (
+                  {rawTabList.map((ing) => (
                     <StocktakeRawRow
                       key={ing.id}
                       ing={ing}
@@ -972,6 +1135,7 @@ export default function StocktakePage() {
                       rawCountSaving={rawCountSaving}
                       setRawCounts={setRawCounts}
                       saveRawCount={saveRawCount}
+                      clearRawCount={clearRawCount}
                       handleRawCountChange={handleRawCountChange}
                     />
                   ))}
@@ -996,6 +1160,13 @@ export default function StocktakePage() {
           </Link>
           <Link
             href="/prep-list"
+            onClick={(e) => {
+              if (stocktakeFullyComplete) return;
+              e.preventDefault();
+              if (typeof window !== "undefined" && window.confirm(STOCKTAKE_LEAVE_INCOMPLETE_MSG)) {
+                router.push("/prep-list");
+              }
+            }}
             className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
           >
             Prep List →

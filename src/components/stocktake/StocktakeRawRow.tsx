@@ -31,6 +31,7 @@ export type StocktakeRawRowProps = {
   rawCountSaving: Record<string, boolean>;
   setRawCounts: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   saveRawCount: (rawIngredientId: string, quantity: number) => void;
+  clearRawCount: (rawIngredientId: string) => void;
   handleRawCountChange: (rawIngredientId: string, value: string) => void;
 };
 
@@ -42,6 +43,7 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
   rawCountSaving,
   setRawCounts,
   saveRawCount,
+  clearRawCount,
   handleRawCountChange,
 }: StocktakeRawRowProps) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -101,7 +103,12 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
   const displayValue = draft !== null ? draft : value;
 
   const commitFromText = (text: string) => {
-    const n = parseNonNegativeAmount(text);
+    const trimmed = text.trim();
+    if (trimmed === "" || trimmed === ".") {
+      clearRawCount(ing.id);
+      return;
+    }
+    const n = parseNonNegativeAmount(trimmed);
     if (countGramsAsBoxes && boxForGram) {
       const grams = n * boxForGram.baseAmount;
       setRawCounts((c) => ({ ...c, [ing.id]: grams }));
@@ -136,7 +143,7 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
       return;
     }
     if (!defPack || defPack.baseAmount <= 0) {
-      handleRawCountChange(ing.id, text.trim());
+      handleRawCountChange(ing.id, trimmed);
       return;
     }
     const baseQtyLoose = n * defPack.baseAmount;
@@ -156,12 +163,13 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
           type="text"
           inputMode="decimal"
           autoComplete="off"
-          placeholder="0"
+          placeholder="—"
           value={displayValue}
           onFocus={() => setDraft(value)}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            commitFromText(draft ?? value);
+          onBlur={(e) => {
+            // Use the current DOM value to avoid stale React state on fast mobile blur/tap flows.
+            commitFromText(e.currentTarget.value);
             setDraft(null);
           }}
           className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"

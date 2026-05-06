@@ -131,10 +131,21 @@ export function isRawDeliverableTomorrow(params: {
   const deliveryDays = params.schedulesBySupplierJs[supplierId] ?? [];
   if (deliveryDays.length === 0) return false;
   const today = new Date(`${params.stocktakeDate}T12:00:00`);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowD = getDayOfWeek(tomorrow);
-  return deliveryDays.includes(tomorrowD);
+  return isNextCalendarDayDelivery({ fromDate: today, deliveryDays });
+}
+
+/**
+ * True when the **next** calendar day after `fromDate` is a scheduled delivery day.
+ * Same rule as stocktake “daily” raws (count today → truck tomorrow). Use for ordering visibility.
+ */
+export function isNextCalendarDayDelivery(params: {
+  fromDate: Date;
+  deliveryDays: number[];
+}): boolean {
+  const { fromDate, deliveryDays } = params;
+  if (deliveryDays.length === 0) return false;
+  const tomorrow = addCalendarDays(fromDate, 1);
+  return deliveryDays.includes(getDayOfWeek(tomorrow));
 }
 
 /**
