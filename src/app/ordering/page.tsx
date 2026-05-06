@@ -1073,7 +1073,54 @@ export default function OrderingPage() {
       const { data, error: invokeErr } = await supabase.functions.invoke("dispatch-order", {
         body: { order_id: orderId, dry_run: dryRun },
       });
-      if (invokeErr) throw invokeErr;
+      if (invokeErr) {
+        let detail = invokeErr.message;
+        const maybeContext = invokeErr as unknown as {
+          context?: unknown;
+          details?: string;
+          hint?: string;
+          code?: string;
+        };
+        const pieces: string[] = [];
+
+        if (maybeContext.details) pieces.push(maybeContext.details);
+        if (maybeContext.hint) pieces.push(maybeContext.hint);
+        if (maybeContext.code) pieces.push(`code=${maybeContext.code}`);
+
+        const ctx = maybeContext.context as
+          | {
+              json?: () => Promise<unknown>;
+              text?: () => Promise<string>;
+              error?: string;
+              detail?: string;
+            }
+          | string
+          | null
+          | undefined;
+
+        if (ctx && typeof ctx === "object" && "json" in ctx && typeof ctx.json === "function") {
+          try {
+            const body = (await ctx.json()) as { error?: string; detail?: string; message?: string };
+            if (body?.error) pieces.push(body.error);
+            if (body?.detail) pieces.push(body.detail);
+            if (body?.message) pieces.push(body.message);
+          } catch {
+            // ignore parse errors and keep fallback handling
+          }
+        } else if (ctx && typeof ctx === "object") {
+          const body = ctx as { error?: string; detail?: string; message?: string };
+          if (body.error) pieces.push(body.error);
+          if (body.detail) pieces.push(body.detail);
+          if (body.message) pieces.push(body.message);
+        } else if (ctx && typeof ctx === "string") {
+          pieces.push(ctx);
+        }
+
+        if (pieces.length > 0) {
+          detail = `${detail} | ${pieces.join(" | ")}`;
+        }
+        throw new Error(detail);
+      }
 
       const payload = data as { ok?: boolean; message?: string; error?: string } | null;
       if (payload?.ok === false) throw new Error(payload.error ?? "Dispatch failed");

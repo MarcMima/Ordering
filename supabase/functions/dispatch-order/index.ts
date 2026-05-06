@@ -36,6 +36,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -79,7 +85,7 @@ type Order = {
   order_line_items: OrderLine[];
   supplier: {
     name: string;
-    supplier_order_channels: ChannelConfig | null;
+    supplier_order_channels: ChannelConfig | ChannelConfig[] | null;
   };
 };
 
@@ -91,6 +97,12 @@ type DispatchResult = {
   error?: string;
   message_body?: string;
 };
+
+function pickSupplierChannel(value: ChannelConfig | ChannelConfig[] | null | undefined): ChannelConfig | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
 
 // ─── Van Gelder (Order-JSON v2.1) ─────────────────────────────────────────────
 // Docs: UPD interface klant v1.4
@@ -598,15 +610,23 @@ async function dispatchWhatsApp(
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
-  const { order_id, dry_run = false } = await req.json();
-
-  if (!order_id) {
-    return new Response(JSON.stringify({ error: "order_id vereist" }), { status: 400 });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select(`
+  try {
+    const { order_id, dry_run = false } = await req.json();
+
+    if (!order_id) {
+      return new Response(JSON.stringify({ error: "order_id vereist" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select(`
       *,
       supplier:suppliers (
         name,
@@ -624,79 +644,100 @@ Deno.serve(async (req: Request) => {
         )
       )
     `)
-    .eq("id", order_id)
-    .single();
+      .eq("id", order_id)
+      .single();
 
-  if (orderError || !order) {
-    return new Response(
-      JSON.stringify({ error: "Order niet gevonden", detail: orderError?.message }),
-      { status: 404 }
-    );
-  }
+    if (orderError || !order) {
+      return new Response(
+        JSON.stringify({ error: "Order niet gevonden", detail: orderError?.message }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-  const typedOrder = order as Order & { supplier_id: string };
-  const channel = typedOrder.supplier.supplier_order_channels;
+    const typedOrder = order as Order & { supplier_id: string };
+    const channel = pickSupplierChannel(typedOrder.supplier?.supplier_order_channels);
 
-  if (!channel) {
-    return new Response(
-      JSON.stringify({ error: "Geen bestelkanaal geconfigureerd voor deze leverancier." }),
-      { status: 400 }
-    );
-  }
+    if (!channel) {
+      return new Response(
+        JSON.stringify({
+          error: "Geen bestelkanaal geconfigureerd voor deze leverancier.",
+          detail: "supplier_order_channels row ontbreekt of kon niet worden gelezen.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-  // Maak dispatch log entry
-  const { data: dispatch } = await supabase
-    .from("order_dispatches")
-    .insert({
-      order_id,
-      supplier_id: typedOrder.supplier_id,
-      channel: channel.channel,
-      status: "sending",
-      sent_by: "system",
-    })
-    .select()
-    .single();
-
-  let result: DispatchResult;
-
-  switch (channel.channel) {
-    case "van_gelder_api":
-      result = await dispatchVanGelder(typedOrder, channel, dry_run);
-      break;
-    case "bidfood_api":
-      result = await dispatchBidfood(typedOrder, channel, dry_run);
-      break;
-    case "email":
-      result = await dispatchEmail(typedOrder, channel, dry_run);
-      break;
-    case "whatsapp":
-      result = await dispatchWhatsApp(typedOrder, channel, dry_run);
-      break;
-    default:
-      result = {
-        success: false,
-        channel: channel.channel,
-        error: `Onbekend kanaal: ${channel.channel}`,
-      };
-  }
-
-  // Update dispatch log
-  if (dispatch) {
-    await supabase
+    // Maak dispatch log entry
+    const { data: dispatch, error: dispatchInsertError } = await supabase
       .from("order_dispatches")
-      .update({
-        status: result.success ? (dry_run ? "pending" : "sent") : "failed",
-        dispatched_at: result.success && !dry_run ? new Date().toISOString() : null,
-        supplier_order_number: result.supplier_order_number ?? null,
-        response_raw: result,
-        error_message: result.error ?? null,
-        message_body: result.message_body ?? null,
+      .insert({
+        order_id,
+        supplier_id: typedOrder.supplier_id,
+        channel: channel.channel,
+        status: "sending",
+        sent_by: "system",
       })
-      .eq("id", dispatch.id);
-  }
+      .select()
+      .single();
 
-  return new Response(JSON.stringify({ ok: result.success, ...result }), {
-    status: result.success ? 200 : 500,
-    headers: { "Content-Type": "application/json" },
-  });
+    if (dispatchInsertError) {
+      return new Response(
+        JSON.stringify({
+          error: "Kon order_dispatches log niet aanmaken.",
+          detail: dispatchInsertError.message,
+          hint: "Controleer of channel geldig is en migratie 096 op dit Supabase project staat.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let result: DispatchResult;
+
+    switch (channel.channel) {
+      case "van_gelder_api":
+        result = await dispatchVanGelder(typedOrder, channel, dry_run);
+        break;
+      case "bidfood_api":
+        result = await dispatchBidfood(typedOrder, channel, dry_run);
+        break;
+      case "email":
+        result = await dispatchEmail(typedOrder, channel, dry_run);
+        break;
+      case "whatsapp":
+        result = await dispatchWhatsApp(typedOrder, channel, dry_run);
+        break;
+      default:
+        result = {
+          success: false,
+          channel: channel.channel,
+          error: `Onbekend kanaal: ${channel.channel}`,
+        };
+    }
+
+    // Update dispatch log
+    if (dispatch) {
+      await supabase
+        .from("order_dispatches")
+        .update({
+          status: result.success ? (dry_run ? "pending" : "sent") : "failed",
+          dispatched_at: result.success && !dry_run ? new Date().toISOString() : null,
+          supplier_order_number: result.supplier_order_number ?? null,
+          response_raw: result,
+          error_message: result.error ?? null,
+          message_body: result.message_body ?? null,
+        })
+        .eq("id", dispatch.id);
+    }
+
+    return new Response(JSON.stringify({ ok: result.success, ...result }), {
+      status: result.success ? 200 : 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    return new Response(
+      JSON.stringify({ error: "Unhandled dispatch-order error", detail }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 });
