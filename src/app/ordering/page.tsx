@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
 import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
 import { ChickenMarinadeCallout, rawIngredientIsChickenForMarinade } from "@/components/ChickenMarinadeCallout";
@@ -12,6 +13,7 @@ import type { Supplier, RawIngredient, IngredientPackSize, PrepItem } from "@/li
 import { buildYieldMetaForPrepItem, type PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import {
   daysUntilNextDelivery,
+  isNextCalendarDayDelivery,
   supplierScheduleDayToJsDay,
   aggregateDailyRawNeedFromPrep,
   suggestOrderBaseQuantities,
@@ -33,6 +35,11 @@ import {
 } from "@/lib/stocktakeRawPackMath";
 
 type DeliverySchedule = { supplier_id: string; day_of_week: number };
+type DispatchStatus = {
+  loading: boolean;
+  message?: string;
+  error?: string;
+};
 
 type SuggestionOrderKind = "pack" | "stocktake" | "recipe";
 
@@ -270,6 +277,7 @@ function orderLineRowView(
 }
 
 export default function OrderingPage() {
+  const pathname = usePathname();
   const { locationId, locationOptions } = useLocation();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [schedules, setSchedules] = useState<DeliverySchedule[]>([]);
@@ -282,6 +290,8 @@ export default function OrderingPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [dispatchStatusBySupplier, setDispatchStatusBySupplier] = useState<Record<string, DispatchStatus>>({});
+  const [suggestionRefreshToken, setSuggestionRefreshToken] = useState(0);
   const [suggestedOrder, setSuggestedOrder] = useState<Record<string, number>>({});
   /** Preferred supplier per raw for the current suggestion. */
   const [suggestionSupplierByRaw, setSuggestionSupplierByRaw] = useState<Record<string, string | null>>({});
@@ -433,7 +443,7 @@ export default function OrderingPage() {
       const lpiRes = await supabase
         .from("location_prep_items")
         .select(
-          "prep_item_id, base_quantity, prep_items(id, batch_size, content_amount, content_unit, recipe_output_amount, recipe_output_unit, ingredient_qty_is_per_recipe_batch)"
+          "prep_item_id, base_quantity, prep_items(id, content_amount, content_unit, recipe_output_amount, recipe_output_unit, ingredient_qty_is_per_recipe_batch)"
         )
         .eq("location_id", locationId);
       if (!alive) return;
@@ -461,7 +471,7 @@ export default function OrderingPage() {
       }
       const prepIdsAtLocation = [...new Set(lpi.map((row) => row.prep_item_id))];
 
-      const [revCents, locRes, recipeRes, stockRes, supRes, siRes, prepCountRes] = await Promise.all([
+      const [revCents, locRes, recipeRes, stockRes, supRes, siRes, prepCountRes, prepQtyRes] = await Promise.all([
         ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d),
         supabase
           .from("locations")
@@ -490,6 +500,11 @@ export default function OrderingPage() {
           .select("id", { count: "exact", head: true })
           .eq("location_id", locationId)
           .eq("date", d),
+        supabase
+          .from("daily_prep_counts")
+          .select("prep_item_id, quantity")
+          .eq("location_id", locationId)
+          .eq("date", d),
       ]);
       if (!alive) return;
 
@@ -503,7 +518,8 @@ export default function OrderingPage() {
         recipeRes.error ||
         stockRes.error ||
         supRes.error ||
-        siRes.error;
+        siRes.error ||
+        prepQtyRes.error;
       if (err) {
         setPrepStocktakeComplete(false);
         setSuggestedOrder({});
@@ -527,6 +543,11 @@ export default function OrderingPage() {
       } | null;
       const recipes = (recipeRes.data as PrepItemIngredientRow[]) ?? [];
       const stockList = (stockRes.data as { raw_ingredient_id: string; quantity: number }[]) ?? [];
+      const prepStockRows =
+        (prepQtyRes.data as { prep_item_id: string; quantity: number }[]) ?? [];
+      const prepStockByPrepItemId = Object.fromEntries(
+        prepStockRows.map((r) => [r.prep_item_id, Number(r.quantity)])
+      );
       const currentStock = Object.fromEntries(stockList.map((s) => [s.raw_ingredient_id, Number(s.quantity)]));
       const revenueMultiplier = getRevenueMultiplier({
         todayRevenueCents: revCents,
@@ -546,11 +567,58 @@ export default function OrderingPage() {
       const recipeFiltered = recipes.filter(
         (r) => rawIds.has(r.raw_ingredient_id) && locationPrepIds.has(r.prep_item_id)
       );
-      const dailyRawNeed = aggregateDailyRawNeedFromPrep({
+      const dailyRawNeedBase = aggregateDailyRawNeedFromPrep({
         neededByPrepItemId,
         prepItemIngredients: recipeFiltered,
         prepYieldByPrepItemId,
       });
+      const TARGET_FINISHED_STOCK_RAW_NAMES = new Set([
+        "chicken",
+        "aubergine",
+        "romaine lettuce",
+        "lettuce",
+        "lemon juice",
+        "greek yoghurt 10%",
+        "yoghurt",
+        "greek yogurt 10%",
+      ]);
+      const targetRawIdSet = new Set(
+        rawIngredients
+          .filter((r) => TARGET_FINISHED_STOCK_RAW_NAMES.has((r.name || "").toLowerCase().trim()))
+          .map((r) => r.id)
+      );
+      const rawCoveredByFinishedPrep: Record<string, number> = {};
+      if (prepComplete && targetRawIdSet.size > 0) {
+        for (const row of recipeFiltered) {
+          if (!targetRawIdSet.has(row.raw_ingredient_id)) continue;
+          const prepCount = prepStockByPrepItemId[row.prep_item_id] ?? 0;
+          if (prepCount <= 0) continue;
+          let factor = 1;
+          const meta = prepYieldByPrepItemId[row.prep_item_id];
+          if (meta?.ingredientQtyPerRecipeBatch) {
+            const { nominalG, recipeG } = meta;
+            if (
+              nominalG != null &&
+              recipeG != null &&
+              nominalG > 0 &&
+              recipeG > 0 &&
+              Number.isFinite(nominalG) &&
+              Number.isFinite(recipeG)
+            ) {
+              factor = nominalG / recipeG;
+            }
+          }
+          const covered = prepCount * row.quantity_per_unit * factor;
+          rawCoveredByFinishedPrep[row.raw_ingredient_id] =
+            (rawCoveredByFinishedPrep[row.raw_ingredient_id] ?? 0) + covered;
+        }
+      }
+      const dailyRawNeed: Record<string, number> = { ...dailyRawNeedBase };
+      for (const rid of targetRawIdSet) {
+        const base = dailyRawNeedBase[rid] ?? 0;
+        const covered = rawCoveredByFinishedPrep[rid] ?? 0;
+        dailyRawNeed[rid] = Math.max(0, base - covered);
+      }
       const locationSupplierIds = new Set(
         ((supRes.data as { id: string }[]) ?? []).map((s) => s.id)
       );
@@ -714,6 +782,8 @@ export default function OrderingPage() {
       );
       let suggestedForUi: Record<string, number> = { ...finalSuggested };
       let kindForUi: Record<string, SuggestionOrderKind> = { ...kindByRaw };
+      // Show all supplier suggestions every day (incl. Bidfood) while ordering logic is being validated.
+      // Cards still use tomorrowIsDelivery for emphasis vs. “planning only” styling.
       if (!prepComplete) {
         for (const rid of Object.keys(suggestedForUi)) {
           const sid = preferredSupplierByRawId[rid];
@@ -770,7 +840,27 @@ export default function OrderingPage() {
     return () => {
       alive = false;
     };
-  }, [locationId, rawIngredients, schedules, packSizes, suppliers]);
+  }, [locationId, rawIngredients, schedules, packSizes, suppliers, suggestionRefreshToken]);
+
+  useEffect(() => {
+    const triggerRefresh = () => setSuggestionRefreshToken((v) => v + 1);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") triggerRefresh();
+    };
+    window.addEventListener("focus", triggerRefresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", triggerRefresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  /** Re-fetch suggestion + drop stale draft lines when opening Ordering (SPA navigation keeps state otherwise). */
+  useEffect(() => {
+    if (pathname !== "/ordering" || !locationId) return;
+    setOrderBySupplier({});
+    setSuggestionRefreshToken((v) => v + 1);
+  }, [pathname, locationId]);
 
   const onDemandSupplierIdSet = useMemo(
     () => new Set(suppliers.filter((s) => isOnDemandSupplierName(s.name)).map((s) => s.id)),
@@ -863,9 +953,14 @@ export default function OrderingPage() {
     };
   }, [locationId]);
 
+  const orderingDayAnchor = useMemo(
+    () => new Date(`${localCalendarDateString()}T12:00:00`),
+    [suggestionRefreshToken]
+  );
+
   const daysUntil = (supplierId: string) =>
     daysUntilNextDelivery({
-      today: new Date(),
+      today: orderingDayAnchor,
       deliveryDays: schedulesBySupplier[supplierId] ?? [],
     });
 
@@ -926,39 +1021,94 @@ export default function OrderingPage() {
     });
   };
 
+  async function createOrderForSupplier(
+    supplierId: string,
+    lines: OrderLine[],
+    orderDate: string
+  ): Promise<string> {
+    const supabase = createClient();
+    if (!locationId) throw new Error("No location selected");
+
+    const { data: order, error: orderErr } = await supabase
+      .from("orders")
+      .insert({
+        location_id: locationId,
+        supplier_id: supplierId,
+        order_date: orderDate,
+        status: "submitted",
+      })
+      .select("id")
+      .single();
+    if (orderErr) throw orderErr;
+
+    const orderId = (order as { id: string }).id;
+    for (const line of lines) {
+      if (line.quantity <= 0) continue;
+      const { error: lineErr } = await supabase.from("order_line_items").insert({
+        order_id: orderId,
+        raw_ingredient_id: line.raw_ingredient_id,
+        pack_size_id: line.pack_size_id,
+        quantity: line.quantity,
+      });
+      if (lineErr) throw lineErr;
+    }
+    return orderId;
+  }
+
+  const dispatchOneSupplier = async (supplierId: string, dryRun: boolean) => {
+    if (!locationId) return;
+    const lines = orderBySupplier[supplierId] ?? [];
+    if (lines.length === 0) return;
+    if (!prepStocktakeComplete && onDemandSupplierIdSet.has(supplierId)) return;
+
+    setDispatchStatusBySupplier((prev) => ({
+      ...prev,
+      [supplierId]: { loading: true },
+    }));
+
+    try {
+      const orderDate = localCalendarDateString();
+      const orderId = await createOrderForSupplier(supplierId, lines, orderDate);
+      const supabase = createClient();
+      const { data, error: invokeErr } = await supabase.functions.invoke("dispatch-order", {
+        body: { order_id: orderId, dry_run: dryRun },
+      });
+      if (invokeErr) throw invokeErr;
+
+      const payload = data as { ok?: boolean; message?: string; error?: string } | null;
+      if (payload?.ok === false) throw new Error(payload.error ?? "Dispatch failed");
+
+      setDispatchStatusBySupplier((prev) => ({
+        ...prev,
+        [supplierId]: {
+          loading: false,
+          message: dryRun
+            ? `Dry run OK${payload?.message ? `: ${payload.message}` : ""}`
+            : `Sent OK${payload?.message ? `: ${payload.message}` : ""}`,
+        },
+      }));
+    } catch (e) {
+      setDispatchStatusBySupplier((prev) => ({
+        ...prev,
+        [supplierId]: {
+          loading: false,
+          error: e instanceof Error ? e.message : "Dispatch failed",
+        },
+      }));
+    }
+  };
+
   const confirmOrder = async () => {
     if (!locationId) return;
     setSubmitting(true);
     setError(null);
-    const supabase = createClient();
     const orderDate = localCalendarDateString();
 
     try {
       for (const [supplierId, lines] of Object.entries(orderBySupplier)) {
         if (lines.length === 0) continue;
         if (!prepStocktakeComplete && onDemandSupplierIdSet.has(supplierId)) continue;
-        const { data: order, error: orderErr } = await supabase
-          .from("orders")
-          .insert({
-            location_id: locationId,
-            supplier_id: supplierId,
-            order_date: orderDate,
-            status: "submitted",
-          })
-          .select("id")
-          .single();
-        if (orderErr) throw orderErr;
-        const orderId = (order as { id: string }).id;
-        for (const line of lines) {
-          if (line.quantity <= 0) continue;
-          const { error: lineErr } = await supabase.from("order_line_items").insert({
-            order_id: orderId,
-            raw_ingredient_id: line.raw_ingredient_id,
-            pack_size_id: line.pack_size_id,
-            quantity: line.quantity,
-          });
-          if (lineErr) throw lineErr;
-        }
+        await createOrderForSupplier(supplierId, lines, orderDate);
       }
       setSubmitted(true);
       setOrderBySupplier({});
@@ -1156,6 +1306,17 @@ export default function OrderingPage() {
               const days = daysUntil(sup.id);
               const suppressedCard =
                 !prepStocktakeComplete && isOnDemandSupplierName(sup.name);
+              const deliveryDaysForSup = schedulesBySupplier[sup.id] ?? [];
+              const hasWeekdaySchedule = deliveryDaysForSup.length > 0;
+              const onDemandSup = isOnDemandSupplierName(sup.name);
+              /** Align with stocktake: order when the next calendar day is a scheduled delivery. */
+              const tomorrowIsDelivery =
+                onDemandSup ||
+                !hasWeekdaySchedule ||
+                isNextCalendarDayDelivery({
+                  fromDate: orderingDayAnchor,
+                  deliveryDays: deliveryDaysForSup,
+                });
               const lines = orderBySupplier[sup.id] ?? [];
               const suggestedForSup = Object.entries(suggestedOrder).filter(
                 ([rawId, qty]) => qty > 0 && suggestionSupplierByRaw[rawId] === sup.id
@@ -1163,14 +1324,9 @@ export default function OrderingPage() {
               const hasOrderWork =
                 !suppressedCard && (lines.length > 0 || suggestedForSup.length > 0);
               const linesToShow = suppressedCard ? [] : lines;
-              /** Scheduled weekday suppliers: only strong emphasis on an actual delivery day (or no fixed schedule / on-demand). */
-              const deliveryDaysForSup = schedulesBySupplier[sup.id] ?? [];
-              const hasWeekdaySchedule = deliveryDaysForSup.length > 0;
-              const onDemandSup = isOnDemandSupplierName(sup.name);
-              const isDeliveryToday = days === 0;
               const cardEmphasized =
                 hasOrderWork &&
-                (!hasWeekdaySchedule || onDemandSup || isDeliveryToday);
+                (!hasWeekdaySchedule || onDemandSup || tomorrowIsDelivery);
 
               const sectionClass = !hasOrderWork
                 ? "rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 dark:border-zinc-600 dark:bg-zinc-900/60"
@@ -1201,7 +1357,7 @@ export default function OrderingPage() {
                   )}
                   {hasOrderWork && !cardEmphasized && (
                     <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
-                      Not a delivery day today — for planning only.
+                      No scheduled delivery tomorrow — usually no order today (planning only).
                     </p>
                   )}
 
@@ -1243,6 +1399,36 @@ export default function OrderingPage() {
                       );
                     })}
                   </ul>
+                  {linesToShow.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void dispatchOneSupplier(sup.id, true)}
+                        disabled={Boolean(dispatchStatusBySupplier[sup.id]?.loading)}
+                        className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                      >
+                        {dispatchStatusBySupplier[sup.id]?.loading ? "Running…" : "Dry run supplier"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void dispatchOneSupplier(sup.id, false)}
+                        disabled={Boolean(dispatchStatusBySupplier[sup.id]?.loading)}
+                        className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                      >
+                        {dispatchStatusBySupplier[sup.id]?.loading ? "Sending…" : "Send supplier"}
+                      </button>
+                    </div>
+                  )}
+                  {dispatchStatusBySupplier[sup.id]?.message && (
+                    <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                      {dispatchStatusBySupplier[sup.id]?.message}
+                    </p>
+                  )}
+                  {dispatchStatusBySupplier[sup.id]?.error && (
+                    <p className="mt-2 text-xs text-red-700 dark:text-red-300">
+                      {dispatchStatusBySupplier[sup.id]?.error}
+                    </p>
+                  )}
                 </section>
               );
             })}
@@ -1257,7 +1443,7 @@ export default function OrderingPage() {
               disabled={submitting}
               className="w-full rounded-xl bg-zinc-900 py-3 text-base font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              {submitting ? "Submitting…" : "Confirm order"}
+              {submitting ? "Submitting…" : "Confirm order (save only)"}
             </button>
           </div>
         )}

@@ -10,9 +10,22 @@
 //   Body: { "order_id": "<uuid>", "dry_run": false }
 //
 // Secrets (Supabase Vault → Edge Function secrets):
-//   VAN_GELDER_API_KEY        — Bearer token
+//   VAN_GELDER_API_KEY        — legacy static bearer token (optional fallback)
+//   VAN_GELDER_CLIENT_ID      — OAuth client id
+//   VAN_GELDER_CLIENT_SECRET  — OAuth client secret
+//   VAN_GELDER_TOKEN_URL      — OAuth token endpoint
+//   VAN_GELDER_SCOPE          — OAuth scope (api://.../.default)
+//   VAN_GELDER_SUBSCRIPTION_KEY — Ocp-Apim-Subscription-Key
 //   VAN_GELDER_BASE_URL       — bijv. https://api.vangeldernederland.nl
 //   VAN_GELDER_CUSTOMER_CODE  — Debiteurnummer (override van DB config)
+//   VAN_GELDER_DELIVERY_CITY      — LeveringAdres.Plaats
+//   VAN_GELDER_DELIVERY_STREET    — LeveringAdres.Straat
+//   VAN_GELDER_DELIVERY_POSTCODE  — LeveringAdres.Postcode
+//   VAN_GELDER_DELIVERY_COUNTRY   — LeveringAdres.Landcode (bijv. NL)
+//   VAN_GELDER_DELIVERY_NAME      — LeveringAdres.Naam (optioneel; fallback: locatie naam)
+//   VAN_GELDER_DELIVERY_KLANTCODE — LeveringAdres.Klantcode (optioneel; fallback: Debiteurnummer)
+//   VAN_GELDER_DELIVERY_HOUSENUMBER — LeveringAdres.Huisnummer (optioneel)
+//   VAN_GELDER_DELIVERY_PHONE       — LeveringAdres.Telefoonnummer (optioneel)
 //   BIDFOOD_USERNAME          — Basic Auth gebruikersnaam
 //   BIDFOOD_PASSWORD          — Basic Auth wachtwoord
 //   BIDFOOD_SYSTEM_NAME       — bijv. 'MIMA' (optioneel, voor third-party header)
@@ -82,24 +95,85 @@ type DispatchResult = {
 // ─── Van Gelder (Order-JSON v2.1) ─────────────────────────────────────────────
 // Docs: UPD interface klant v1.4
 // Endpoint: POST {base_url}/orders (exact endpoint bij Van Gelder opvragen)
-// Auth: Bearer token
+// Auth: OAuth2 client credentials + Ocp-Apim-Subscription-Key
+
+async function getVanGelderAccessToken(): Promise<string | null> {
+  const clientId = Deno.env.get("VAN_GELDER_CLIENT_ID");
+  const clientSecret = Deno.env.get("VAN_GELDER_CLIENT_SECRET");
+  const tokenUrl = Deno.env.get("VAN_GELDER_TOKEN_URL");
+  const scope = Deno.env.get("VAN_GELDER_SCOPE");
+
+  if (!clientId || !clientSecret || !tokenUrl || !scope) return null;
+
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope,
+  });
+
+  const response = await fetch(tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Van Gelder OAuth token error ${response.status}: ${errorBody}`);
+  }
+
+  const json = (await response.json()) as { access_token?: string };
+  return json.access_token ?? null;
+}
 
 async function dispatchVanGelder(
   order: Order,
   channel: ChannelConfig,
   dryRun: boolean
 ): Promise<DispatchResult> {
-  const apiKey = Deno.env.get("VAN_GELDER_API_KEY");
+  const legacyApiKey = Deno.env.get("VAN_GELDER_API_KEY");
+  const subscriptionKey = Deno.env.get("VAN_GELDER_SUBSCRIPTION_KEY");
   const baseUrl = channel.api_base_url ?? Deno.env.get("VAN_GELDER_BASE_URL");
   const customerCode =
     channel.api_customer_code ?? Deno.env.get("VAN_GELDER_CUSTOMER_CODE");
+  const deliveryCity = Deno.env.get("VAN_GELDER_DELIVERY_CITY");
+  const deliveryStreet = Deno.env.get("VAN_GELDER_DELIVERY_STREET");
+  const deliveryPostcode = Deno.env.get("VAN_GELDER_DELIVERY_POSTCODE");
+  const deliveryCountry = Deno.env.get("VAN_GELDER_DELIVERY_COUNTRY");
+  const deliveryName =
+    Deno.env.get("VAN_GELDER_DELIVERY_NAME") ?? `MIMA ${order.location_id.slice(0, 8)}`;
+  const deliveryKlantcode =
+    Deno.env.get("VAN_GELDER_DELIVERY_KLANTCODE") ?? customerCode ?? "";
+  const deliveryHouseNumber = Deno.env.get("VAN_GELDER_DELIVERY_HOUSENUMBER") ?? "";
+  const deliveryPhone = Deno.env.get("VAN_GELDER_DELIVERY_PHONE") ?? "";
 
-  if (!apiKey || !baseUrl || !customerCode) {
+  let accessToken: string | null = null;
+  try {
+    accessToken = (await getVanGelderAccessToken()) ?? legacyApiKey ?? null;
+  } catch (e) {
+    return {
+      success: false,
+      channel: "van_gelder_api",
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+
+  if (
+    !accessToken ||
+    !subscriptionKey ||
+    !baseUrl ||
+    !customerCode ||
+    !deliveryCity ||
+    !deliveryStreet ||
+    !deliveryPostcode ||
+    !deliveryCountry
+  ) {
     return {
       success: false,
       channel: "van_gelder_api",
       error:
-        "Configuratie onvolledig. Vereist: VAN_GELDER_API_KEY, api_base_url, api_customer_code (Debiteurnummer).",
+        "Incomplete Van Gelder config. Required: OAuth credentials (or VAN_GELDER_API_KEY fallback), VAN_GELDER_SUBSCRIPTION_KEY, api_base_url, api_customer_code, and delivery address envs (CITY/STREET/POSTCODE/COUNTRY).",
     };
   }
 
@@ -123,12 +197,22 @@ async function dispatchVanGelder(
       Leverdatum: order.requested_delivery_date, // YYYY-MM-DD
       Email: "",
       Commentaar: order.notes ?? "",
-      RouteNummer: "",
+      Routenummer: "",
+    },
+    LeveringAdres: {
+      Naam: deliveryName,
+      Klantcode: deliveryKlantcode,
+      Plaats: deliveryCity,
+      Straat: deliveryStreet,
+      Huisnummer: deliveryHouseNumber,
+      Postcode: deliveryPostcode,
+      Landcode: deliveryCountry,
+      Telefoonnummer: deliveryPhone,
     },
     Regels: order.order_line_items.map((line, idx) => ({
       Regelnummer: String(idx + 1),
       EANCode: line.supplier_ingredient!.ean_code!,
-      Aantal: String(Math.ceil(line.quantity)),
+      Aantal: Math.ceil(line.quantity),
     })),
   };
 
@@ -145,7 +229,8 @@ async function dispatchVanGelder(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${accessToken}`,
+      "Ocp-Apim-Subscription-Key": subscriptionKey,
     },
     body: JSON.stringify(orderPayload),
   });
