@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { TopNav } from "@/components/TopNav";
 import { createClient } from "@/lib/supabase";
 import type { MenuItem } from "@/lib/types";
@@ -45,7 +45,7 @@ function labelForCategory(cat: string): string {
   return CATEGORY_LABELS[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1);
 }
 
-export default function KitchenMenuPage() {
+function KitchenMenuPage() {
   const searchParams = useSearchParams();
   const catFromUrl = searchParams.get("cat");
 
@@ -102,11 +102,11 @@ export default function KitchenMenuPage() {
         </Link>
         <h1 className="mt-4 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Menu (data)</h1>
         <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
-          Gerechten uit <code className="text-xs">menu_items</code>. Kies links een categorie; klik een gerecht voor
-          componenten (prep / grondstoffen / bowl-bases) voor nutrition & food-cost.
+          Dishes from <code className="text-xs">menu_items</code>. Pick a category on the left; click a dish to see
+          components (prep / raw ingredients / bowl bases) for nutrition &amp; food cost.
         </p>
 
-        {loading && <p className="mt-6 text-sm text-zinc-500">Laden…</p>}
+        {loading && <p className="mt-6 text-sm text-zinc-500">Loading…</p>}
         {err && (
           <p className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
             {err}
@@ -114,7 +114,7 @@ export default function KitchenMenuPage() {
         )}
         {!loading && !err && items.length === 0 && (
           <p className="mt-6 text-sm text-zinc-500">
-            Nog geen menu. Voer migraties uit en draai <code className="text-xs">supabase db push</code>.
+            No menu yet. Run migrations and <code className="text-xs">supabase db push</code>.
           </p>
         )}
 
@@ -122,7 +122,7 @@ export default function KitchenMenuPage() {
           <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:gap-10">
             {/* Categorieën — mobiel: horizontaal scrollen; desktop: vaste linker kolom */}
             <nav
-              aria-label="Menucategorieën"
+              aria-label="Menu categories"
               className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:w-52 lg:flex-col lg:overflow-visible lg:pb-0"
             >
               {categories.map((cat) => {
@@ -175,5 +175,19 @@ export default function KitchenMenuPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function KitchenMenuRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-500 dark:bg-zinc-900">
+          Loading…
+        </div>
+      }
+    >
+      <KitchenMenuPage />
+    </Suspense>
   );
 }
