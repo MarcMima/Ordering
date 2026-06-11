@@ -1,36 +1,286 @@
 @import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+/* ─── MIMA brand CSS variables (source of truth) ─────────────────────────── */
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand-green: #5a713f;
+  --brand-sage: #94beb2;
+  --brand-sand: #e7cdaf;
+  --brand-terracotta: #c56d4a;
+  --brand-orange: #ce7925;
+  --brand-tan: #cdaf7a;
+  --surface: #ffffff;
+  --surface-muted: #f5f1e8;
+  --background: #f5f1e8;
+  --ink: #1a1a1a;
+  --ink-soft: #3d3d3d;
+  --accent-terracotta: #c56d4a;
+  --accent-orange: #ce7925;
+
+  /* Typography — fallbacks active until licensed files are added (see @font-face below). */
+  --font-heading: "Alverata", Georgia, "Times New Roman", serif;
+  --font-body: "Degular", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --foreground: var(--ink);
+  --radius: 0.75rem;
 }
+
+/* TODO: Drop licensed MIMA font files into public/fonts/ and wire up @font-face src, e.g.:
+@font-face {
+  font-family: "Alverata";
+  src: url("/fonts/Alverata-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Degular";
+  src: url("/fonts/Degular-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+*/
 
 @theme inline {
+  --color-brand-green: var(--brand-green);
+  --color-brand-sage: var(--brand-sage);
+  --color-brand-sand: var(--brand-sand);
+  --color-brand-terracotta: var(--brand-terracotta);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-tan: var(--brand-tan);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-background: var(--background);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-accent-terracotta: var(--accent-terracotta);
+  --color-accent-orange: var(--accent-orange);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-family-heading: var(--font-heading);
+  --font-family-sans: var(--font-body);
+  --radius-DEFAULT: var(--radius);
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-@layer components {
-  .input {
-    @apply w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-zinc-900;
-    @apply focus:outline-none focus:ring-2 focus:ring-stone-200;
-    @apply dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:focus:ring-zinc-600;
-  }
-}
+/* ─── Base ───────────────────────────────────────────────────────────────── */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  color: var(--brand-green);
+}
+
+/* ─── Shared UI primitives (Phase 1) ─────────────────────────────────────── */
+
+@layer components {
+  .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors touch-manipulation;
+    @apply bg-brand-green text-white hover:bg-brand-green/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sage/60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors touch-manipulation;
+    @apply border border-brand-green/20 bg-surface text-brand-green hover:bg-brand-sand/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sage/50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors touch-manipulation;
+    @apply text-ink-soft hover:bg-brand-sand/50 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sage/40;
+  }
+
+  .btn-accent {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors touch-manipulation;
+    @apply bg-accent-orange text-white hover:bg-accent-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40;
+  }
+
+  .card {
+    @apply rounded-xl border border-brand-sage/50 bg-surface p-5 shadow-sm;
+    box-shadow: 0 1px 3px rgb(90 113 63 / 0.06);
+  }
+
+  .card-interactive {
+    @apply rounded-xl border border-brand-sage/50 bg-surface p-5 transition-colors;
+    box-shadow: 0 1px 3px rgb(90 113 63 / 0.06);
+  }
+
+  .card-interactive:hover {
+    border-color: color-mix(in srgb, var(--brand-green) 35%, transparent);
+    background-color: color-mix(in srgb, var(--brand-sand) 35%, var(--surface));
+  }
+
+  .label {
+    @apply mb-1 block text-sm font-medium text-ink-soft;
+  }
+
+  .help-text {
+    @apply text-sm text-ink-soft/80;
+  }
+
+  .page-title {
+    font-family: var(--font-heading);
+    color: var(--brand-green);
+    @apply text-3xl font-semibold tracking-tight;
+  }
+
+  .section-title {
+    font-family: var(--font-heading);
+    color: var(--brand-green);
+    @apply text-lg font-semibold;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-sm text-ink;
+    @apply focus:border-brand-green/30 focus:outline-none focus:ring-2 focus:ring-brand-sage/50;
+  }
+
+  .input-lg {
+    @apply h-12 w-full rounded-xl border border-brand-green/15 bg-surface px-4 py-2 text-base text-ink;
+    @apply focus:border-brand-green/30 focus:outline-none focus:ring-2 focus:ring-brand-sage/50;
+  }
+
+  /** Native select: consistent box + chevron (mobile Safari; text-base avoids iOS zoom on focus). */
+  .select-native {
+    @apply box-border max-w-full appearance-none rounded-lg border border-brand-green/15 bg-surface px-3 py-2 pr-10 text-base text-ink;
+    @apply focus:border-brand-green/30 focus:outline-none focus:ring-2 focus:ring-brand-sage/50;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%235A713F' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.65rem center;
+    background-repeat: no-repeat;
+    background-size: 1.25rem;
+  }
+
+  .alert-error {
+    @apply rounded-xl border border-accent-terracotta/25 bg-brand-sand/50 p-3 text-sm text-accent-terracotta;
+  }
+
+  .alert-warning {
+    @apply rounded-xl border border-brand-orange/30 bg-brand-sand/40 p-3 text-sm text-ink-soft;
+  }
+
+  .badge-success {
+    @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold;
+    background-color: color-mix(in srgb, var(--brand-sage) 45%, var(--surface));
+    color: var(--brand-green);
+  }
+
+  .badge-pending {
+    @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold;
+    background-color: color-mix(in srgb, var(--brand-orange) 18%, var(--brand-sand));
+    color: var(--accent-orange);
+  }
+
+  .nav-header {
+    border-bottom: 3px solid var(--brand-sage);
+    background: linear-gradient(
+      180deg,
+      var(--surface) 0%,
+      color-mix(in srgb, var(--brand-sand) 18%, var(--surface)) 100%
+    );
+  }
+
+  .nav-link {
+    @apply rounded-md px-2 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-brand-sand/40 hover:text-brand-green lg:px-3;
+  }
+
+  .nav-link-active {
+    @apply rounded-md bg-brand-green px-2 py-1.5 text-sm font-medium text-white lg:px-3;
+  }
+
+  .table-base {
+    @apply w-full border-collapse text-left text-sm text-ink;
+  }
+
+  .table-base thead {
+    @apply border-b border-brand-green/15 bg-surface-muted;
+  }
+
+  .table-base th {
+    @apply px-3 py-2 font-medium text-brand-green;
+  }
+
+  .table-base td {
+    @apply border-b border-brand-green/10 px-3 py-2 text-ink-soft;
+  }
+
+  .table-base tbody tr:hover {
+    @apply bg-brand-sand/20;
+  }
+}
+
+/* Critical layout: survives brief dev HMR windows when utility CSS is not applied yet */
+.mima-logo-img {
+  display: block;
+  height: 2rem;
+  width: auto;
+  max-width: 10rem;
+  object-fit: contain;
+  object-position: left center;
+}
+
+@media (min-width: 640px) {
+  .mima-logo-img {
+    height: 2.25rem;
+    max-width: 12.5rem;
+  }
+}
+
+.topnav-mobile-only {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.topnav-desktop-only {
+  display: none;
+}
+
+.topnav-desktop-links {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .topnav-mobile-only {
+    display: none !important;
+  }
+
+  .topnav-desktop-only {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .topnav-desktop-links {
+    display: flex;
+  }
+}
+
+.topnav-location-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .print-only {
@@ -40,7 +290,7 @@ body {
 @media print {
   body {
     background: white;
-    color: #111;
+    color: var(--ink);
   }
   nav[aria-label="Main navigation"],
   .no-print,

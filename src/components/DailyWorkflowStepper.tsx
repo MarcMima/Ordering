@@ -57,18 +57,15 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
   const stepClassName = (active: boolean, done: boolean) =>
     `flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
       active
-        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+        ? "bg-brand-green text-white"
         : done
-          ? "bg-emerald-100 text-emerald-900 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-100 dark:hover:bg-emerald-900/50"
-          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+          ? "bg-brand-sage/30 text-brand-green hover:bg-brand-sage/45"
+          : "bg-brand-sand/50 text-ink-soft hover:bg-brand-sand"
     }`;
 
   return (
-    <nav
-      aria-label="Daily workflow"
-      className="mb-6 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800/80"
-    >
-      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+    <nav aria-label="Daily workflow" className="card mb-6">
+      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-ink-soft/70">
         Today&apos;s flow
       </p>
       <ol className="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
@@ -83,10 +80,10 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
               <span
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                   active
-                    ? "bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-900"
+                    ? "bg-white/25 text-white"
                     : done
-                      ? "bg-emerald-600 text-white dark:bg-emerald-500"
-                      : "bg-zinc-300 text-zinc-700 dark:bg-zinc-600 dark:text-zinc-200"
+                      ? "bg-brand-green text-white"
+                      : "bg-brand-tan/60 text-ink-soft"
                 }`}
               >
                 {step.short}
@@ -97,7 +94,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
           return (
             <li key={step.path} className="flex min-w-0 items-center gap-2 sm:gap-3">
               {i > 0 && (
-                <span className="hidden text-zinc-300 sm:inline dark:text-zinc-600" aria-hidden>
+                <span className="hidden text-brand-sage/50 sm:inline" aria-hidden>
                   →
                 </span>
               )}
@@ -126,37 +123,27 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
           );
         })}
       </ol>
-      <div className="flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-700">
+      <div className="flex flex-wrap items-center gap-3 border-t border-brand-green/10 pt-3">
         {prevStep && (
-          <Link
-            href={prevStep.path}
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
+          <Link href={prevStep.path} className="btn-ghost px-0 text-sm">
             ← Back to {prevStep.label}
           </Link>
         )}
         {nextStep &&
           (pathname === "/stocktake" ? (
-            <button
-              type="button"
-              onClick={goNext}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
+            <button type="button" onClick={goNext} className="btn-primary min-h-[44px] rounded-xl px-4 py-2.5">
               Next: {nextStep.label} →
             </button>
           ) : (
             <Link
               href={nextStep.path}
-              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="btn-primary min-h-[44px] rounded-xl px-4 py-2.5"
             >
               Next: {nextStep.label} →
             </Link>
           ))}
         {!nextStep && (
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
+          <Link href="/dashboard" className="btn-ghost px-0 text-sm">
             ← Back to dashboard
           </Link>
         )}

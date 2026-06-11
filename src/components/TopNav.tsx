@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLocation } from "@/contexts/LocationContext";
@@ -18,72 +17,80 @@ export function TopNav() {
     router.push("/login");
     router.refresh();
   }
+
   const currentName = locationOptions.find((l) => l.id === locationId)?.name ?? "Select location";
 
   return (
-    <nav className="flex h-14 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="flex min-w-0 flex-1 items-center gap-4">
+    <nav className="nav-header" aria-label="Site header">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 md:h-14 md:py-0">
         <Link
           href="/dashboard"
-          className="relative shrink-0 rounded-md bg-white dark:bg-white"
-          style={{ backgroundColor: "#ffffff" }}
+          className="relative shrink-0 rounded-md bg-surface"
           aria-label="Mima — Fresh Mediterranean"
         >
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/mima-logo.png"
             alt=""
-            width={800}
-            height={426}
-            className="block h-9 w-auto max-w-[min(200px,42vw)] object-contain object-left"
-            priority
-            sizes="(max-width: 640px) 42vw, 200px"
-            unoptimized
+            width={160}
+            height={85}
+            className="mima-logo-img"
+            decoding="async"
           />
         </Link>
-        <span className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">{currentName}</span>
+
+        <div className="topnav-mobile-only">
           <Link
             href="/dashboard"
-            className="text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300"
+            className="min-w-0 max-w-[45vw] truncate text-xs font-medium text-ink-soft underline decoration-brand-sage/60 underline-offset-2"
+            title={currentName}
           >
-            Change location
+            {currentName}
           </Link>
-        </span>
-      </div>
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-        <Link
-          href="/dashboard"
-          className="rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 sm:px-3"
-        >
-          Dashboard
-        </Link>
-        <Link
-          href="/kitchen"
-          className="rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 sm:px-3"
-        >
-          Kitchen
-        </Link>
-        <Link
-          href="/dashboard/haccp"
-          className="rounded-md px-2 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/50 sm:px-3"
-        >
-          HACCP
-        </Link>
-        {canViewAdmin && (
+          <button type="button" onClick={() => void handleSignOut()} className="btn-ghost shrink-0">
+            Sign out
+          </button>
+        </div>
+
+        <div className="topnav-desktop-only">
+          <span className="topnav-location-row text-sm">
+            <span
+              className="truncate rounded-md bg-brand-sand/50 px-2 py-0.5 font-medium text-brand-green"
+              title={currentName}
+            >
+              {currentName}
+            </span>
+            <Link
+              href="/dashboard"
+              className="shrink-0 text-sm font-medium text-accent-terracotta hover:text-accent-terracotta/80"
+            >
+              Change location
+            </Link>
+          </span>
+        </div>
+
+        <div className="topnav-desktop-links">
+          <Link href="/dashboard" className="nav-link">
+            Dashboard
+          </Link>
+          <Link href="/kitchen" className="nav-link">
+            Kitchen
+          </Link>
           <Link
-            href="/admin"
-            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            href="/dashboard/haccp"
+            className="nav-link text-accent-terracotta hover:text-accent-terracotta"
           >
-            Admin
+            HACCP
           </Link>
-        )}
-        <button
-          type="button"
-          onClick={() => void handleSignOut()}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-        >
-          Sign out
-        </button>
+          {canViewAdmin && (
+            <Link href="/admin" className="btn-primary px-3 py-1.5 lg:px-3">
+              Admin
+            </Link>
+          )}
+          <button type="button" onClick={() => void handleSignOut()} className="btn-ghost">
+            Sign out
+          </button>
+        </div>
       </div>
     </nav>
   );
