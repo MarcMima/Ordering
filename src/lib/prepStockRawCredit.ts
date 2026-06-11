@@ -2,17 +2,29 @@ import type { PrepItemIngredientRow } from "@/lib/calculations";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 
 /**
- * Prep items whose on-hand stock must not reduce raw order need.
- * Marinated chicken: crediting raw Chicken from prep counts under-ordered fillet.
+ * Raw ingredients whose on-hand **finished prep** stock reduces daily raw order need
+ * (prep count × recipe qty per container). All other prep→raw links are ignored here.
  */
-export const PREP_STOCK_RAW_CREDIT_EXCLUDED_PREP_NAMES = new Set(["marinated chicken"]);
+export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
+  "aubergine",
+  "romaine lettuce",
+  "lettuce",
+  "lemon juice",
+  "greek yoghurt 10%",
+  "yoghurt",
+  "greek yogurt 10%",
+  "red onion sliced fine",
+  "red cabbage shredded",
+  "pomegranate seeds",
+  "feta cheese",
+]);
 
 function normName(name: string | null | undefined): string {
   return (name ?? "").toLowerCase().trim();
 }
 
-export function isPrepStockRawCreditExcluded(prepName: string | null | undefined): boolean {
-  return PREP_STOCK_RAW_CREDIT_EXCLUDED_PREP_NAMES.has(normName(prepName));
+export function isRawOnPrepStockCreditWhitelist(rawName: string | null | undefined): boolean {
+  return PREP_STOCK_RAW_CREDIT_RAW_NAMES.has(normName(rawName));
 }
 
 function yieldFactorForPrep(
@@ -35,19 +47,28 @@ function yieldFactorForPrep(
   return 1;
 }
 
-/** Raw base units (g/ml/pcs) already covered by finished prep on hand. */
+/** Raw base units (g/ml/pcs) covered by whitelisted finished prep on hand. */
 export function computeRawCoveredByFinishedPrep(params: {
   recipeFiltered: PrepItemIngredientRow[];
   prepStockByPrepItemId: Record<string, number>;
-  prepNameByPrepItemId: Record<string, string>;
+  rawNameByRawId: Record<string, string>;
   prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>;
+  /** Only credit when stocktake section 1 is complete for the date. */
+  prepStocktakeComplete: boolean;
 }): Record<string, number> {
-  const { recipeFiltered, prepStockByPrepItemId, prepNameByPrepItemId, prepYieldByPrepItemId } =
-    params;
+  const {
+    recipeFiltered,
+    prepStockByPrepItemId,
+    rawNameByRawId,
+    prepYieldByPrepItemId,
+    prepStocktakeComplete,
+  } = params;
   const covered: Record<string, number> = {};
+  if (!prepStocktakeComplete) return covered;
+
   for (const row of recipeFiltered) {
-    const prepName = prepNameByPrepItemId[row.prep_item_id];
-    if (isPrepStockRawCreditExcluded(prepName)) continue;
+    const rawName = rawNameByRawId[row.raw_ingredient_id];
+    if (!isRawOnPrepStockCreditWhitelist(rawName)) continue;
     const prepCount = prepStockByPrepItemId[row.prep_item_id] ?? 0;
     if (prepCount <= 0) continue;
     const factor = yieldFactorForPrep(row.prep_item_id, prepYieldByPrepItemId);
@@ -57,14 +78,16 @@ export function computeRawCoveredByFinishedPrep(params: {
   return covered;
 }
 
-/** Subtract finished-prep coverage from baseline daily raw need (per raw ingredient). */
+/** Subtract whitelisted finished-prep coverage from baseline daily raw need. */
 export function applyPrepStockCreditToDailyRawNeed(params: {
   dailyRawNeedBase: Record<string, number>;
   rawCoveredByFinishedPrep: Record<string, number>;
+  whitelistedRawIds: Iterable<string>;
 }): Record<string, number> {
-  const { dailyRawNeedBase, rawCoveredByFinishedPrep } = params;
+  const { dailyRawNeedBase, rawCoveredByFinishedPrep, whitelistedRawIds } = params;
   const out = { ...dailyRawNeedBase };
-  for (const [rawId, covered] of Object.entries(rawCoveredByFinishedPrep)) {
+  for (const rawId of whitelistedRawIds) {
+    const covered = rawCoveredByFinishedPrep[rawId] ?? 0;
     if (covered <= 0) continue;
     out[rawId] = Math.max(0, (out[rawId] ?? 0) - covered);
   }

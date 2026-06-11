@@ -36,6 +36,7 @@ import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTi
 import {
   applyPrepStockCreditToDailyRawNeed,
   computeRawCoveredByFinishedPrep,
+  isRawOnPrepStockCreditWhitelist,
 } from "@/lib/prepStockRawCredit";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
@@ -696,18 +697,23 @@ export default function OrderingPage() {
         prepItemIngredients: recipeFiltered,
         prepYieldByPrepItemId,
       });
-      const prepNameByPrepItemId = Object.fromEntries(
-        lpi.map((row) => [row.prep_item_id, row.prep_items?.name ?? ""])
+      const rawNameByRawId = Object.fromEntries(
+        rawIngredients.map((r) => [r.id, r.name ?? ""])
       );
+      const whitelistedRawIds = rawIngredients
+        .filter((r) => isRawOnPrepStockCreditWhitelist(r.name))
+        .map((r) => r.id);
       const rawCoveredByFinishedPrep = computeRawCoveredByFinishedPrep({
         recipeFiltered,
         prepStockByPrepItemId,
-        prepNameByPrepItemId,
+        rawNameByRawId,
         prepYieldByPrepItemId,
+        prepStocktakeComplete: prepComplete,
       });
       let dailyRawNeed = applyPrepStockCreditToDailyRawNeed({
         dailyRawNeedBase,
         rawCoveredByFinishedPrep,
+        whitelistedRawIds,
       });
       const mediSaladPrepItemId =
         lpi.find((row) =>
@@ -1877,9 +1883,9 @@ export default function OrderingPage() {
                 day you should use for stocktake).
               </p>
               <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-                <strong>Note:</strong> finished prep from section 1 reduces <strong>daily need</strong> via recipes
-                (prep count × ingredients per container). Section 2 raw counts are subtracted again at order time.{" "}
-                <strong>Marinated chicken</strong> prep is excluded from this credit (raw fillet ordering).
+                <strong>Note:</strong> finished prep (section 1) reduces daily need only for whitelisted raw
+                ingredients (pickles, yoghurt, aubergine, lemon juice, feta, pomegranate, …). Section 2 raw counts
+                are subtracted again at order time. Prep credit applies when section 1 stocktake is complete.
               </p>
               <p className="mt-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
                 <strong>Order packs vs stocktake:</strong> the app first computes need in <strong>base units</strong> (as
