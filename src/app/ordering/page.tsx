@@ -33,6 +33,7 @@ import {
   applyMediSaladSuggestedPacksCleanup,
   applyMediSaladVanGelderOverride,
   applyMinOrderPackThresholds,
+  locationUsesVanGelderMediSaladTub,
   passesMinOrderPackThreshold,
 } from "@/lib/orderingAdjustments";
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
@@ -171,11 +172,17 @@ function buildOrderLinesFromSuggestion(
   suggestionSupplierByRaw: Record<string, string | null>,
   rawIngredients: RawIngredient[],
   packSizesByIngredient: Record<string, IngredientPackSize[]>,
-  orderKindByRaw: Record<string, SuggestionOrderKind>
+  orderKindByRaw: Record<string, SuggestionOrderKind>,
+  locationId?: string | null
 ): Record<string, OrderLine[]> {
   const next: Record<string, OrderLine[]> = {};
+  const useVgMediTub = locationUsesVanGelderMediSaladTub(null, locationId);
+  const tomatoId = useVgMediTub
+    ? rawIngredients.find((r) => (r.name ?? "").toLowerCase().trim() === "tomato")?.id
+    : null;
   for (const [rawId, qty] of Object.entries(suggestedOrder)) {
     if (qty <= 0) continue;
+    if (tomatoId && rawId === tomatoId) continue;
     const supplierId = suggestionSupplierByRaw[rawId];
     if (!supplierId) continue;
     const ing = rawIngredients.find((r) => r.id === rawId);
@@ -360,6 +367,8 @@ export default function OrderingPage() {
     Record<string, SuggestionOrderKind>
   >({});
   const [suggestedUnassignedRawIds, setSuggestedUnassignedRawIds] = useState<string[]>([]);
+  /** Medi salad daily prep count for Pijp/Zuidas VG tub swap (from location_prep_items). */
+  const [mediSaladNeedPrep, setMediSaladNeedPrep] = useState(0);
   const [currentRawStockById, setCurrentRawStockById] = useState<Record<string, number>>({});
   const [supplierRawIdsBySupplier, setSupplierRawIdsBySupplier] = useState<Record<string, string[]>>({});
   const [newRawBySupplier, setNewRawBySupplier] = useState<Record<string, string>>({});
@@ -494,19 +503,25 @@ export default function OrderingPage() {
 
   // Load prep-based suggestion: daily need × cover until delivery *after* the next one (+ evening) − stock → packs
   useEffect(() => {
-    if (!locationId || rawIngredients.length === 0) {
+    const rawsMatchLocation =
+      rawIngredients.length > 0 &&
+      rawIngredients.every((r) => r.location_id === locationId);
+    if (!locationId || !rawsMatchLocation) {
       setPrepStocktakeComplete(false);
       setSuggestedOrder({});
       setSuggestionSupplierByRaw({});
       setSuggestionOrderKindByRaw({});
       setSuggestedUnassignedRawIds([]);
+      setMediSaladNeedPrep(0);
       setSuggestionLoadError(null);
       setSuggestionInsight(null);
       setSupplementalPackSizes([]);
       return;
     }
     const d = localCalendarDateString();
-    const rawIds = new Set(rawIngredients.map((r) => r.id));
+    const requestLocationId = locationId;
+    const rawsForRequest = rawIngredients;
+    const rawIds = new Set(rawsForRequest.map((r) => r.id));
     const rawIdList = Array.from(rawIds);
     const supabase = createClient();
     const todayForCover = new Date(`${d}T12:00:00`);
@@ -968,8 +983,9 @@ export default function OrderingPage() {
       }
       const dailyRawNeedSum = Object.values(dailyRawNeed).reduce((a, b) => a + b, 0);
       const baseOrderNeedSum = Object.values(baseSuggested).reduce((a, b) => a + b, 0);
-      if (!alive) return;
+      if (!alive || requestLocationId !== locationId) return;
       setSupplementalPackSizes(supplementalPacks);
+      setMediSaladNeedPrep(mediSaladNeedPrep);
       setSuggestedOrder(suggestedForUi);
       setSuggestionOrderKindByRaw(kindForUi);
       setSuggestionSupplierByRaw(preferredSupplierByRawId);
@@ -999,6 +1015,7 @@ export default function OrderingPage() {
       setSuggestedUnassignedRawIds([]);
       setCurrentRawStockById({});
       setSupplementalPackSizes([]);
+      setMediSaladNeedPrep(0);
       setSuggestionLoadError("Could not load order suggestion.");
       setSuggestionInsight(null);
     });
@@ -1352,26 +1369,44 @@ export default function OrderingPage() {
   /** Keep supplier cards in sync with the latest computed suggestion. */
   useEffect(() => {
     if (!locationId) return;
+    if (
+      rawIngredients.length === 0 ||
+      rawIngredients.some((r) => r.location_id !== locationId)
+    ) {
+      return;
+    }
     if (Object.keys(suggestedOrder).length === 0) return;
     const hasAssignable = Object.entries(suggestedOrder).some(
       ([rid, q]) => q > 0 && suggestionSupplierByRaw[rid]
     );
     if (!hasAssignable) return;
+    const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
+    const packCleanup = applyMediSaladSuggestedPacksCleanup({
+      locationId,
+      locationName,
+      suggestedPacks: suggestedOrder,
+      kindByRaw: suggestionOrderKindByRaw,
+      rawIngredients,
+      mediSaladNeedPrep,
+    });
     const next = buildOrderLinesFromSuggestion(
-      suggestedOrder,
+      packCleanup.suggestedPacks,
       suggestionSupplierByRaw,
       rawIngredients,
       packSizesByIngredient,
-      suggestionOrderKindByRaw
+      packCleanup.kindByRaw as Record<string, SuggestionOrderKind>,
+      locationId
     );
     setOrderBySupplier(next);
   }, [
     locationId,
+    locationOptions,
     suggestedOrder,
     suggestionSupplierByRaw,
     suggestionOrderKindByRaw,
     rawIngredients,
     packSizesByIngredient,
+    mediSaladNeedPrep,
   ]);
 
   const removeLine = (supplierId: string, index: number) => {
