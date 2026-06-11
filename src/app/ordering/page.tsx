@@ -30,6 +30,7 @@ import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   applyMaxOrderBaseCaps,
   applyMediSaladBaseSuggestedCleanup,
+  applyMediSaladSuggestedPacksCleanup,
   applyMediSaladVanGelderOverride,
   applyMinOrderPackThresholds,
   passesMinOrderPackThreshold,
@@ -726,6 +727,7 @@ export default function OrderingPage() {
       let dailyRawNeed: Record<string, number> = { ...dailyRawNeedBase };
       const mediSaladPrepItemId = mediSaladPrepItemIdFromAll;
       dailyRawNeed = applyMediSaladVanGelderOverride({
+        locationId,
         locationName,
         dailyRawNeed,
         neededByPrepItemId,
@@ -779,6 +781,7 @@ export default function OrderingPage() {
         if (isPicklingRawName(ing.name)) picklingLeadTimeRawIds.add(ing.id);
       }
       const baseSuggested = applyMediSaladBaseSuggestedCleanup({
+        locationId,
         locationName,
         mediSaladPrepItemId,
         mediSaladNeedPrep,
@@ -935,8 +938,18 @@ export default function OrderingPage() {
         rawIngredients,
         suggestedPacks: finalSuggested,
       });
-      let suggestedForUi: Record<string, number> = { ...suggestedAfterMinPacks };
-      let kindForUi: Record<string, SuggestionOrderKind> = { ...kindByRaw };
+      const mediSaladPackCleanup = applyMediSaladSuggestedPacksCleanup({
+        locationId,
+        locationName,
+        suggestedPacks: suggestedAfterMinPacks,
+        kindByRaw: kindByRaw,
+        rawIngredients,
+        mediSaladNeedPrep,
+      });
+      let suggestedForUi: Record<string, number> = { ...mediSaladPackCleanup.suggestedPacks };
+      let kindForUi: Record<string, SuggestionOrderKind> = {
+        ...(mediSaladPackCleanup.kindByRaw as Record<string, SuggestionOrderKind>),
+      };
       for (const rid of Object.keys(finalSuggested)) {
         if (finalSuggested[rid] > 0 && suggestedAfterMinPacks[rid] == null) {
           delete kindForUi[rid];

@@ -5,8 +5,18 @@ import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 const MEDI_SALAD_RAW_NAME = "medi salad 3kg";
 const MEDI_SALAD_TUB_G = 3000;
 
+/** Production location IDs that order the VG medi salad tub (name check is fallback). */
+const MEDI_SALAD_VG_TUB_LOCATION_IDS = new Set([
+  "ffcc1a45-82c3-46ea-97bb-74f94db45c68", // Mima Pijp
+  "59f20987-be63-4579-b447-2ede73320a1b", // Mima Zuidas
+]);
+
 /** Pijp + Zuidas: order VG brunoise tub instead of loose cucumber + tomato for medi salad prep. */
-export function locationUsesVanGelderMediSaladTub(locationName: string | null | undefined): boolean {
+export function locationUsesVanGelderMediSaladTub(
+  locationName: string | null | undefined,
+  locationId?: string | null
+): boolean {
+  if (locationId && MEDI_SALAD_VG_TUB_LOCATION_IDS.has(locationId)) return true;
   const n = (locationName ?? "").toLowerCase();
   return n.includes("pijp") || n.includes("zuidas");
 }
@@ -40,6 +50,7 @@ export function passesMinOrderPackThreshold(
 }
 
 export function applyMediSaladVanGelderOverride(params: {
+  locationId?: string | null;
   locationName: string | null | undefined;
   dailyRawNeed: Record<string, number>;
   neededByPrepItemId: Record<string, number>;
@@ -49,6 +60,7 @@ export function applyMediSaladVanGelderOverride(params: {
   mediSaladPrepItemId: string | null;
 }): Record<string, number> {
   const {
+    locationId,
     locationName,
     dailyRawNeed,
     neededByPrepItemId,
@@ -57,7 +69,7 @@ export function applyMediSaladVanGelderOverride(params: {
     prepYieldByPrepItemId,
     mediSaladPrepItemId,
   } = params;
-  if (!locationUsesVanGelderMediSaladTub(locationName) || !mediSaladPrepItemId) {
+  if (!locationUsesVanGelderMediSaladTub(locationName, locationId) || !mediSaladPrepItemId) {
     return dailyRawNeed;
   }
 
@@ -103,15 +115,26 @@ export function applyMediSaladVanGelderOverride(params: {
 
 /** Safety net after cover-window math: drop loose tomato; ensure VG medi tub is ordered. */
 export function applyMediSaladBaseSuggestedCleanup(params: {
+  locationId?: string | null;
   locationName: string | null | undefined;
   baseSuggested: Record<string, number>;
   rawIngredients: RawIngredient[];
   mediSaladPrepItemId: string | null;
   mediSaladNeedPrep: number;
 }): Record<string, number> {
-  const { locationName, baseSuggested, rawIngredients, mediSaladPrepItemId, mediSaladNeedPrep } =
-    params;
-  if (!locationUsesVanGelderMediSaladTub(locationName) || !mediSaladPrepItemId || mediSaladNeedPrep <= 0) {
+  const {
+    locationId,
+    locationName,
+    baseSuggested,
+    rawIngredients,
+    mediSaladPrepItemId,
+    mediSaladNeedPrep,
+  } = params;
+  if (
+    !locationUsesVanGelderMediSaladTub(locationName, locationId) ||
+    !mediSaladPrepItemId ||
+    mediSaladNeedPrep <= 0
+  ) {
     return baseSuggested;
   }
   const out = { ...baseSuggested };
@@ -125,6 +148,35 @@ export function applyMediSaladBaseSuggestedCleanup(params: {
     }
   }
   return out;
+}
+
+/** Last line of defence: never ship loose tomato on Pijp/Zuidas supplier cards. */
+export function applyMediSaladSuggestedPacksCleanup(params: {
+  locationId?: string | null;
+  locationName: string | null | undefined;
+  suggestedPacks: Record<string, number>;
+  kindByRaw: Record<string, string>;
+  rawIngredients: RawIngredient[];
+  mediSaladNeedPrep: number;
+}): { suggestedPacks: Record<string, number>; kindByRaw: Record<string, string> } {
+  const { locationId, locationName, suggestedPacks, kindByRaw, rawIngredients, mediSaladNeedPrep } =
+    params;
+  if (!locationUsesVanGelderMediSaladTub(locationName, locationId) || mediSaladNeedPrep <= 0) {
+    return { suggestedPacks, kindByRaw };
+  }
+  const out = { ...suggestedPacks };
+  const kindOut = { ...kindByRaw };
+  const tomatoId = rawIdByName(rawIngredients, "Tomato");
+  if (tomatoId) {
+    delete out[tomatoId];
+    delete kindOut[tomatoId];
+  }
+  const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
+  if (mediRawId && (out[mediRawId] ?? 0) <= 0) {
+    out[mediRawId] = Math.max(1, mediSaladNeedPrep);
+    kindOut[mediRawId] = kindOut[mediRawId] ?? "pack";
+  }
+  return { suggestedPacks: out, kindByRaw: kindOut };
 }
 
 export function applyMaxOrderBaseCaps(params: {
