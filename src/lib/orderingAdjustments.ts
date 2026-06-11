@@ -69,17 +69,25 @@ export function applyMediSaladVanGelderOverride(params: {
     prepYieldByPrepItemId,
     mediSaladPrepItemId,
   } = params;
-  if (!locationUsesVanGelderMediSaladTub(locationName, locationId) || !mediSaladPrepItemId) {
+  if (!locationUsesVanGelderMediSaladTub(locationName, locationId)) {
     return dailyRawNeed;
   }
-
-  const needPrep = neededByPrepItemId[mediSaladPrepItemId] ?? 0;
-  if (needPrep <= 0) return dailyRawNeed;
 
   const cucumberId = rawIdByName(rawIngredients, "Cucumber");
   const tomatoId = rawIdByName(rawIngredients, "Tomato");
   const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
   const out = { ...dailyRawNeed };
+
+  if (!mediSaladPrepItemId) {
+    if (tomatoId) out[tomatoId] = 0;
+    return out;
+  }
+
+  const needPrep = neededByPrepItemId[mediSaladPrepItemId] ?? 0;
+  if (needPrep <= 0) {
+    if (tomatoId) out[tomatoId] = 0;
+    return out;
+  }
 
   for (const row of recipeFiltered) {
     if (row.prep_item_id !== mediSaladPrepItemId) continue;
@@ -130,16 +138,15 @@ export function applyMediSaladBaseSuggestedCleanup(params: {
     mediSaladPrepItemId,
     mediSaladNeedPrep,
   } = params;
-  if (
-    !locationUsesVanGelderMediSaladTub(locationName, locationId) ||
-    !mediSaladPrepItemId ||
-    mediSaladNeedPrep <= 0
-  ) {
+  if (!locationUsesVanGelderMediSaladTub(locationName, locationId)) {
     return baseSuggested;
   }
   const out = { ...baseSuggested };
   const tomatoId = rawIdByName(rawIngredients, "Tomato");
   if (tomatoId) delete out[tomatoId];
+  if (!mediSaladPrepItemId || mediSaladNeedPrep <= 0) {
+    return out;
+  }
   const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
   if (mediRawId) {
     const existing = out[mediRawId] ?? 0;
@@ -161,7 +168,7 @@ export function applyMediSaladSuggestedPacksCleanup(params: {
 }): { suggestedPacks: Record<string, number>; kindByRaw: Record<string, string> } {
   const { locationId, locationName, suggestedPacks, kindByRaw, rawIngredients, mediSaladNeedPrep } =
     params;
-  if (!locationUsesVanGelderMediSaladTub(locationName, locationId) || mediSaladNeedPrep <= 0) {
+  if (!locationUsesVanGelderMediSaladTub(locationName, locationId)) {
     return { suggestedPacks, kindByRaw };
   }
   const out = { ...suggestedPacks };
@@ -171,10 +178,12 @@ export function applyMediSaladSuggestedPacksCleanup(params: {
     delete out[tomatoId];
     delete kindOut[tomatoId];
   }
-  const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
-  if (mediRawId && (out[mediRawId] ?? 0) <= 0) {
-    out[mediRawId] = Math.max(1, mediSaladNeedPrep);
-    kindOut[mediRawId] = kindOut[mediRawId] ?? "pack";
+  if (mediSaladNeedPrep > 0) {
+    const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
+    if (mediRawId && (out[mediRawId] ?? 0) <= 0) {
+      out[mediRawId] = Math.max(1, mediSaladNeedPrep);
+      kindOut[mediRawId] = kindOut[mediRawId] ?? "pack";
+    }
   }
   return { suggestedPacks: out, kindByRaw: kindOut };
 }

@@ -517,7 +517,7 @@ export default function OrderingPage() {
       const lpiRes = await supabase
         .from("location_prep_items")
         .select(
-          "prep_item_id, base_quantity, prep_items(id, content_amount, content_unit, recipe_output_amount, recipe_output_unit, ingredient_qty_is_per_recipe_batch, stocktake_visible)"
+          "prep_item_id, base_quantity, prep_items(id, name, content_amount, content_unit, recipe_output_amount, recipe_output_unit, ingredient_qty_is_per_recipe_batch, stocktake_visible)"
         )
         .eq("location_id", locationId);
       if (!alive) return;
