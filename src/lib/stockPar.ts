@@ -46,8 +46,7 @@ function minBaseAmountForPar(params: {
   if (!orderPack) return null;
   const basePerPack = packSizeToBaseAmount(orderPack, ing.unit ?? "");
   if (basePerPack == null || basePerPack <= 0) return null;
-  const mult = Math.max(1, orderPack.order_pack_multiple ?? 1);
-  return rule.minPacks * mult * basePerPack;
+  return rule.minPacks * basePerPack;
 }
 
 /** Top up baseSuggested when counted stock is below configured minimums. */
@@ -76,9 +75,9 @@ export function applyStockParToBaseSuggested(params: {
       const pack = orderPackByRawId[ing.id];
       if (pack) {
         const basePerPack = packSizeToBaseAmount(pack, ing.unit ?? "");
-        const mult = Math.max(1, pack.order_pack_multiple ?? 1);
         if (basePerPack != null && basePerPack > 0) {
-          orderBase = rule.orderPacks * mult * basePerPack;
+          // orderPacks is already in physical packs; supplier MOQ rounding happens later via order_pack_multiple.
+          orderBase = rule.orderPacks * basePerPack;
         }
       }
     }
