@@ -9,19 +9,24 @@ const STEPS = [
   { path: "/ordering", label: "Ordering", short: "3" },
 ] as const;
 
+type StepPath = (typeof STEPS)[number]["path"];
+
 const DEFAULT_STOCKTAKE_INCOMPLETE_MSG =
-  "Stocktake is nog niet compleet (finished products en/of raw ingredients). Toch doorgaan naar de volgende stap?";
+  "Stocktake is not complete yet (finished products and/or raw ingredients). Continue to the next step anyway?";
 
 export type DailyWorkflowStepperProps = {
   /** When true, clicking “Next” on Stocktake asks for confirmation before navigating. */
   warnStocktakeIncompleteNext?: boolean;
   stocktakeIncompleteMessage?: string;
+  /** Override completed styling. Defaults to route-based "previous steps are done". */
+  completedSteps?: Partial<Record<StepPath, boolean>>;
 };
 
 export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
   const {
     warnStocktakeIncompleteNext = false,
     stocktakeIncompleteMessage = DEFAULT_STOCKTAKE_INCOMPLETE_MSG,
+    completedSteps,
   } = props ?? {};
   const pathname = usePathname() ?? "";
   const router = useRouter();
@@ -69,7 +74,8 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
       <ol className="mb-4 flex flex-wrap items-center gap-2 sm:gap-3">
         {STEPS.map((step, i) => {
           const active = i === index;
-          const done = i < index;
+          const done =
+            completedSteps != null ? Boolean(completedSteps[step.path]) : i < index;
           const forwardGuard =
             pathname === "/stocktake" && warnStocktakeIncompleteNext && i > index;
           const inner = (
