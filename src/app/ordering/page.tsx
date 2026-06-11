@@ -30,6 +30,7 @@ import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   applyMaxOrderBaseCaps,
   applyMediSaladVanGelderOverride,
+  applyMinOrderPackThresholds,
 } from "@/lib/orderingAdjustments";
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
 import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTime";
@@ -905,8 +906,17 @@ export default function OrderingPage() {
           kindByRaw[rid] = "recipe";
         }
       }
-      let suggestedForUi: Record<string, number> = { ...finalSuggested };
+      const suggestedAfterMinPacks = applyMinOrderPackThresholds({
+        rawIngredients,
+        suggestedPacks: finalSuggested,
+      });
+      let suggestedForUi: Record<string, number> = { ...suggestedAfterMinPacks };
       let kindForUi: Record<string, SuggestionOrderKind> = { ...kindByRaw };
+      for (const rid of Object.keys(finalSuggested)) {
+        if (finalSuggested[rid] > 0 && suggestedAfterMinPacks[rid] == null) {
+          delete kindForUi[rid];
+        }
+      }
       // Keep suggestions visible for all suppliers, including on-demand ones (Tuana/TFG/Gede/Java),
       // even when prep counts are incomplete.
       const suggestionLineCount = Object.keys(suggestedForUi).length;

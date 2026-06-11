@@ -2,7 +2,6 @@ import type { PrepItemIngredientRow } from "@/lib/calculations";
 import type { RawIngredient } from "@/lib/types";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 
-const MEDI_SALAD_PREP_NAME = "mediterranean salad / medi salad";
 const MEDI_SALAD_RAW_NAME = "medi salad 3kg";
 const MEDI_SALAD_TUB_G = 3000;
 
@@ -24,6 +23,11 @@ function rawIdByName(rawIngredients: RawIngredient[], name: string): string | nu
 /** Max suggested order in base units (g/ml/pcs) per delivery. */
 export const MAX_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {
   "carrot julienne": 1000,
+};
+
+/** Do not suggest an order below this pack/stocktake-unit count (wait until need is higher). */
+export const MIN_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
+  "romaine lettuce": 10,
 };
 
 export function applyMediSaladVanGelderOverride(params: {
@@ -51,11 +55,9 @@ export function applyMediSaladVanGelderOverride(params: {
   const needPrep = neededByPrepItemId[mediSaladPrepItemId] ?? 0;
   if (needPrep <= 0) return dailyRawNeed;
 
-  const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
-  if (!mediRawId) return dailyRawNeed;
-
   const cucumberId = rawIdByName(rawIngredients, "Cucumber");
   const tomatoId = rawIdByName(rawIngredients, "Tomato");
+  const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
   const out = { ...dailyRawNeed };
 
   for (const row of recipeFiltered) {
@@ -80,7 +82,13 @@ export function applyMediSaladVanGelderOverride(params: {
     out[row.raw_ingredient_id] = Math.max(0, (out[row.raw_ingredient_id] ?? 0) - fromMedi);
   }
 
-  out[mediRawId] = (out[mediRawId] ?? 0) + needPrep * MEDI_SALAD_TUB_G;
+  // Raw tomato is only used for in-house medi salad; at Pijp/Zuidas it is replaced entirely by the VG tub.
+  if (tomatoId) out[tomatoId] = 0;
+
+  if (mediRawId) {
+    out[mediRawId] = (out[mediRawId] ?? 0) + needPrep * MEDI_SALAD_TUB_G;
+  }
+
   return out;
 }
 
@@ -95,6 +103,22 @@ export function applyMaxOrderBaseCaps(params: {
     if (cap == null) continue;
     const cur = out[ing.id];
     if (cur != null && cur > cap) out[ing.id] = cap;
+  }
+  return out;
+}
+
+/** Drop lines below minimum pack count (e.g. romaine: wait until 10 heads). */
+export function applyMinOrderPackThresholds(params: {
+  rawIngredients: RawIngredient[];
+  suggestedPacks: Record<string, number>;
+}): Record<string, number> {
+  const { rawIngredients, suggestedPacks } = params;
+  const out = { ...suggestedPacks };
+  for (const ing of rawIngredients) {
+    const min = MIN_ORDER_PACKS_BY_RAW_NAME[normName(ing.name)];
+    if (min == null) continue;
+    const cur = out[ing.id];
+    if (cur != null && cur > 0 && cur < min) delete out[ing.id];
   }
   return out;
 }
