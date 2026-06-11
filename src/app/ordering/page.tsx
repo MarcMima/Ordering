@@ -1046,8 +1046,10 @@ export default function OrderingPage() {
 
         const prepIds = new Set(
           (
-            (lpiRes.data as { prep_item_id: string; prep_items: PrepItem | PrepItem[] | null }[]) ??
-            []
+            (lpiRes.data as unknown as {
+              prep_item_id: string;
+              prep_items: PrepItem | PrepItem[] | null;
+            }[]) ?? []
           )
             .filter((r) => {
               const prep = Array.isArray(r.prep_items) ? r.prep_items[0] : r.prep_items;
