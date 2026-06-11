@@ -50,15 +50,16 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
 
   const ru = rawUnitLower(ing);
   const packListSt = packsForStocktake(packs);
-  const boxForGram = getGramStockBoxPack(ing, packListSt);
-  const countGramsAsBoxes = ru === "g" && boxForGram != null;
-  const defPack = getDefaultPack(ing, packs);
   const masterBase = baseAmountFromRawMaster(ing);
-  const countWithMaster = !countGramsAsBoxes && masterBase != null && masterBase > 0;
+  const countWithMaster = masterBase != null && masterBase > 0;
+  const boxForGram = getGramStockBoxPack(ing, packListSt);
+  const countGramsAsBoxes = !countWithMaster && ru === "g" && boxForGram != null;
+  const defPack = getDefaultPack(ing, packs);
   const baseStock = rawCounts[ing.id] ?? 0;
   const countWithDefPack =
-    !countGramsAsBoxes && !countWithMaster && defPack != null && defPack.baseAmount > 0;
-  const countGramsPlain = ru === "g" && !countGramsAsBoxes && !countWithMaster && !countWithDefPack;
+    !countWithMaster && !countGramsAsBoxes && defPack != null && defPack.baseAmount > 0;
+  const countGramsPlain =
+    ru === "g" && !countGramsAsBoxes && !countWithMaster && !countWithDefPack;
   const countKg = ru === "kg";
   const countMlPlain = ru === "ml" && !countWithMaster && !countWithDefPack;
 
@@ -74,7 +75,12 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
   } else if (countWithMaster && masterBase != null) {
     const stockLabel = ing.stocktake_unit_label?.trim() ?? "unit";
     const amt = ing.stocktake_content_amount;
-    unitHint = `${stockLabel}: ${amt != null ? formatDecimal2(Number(amt)) : "—"} ${ing.stocktake_content_unit ?? ""}`;
+    const unit = ing.stocktake_content_unit ?? "";
+    const labelLc = stockLabel.toLowerCase();
+    unitHint =
+      labelLc === "piece" || labelLc === "pieces"
+        ? `Pieces (~${amt != null ? formatDecimal2(Number(amt)) : "—"} ${unit} each)`
+        : `${stockLabel}: ${amt != null ? formatDecimal2(Number(amt)) : "—"} ${unit}`;
     value =
       rawCounts[ing.id] === undefined ? "" : formatDecimal2(baseStock / masterBase);
   } else if (countWithDefPack && defPack) {

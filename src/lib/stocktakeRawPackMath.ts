@@ -104,13 +104,13 @@ export function basePerOneStocktakeInputUnit(
 ): number | null {
   const ru = rawUnitLower(ing);
   const packListSt = packsForStocktake(packs);
+  const masterBase = baseAmountFromRawMaster(ing);
+  const countWithMaster = masterBase != null && masterBase > 0;
+  if (countWithMaster && masterBase != null) return masterBase;
+
   const boxForGram = getGramStockBoxPack(ing, packListSt);
   const countGramsAsBoxes = ru === "g" && boxForGram != null;
   if (countGramsAsBoxes && boxForGram) return boxForGram.baseAmount;
-
-  const masterBase = baseAmountFromRawMaster(ing);
-  const countWithMaster = !countGramsAsBoxes && masterBase != null && masterBase > 0;
-  if (countWithMaster && masterBase != null) return masterBase;
 
   const defPack = getDefaultPack(ing, packs);
   const countWithDefPack =
@@ -124,6 +124,16 @@ export function basePerOneStocktakeInputUnit(
 export function stocktakeOrderUnitLabel(ing: RawIngredient, packs: IngredientPackSize[]): string {
   const ru = rawUnitLower(ing);
   const packListSt = packsForStocktake(packs);
+  const masterBase = baseAmountFromRawMaster(ing);
+  const countWithMaster = masterBase != null && masterBase > 0;
+  if (countWithMaster && ing.stocktake_unit_label?.trim()) {
+    const amt = ing.stocktake_content_amount;
+    const u = ing.stocktake_content_unit;
+    const amtStr =
+      amt != null && Number.isFinite(Number(amt)) ? formatDecimal2(Number(amt)) : String(amt ?? "");
+    return `${ing.stocktake_unit_label.trim()}${amt != null && u ? ` (${amtStr} ${u})` : ""}`;
+  }
+
   const boxForGram = getGramStockBoxPack(ing, packListSt);
   const countGramsAsBoxes = ru === "g" && boxForGram != null;
   if (countGramsAsBoxes && boxForGram) {
@@ -133,19 +143,9 @@ export function stocktakeOrderUnitLabel(ing: RawIngredient, packs: IngredientPac
     return `box (~${gpgStr} g)`;
   }
 
-  const masterBase = baseAmountFromRawMaster(ing);
-  const countWithMaster = !countGramsAsBoxes && masterBase != null && masterBase > 0;
-  if (countWithMaster && ing.stocktake_unit_label?.trim()) {
-    const amt = ing.stocktake_content_amount;
-    const u = ing.stocktake_content_unit;
-    const amtStr =
-      amt != null && Number.isFinite(Number(amt)) ? formatDecimal2(Number(amt)) : String(amt ?? "");
-    return `${ing.stocktake_unit_label.trim()}${amt != null && u ? ` (${amtStr} ${u})` : ""}`;
-  }
-
   const defPack = getDefaultPack(ing, packs);
   const countWithDefPack =
-    !countGramsAsBoxes && !countWithMaster && defPack != null && defPack.baseAmount > 0;
+    !countWithMaster && defPack != null && defPack.baseAmount > 0;
   if (countWithDefPack && defPack) {
     const sz = Number(defPack.pack.size);
     const sizeStr = Number.isFinite(sz) ? formatDecimal2(sz) : String(defPack.pack.size);
@@ -168,6 +168,9 @@ export function getGramStockBoxPack(
       const base = packSizeToBaseAmount(p, ing.unit);
       const u = (p.size_unit || "").toLowerCase().trim();
       const gpg = p.grams_per_piece;
+      const lbl = (p.display_unit_label || "").toLowerCase().trim();
+      // Only “box-style” gram collies (e.g. produce). Bags/cartons with pcs+gpg use def-pack / master, not “~g per box”.
+      if (lbl && !lbl.includes("box")) return null;
       if (base == null || base <= 0) return null;
       if (!(u === "pcs" || u === "piece" || u === "pieces")) return null;
       if (gpg == null || gpg <= 0) return null;

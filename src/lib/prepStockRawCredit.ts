@@ -2,8 +2,8 @@ import type { PrepItemIngredientRow } from "@/lib/calculations";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 
 /**
- * Raw ingredients whose on-hand **finished prep** stock reduces daily raw order need
- * (prep count × recipe qty per container). All other prep→raw links are ignored here.
+ * Raw ingredients whose on-hand **finished prep** stock reduces order need
+ * (prep count × recipe qty per container), applied after cover-window scaling.
  */
 export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
   "aubergine",
@@ -53,18 +53,10 @@ export function computeRawCoveredByFinishedPrep(params: {
   prepStockByPrepItemId: Record<string, number>;
   rawNameByRawId: Record<string, string>;
   prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>;
-  /** Only credit when stocktake section 1 is complete for the date. */
-  prepStocktakeComplete: boolean;
 }): Record<string, number> {
-  const {
-    recipeFiltered,
-    prepStockByPrepItemId,
-    rawNameByRawId,
-    prepYieldByPrepItemId,
-    prepStocktakeComplete,
-  } = params;
+  const { recipeFiltered, prepStockByPrepItemId, rawNameByRawId, prepYieldByPrepItemId } =
+    params;
   const covered: Record<string, number> = {};
-  if (!prepStocktakeComplete) return covered;
 
   for (const row of recipeFiltered) {
     const rawName = rawNameByRawId[row.raw_ingredient_id];
@@ -76,20 +68,4 @@ export function computeRawCoveredByFinishedPrep(params: {
     covered[row.raw_ingredient_id] = (covered[row.raw_ingredient_id] ?? 0) + add;
   }
   return covered;
-}
-
-/** Subtract whitelisted finished-prep coverage from baseline daily raw need. */
-export function applyPrepStockCreditToDailyRawNeed(params: {
-  dailyRawNeedBase: Record<string, number>;
-  rawCoveredByFinishedPrep: Record<string, number>;
-  whitelistedRawIds: Iterable<string>;
-}): Record<string, number> {
-  const { dailyRawNeedBase, rawCoveredByFinishedPrep, whitelistedRawIds } = params;
-  const out = { ...dailyRawNeedBase };
-  for (const rawId of whitelistedRawIds) {
-    const covered = rawCoveredByFinishedPrep[rawId] ?? 0;
-    if (covered <= 0) continue;
-    out[rawId] = Math.max(0, (out[rawId] ?? 0) - covered);
-  }
-  return out;
 }

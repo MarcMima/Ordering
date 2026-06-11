@@ -3,6 +3,7 @@
  * All functions are pure; no side effects or component coupling.
  */
 
+import { localCalendarDateString } from "@/lib/date";
 import type { IngredientPackSize } from "@/lib/types";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import { packSizeToBaseAmount } from "@/lib/stocktakeRawPackMath";
@@ -355,6 +356,7 @@ export const DEFAULT_ORDERING_EVENING_DAY_FRACTION = 2 / 3;
 /**
  * Order quantity: one-off evening need + full days × daily need, then − stock.
  * `total = dailyNeed × (eveningFraction + coverFullDays)` — evening counts once, not per day.
+ * @deprecated Prefer {@link calcScaledNeedOverOrderWindow} with per-day revenue targets.
  */
 export function calcOrderQtyWithEveningOnce(params: {
   dailyNeed: number;
@@ -369,6 +371,79 @@ export function calcOrderQtyWithEveningOnce(params: {
   const D = Math.max(1, params.coverFullDays);
   const totalNeeded = params.dailyNeed * (f + D);
   return Math.max(0, Math.ceil(totalNeeded - params.currentStock));
+}
+
+/** Calendar dates to cover: from first upcoming delivery through the day before the next delivery. */
+export function coverWindowCalendarDates(params: {
+  today: Date;
+  deliveryDaysJs: number[];
+}): string[] {
+  const { today, deliveryDaysJs } = params;
+  if (deliveryDaysJs.length === 0) return [];
+  const toFirst = daysCoverUntilNextDelivery({ today, deliveryDays: deliveryDaysJs });
+  const coverDays = daysCoverUntilFollowingDelivery({ today, deliveryDays: deliveryDaysJs });
+  const firstDelivery = addCalendarDays(today, toFirst);
+  const dates: string[] = [];
+  for (let i = 0; i < coverDays; i++) {
+    dates.push(localCalendarDateString(addCalendarDays(firstDelivery, i)));
+  }
+  return dates;
+}
+
+function fallbackCoverCalendarDates(today: Date, count: number): string[] {
+  const dates: string[] = [];
+  for (let i = 1; i <= Math.max(1, count); i++) {
+    dates.push(localCalendarDateString(addCalendarDays(today, i)));
+  }
+  return dates;
+}
+
+/**
+ * Scale €4.500 baseline daily need across cover days (each day's revenue target) plus one evening
+ * (ordering day revenue × evening fraction).
+ */
+export function calcScaledNeedOverOrderWindow(params: {
+  /** Daily need at full capacity (€4.500); revenue targets scale this per calendar day. */
+  dailyNeedAtFullCapacity: number;
+  coverDates: string[];
+  /** Local calendar date of the ordering day (evening slice uses this day's revenue). */
+  eveningDate: string;
+  eveningFraction?: number | null;
+  /** Missing date → full-capacity day (multiplier 1). Explicit null cents → closed day. */
+  revenueCentsByDate: Record<string, number | null | undefined>;
+  fullCapacityRevenue: number | null;
+  /** Extra full days of raw need (e.g. pickling lead time), scaled by evening date revenue. */
+  extraFullDays?: number;
+}): number {
+  const {
+    dailyNeedAtFullCapacity,
+    coverDates,
+    eveningDate,
+    revenueCentsByDate,
+    fullCapacityRevenue,
+    extraFullDays = 0,
+  } = params;
+  if (dailyNeedAtFullCapacity <= 0) return 0;
+
+  const multForDate = (date: string) => {
+    const cents = revenueCentsByDate[date];
+    return getRevenueMultiplier({
+      todayRevenueCents: cents === undefined ? null : cents,
+      fullCapacityRevenue,
+    });
+  };
+
+  let sum = 0;
+  for (const date of coverDates) {
+    sum += dailyNeedAtFullCapacity * multForDate(date);
+  }
+  let f = params.eveningFraction;
+  if (f == null || !Number.isFinite(f) || f < 0) f = DEFAULT_ORDERING_EVENING_DAY_FRACTION;
+  sum += dailyNeedAtFullCapacity * f * multForDate(eveningDate);
+  if (extraFullDays > 0) {
+    sum += dailyNeedAtFullCapacity * extraFullDays * multForDate(eveningDate);
+  }
+  return sum;
 }
 
 export function aggregateDailyRawNeedFromPrep(params: {
@@ -414,53 +489,71 @@ function intervalPlanningDays(rawInterval: number | null | undefined): number {
 }
 
 /**
- * Suggested order quantity in **base units** (e.g. g) per raw ingredient:
- * `dailyNeed × (eveningFraction + effectiveCoverDays) − stock`, with evening applied once (post–17:00 window).
- * Cover days: time from the **next** delivery to the **following** delivery (see
- * {@link daysCoverUntilFollowingDelivery}), combined with Ingredient “Order planning (days)” when ≥2.
+ * Suggested order quantity in **base units** per raw ingredient:
+ * sum over cover days of (baseline daily need × that day's revenue ratio) + evening slice − stock.
+ * Baseline daily need is at €4.500; each day's target scales linearly (€2.250 → half, €9.000 → double).
  */
 export function suggestOrderBaseQuantities(params: {
   today: Date;
-  dailyRawNeed: Record<string, number>;
+  todayDateStr: string;
+  /** Daily raw need at full capacity (revenue multiplier 1). */
+  dailyRawNeedAtFullCapacity: Record<string, number>;
   currentRawStock: Record<string, number>;
+  /** Finished prep on hand (g/ml/pcs), subtracted after cover-window scaling — not from daily rate. */
+  prepStockCreditByRawId?: Record<string, number>;
   preferredSupplierByRawId: Record<string, string | null | undefined>;
   schedulesBySupplierJs: Record<string, number[]>;
   orderIntervalDaysByRawId: Record<string, number | null | undefined>;
-  /** Location: fraction of one day need for the single evening (default 2/3). */
   orderingEveningDayFraction?: number | null;
+  revenueCentsByDate: Record<string, number | null | undefined>;
+  fullCapacityRevenue: number | null;
+  /** Raw IDs that need an extra day of stock for pickling before use. */
+  picklingLeadTimeRawIds?: ReadonlySet<string>;
+  picklingLeadTimeDays?: number;
 }): Record<string, number> {
   const {
     today,
-    dailyRawNeed,
+    todayDateStr,
+    dailyRawNeedAtFullCapacity,
     currentRawStock,
+    prepStockCreditByRawId,
     preferredSupplierByRawId,
     schedulesBySupplierJs,
     orderIntervalDaysByRawId,
     orderingEveningDayFraction,
+    revenueCentsByDate,
+    fullCapacityRevenue,
+    picklingLeadTimeRawIds,
+    picklingLeadTimeDays = 0,
   } = params;
   const suggested: Record<string, number> = {};
-  for (const [rawId, dailyNeed] of Object.entries(dailyRawNeed)) {
+  for (const [rawId, dailyNeed] of Object.entries(dailyRawNeedAtFullCapacity)) {
     if (dailyNeed <= 0) continue;
     const stock = currentRawStock[rawId] ?? 0;
     const intervalDays = intervalPlanningDays(orderIntervalDaysByRawId[rawId]);
     const supplierId = preferredSupplierByRawId[rawId] ?? null;
-    let coverDays: number;
-    if (supplierId) {
-      const sched = schedulesBySupplierJs[supplierId] ?? [];
-      coverDays =
-        sched.length > 0
-          ? daysCoverUntilFollowingDelivery({ today, deliveryDays: sched })
-          : 7;
-    } else {
-      coverDays = intervalDays;
+    const sched = supplierId ? (schedulesBySupplierJs[supplierId] ?? []) : [];
+    let coverDates =
+      sched.length > 0
+        ? coverWindowCalendarDates({ today, deliveryDaysJs: sched })
+        : fallbackCoverCalendarDates(today, Math.max(intervalDays, 1));
+    if (coverDates.length < intervalDays) {
+      coverDates = fallbackCoverCalendarDates(today, intervalDays);
     }
-    const effectiveCover = Math.max(coverDays, intervalDays);
-    const base = calcOrderQtyWithEveningOnce({
-      dailyNeed,
-      coverFullDays: effectiveCover,
+    const scaledNeed = calcScaledNeedOverOrderWindow({
+      dailyNeedAtFullCapacity: dailyNeed,
+      coverDates,
+      eveningDate: todayDateStr,
       eveningFraction: orderingEveningDayFraction,
-      currentStock: stock,
+      revenueCentsByDate,
+      fullCapacityRevenue,
+      extraFullDays:
+        picklingLeadTimeRawIds?.has(rawId) && picklingLeadTimeDays > 0
+          ? picklingLeadTimeDays
+          : 0,
     });
+    const prepCredit = prepStockCreditByRawId?.[rawId] ?? 0;
+    const base = Math.max(0, Math.ceil(scaledNeed - stock - prepCredit));
     if (base > 0) suggested[rawId] = base;
   }
   return suggested;
