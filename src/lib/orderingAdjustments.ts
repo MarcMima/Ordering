@@ -25,10 +25,19 @@ export const MAX_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {
   "carrot julienne": 1000,
 };
 
-/** Do not suggest an order below this pack/stocktake-unit count (wait until need is higher). */
+/** Only suggest an order when unrounded pack count reaches this value (e.g. 10 = order when need > 9). */
 export const MIN_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
   "romaine lettuce": 10,
 };
+
+export function passesMinOrderPackThreshold(
+  rawName: string | null | undefined,
+  packCount: number
+): boolean {
+  const min = MIN_ORDER_PACKS_BY_RAW_NAME[normName(rawName)];
+  if (min == null) return packCount > 0;
+  return packCount >= min;
+}
 
 export function applyMediSaladVanGelderOverride(params: {
   locationName: string | null | undefined;
@@ -92,6 +101,32 @@ export function applyMediSaladVanGelderOverride(params: {
   return out;
 }
 
+/** Safety net after cover-window math: drop loose tomato; ensure VG medi tub is ordered. */
+export function applyMediSaladBaseSuggestedCleanup(params: {
+  locationName: string | null | undefined;
+  baseSuggested: Record<string, number>;
+  rawIngredients: RawIngredient[];
+  mediSaladPrepItemId: string | null;
+  mediSaladNeedPrep: number;
+}): Record<string, number> {
+  const { locationName, baseSuggested, rawIngredients, mediSaladPrepItemId, mediSaladNeedPrep } =
+    params;
+  if (!locationUsesVanGelderMediSaladTub(locationName) || !mediSaladPrepItemId || mediSaladNeedPrep <= 0) {
+    return baseSuggested;
+  }
+  const out = { ...baseSuggested };
+  const tomatoId = rawIdByName(rawIngredients, "Tomato");
+  if (tomatoId) delete out[tomatoId];
+  const mediRawId = rawIdByName(rawIngredients, MEDI_SALAD_RAW_NAME);
+  if (mediRawId) {
+    const existing = out[mediRawId] ?? 0;
+    if (existing <= 0) {
+      out[mediRawId] = Math.max(existing, mediSaladNeedPrep * MEDI_SALAD_TUB_G);
+    }
+  }
+  return out;
+}
+
 export function applyMaxOrderBaseCaps(params: {
   rawIngredients: RawIngredient[];
   baseSuggested: Record<string, number>;
@@ -107,7 +142,7 @@ export function applyMaxOrderBaseCaps(params: {
   return out;
 }
 
-/** Drop lines below minimum pack count (e.g. romaine: wait until 10 heads). */
+/** Drop lines below minimum pack count (checked on unrounded need, before supplier MOQ rounding). */
 export function applyMinOrderPackThresholds(params: {
   rawIngredients: RawIngredient[];
   suggestedPacks: Record<string, number>;
@@ -115,10 +150,9 @@ export function applyMinOrderPackThresholds(params: {
   const { rawIngredients, suggestedPacks } = params;
   const out = { ...suggestedPacks };
   for (const ing of rawIngredients) {
-    const min = MIN_ORDER_PACKS_BY_RAW_NAME[normName(ing.name)];
-    if (min == null) continue;
-    const cur = out[ing.id];
-    if (cur != null && cur > 0 && cur < min) delete out[ing.id];
+    if (!passesMinOrderPackThreshold(ing.name, out[ing.id] ?? 0)) {
+      delete out[ing.id];
+    }
   }
   return out;
 }

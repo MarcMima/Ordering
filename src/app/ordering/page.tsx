@@ -29,8 +29,10 @@ import { localCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   applyMaxOrderBaseCaps,
+  applyMediSaladBaseSuggestedCleanup,
   applyMediSaladVanGelderOverride,
   applyMinOrderPackThresholds,
+  passesMinOrderPackThreshold,
 } from "@/lib/orderingAdjustments";
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
 import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTime";
@@ -541,13 +543,22 @@ export default function OrderingPage() {
         const p = row.prep_items;
         if (p?.id) prepYieldByPrepItemId[p.id] = buildYieldMetaForPrepItem(p);
       }
-      const prepIdsAtLocation = [...new Set(lpi.map((row) => row.prep_item_id))];
+      const mediSaladPrepItemIdFromAll =
+        lpiAll.find((row) =>
+          (row.prep_items?.name ?? "").toLowerCase().includes("medi salad")
+        )?.prep_item_id ?? null;
+      const prepIdsAtLocation = [
+        ...new Set([
+          ...lpi.map((row) => row.prep_item_id),
+          ...(mediSaladPrepItemIdFromAll ? [mediSaladPrepItemIdFromAll] : []),
+        ]),
+      ];
 
       const [revCents, locRes, recipeRes, stockRes, supRes, siRes, prepCountRes, prepQtyRes] = await Promise.all([
         ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d),
         supabase
           .from("locations")
-          .select("full_capacity_revenue, ordering_evening_day_fraction")
+          .select("name, full_capacity_revenue, ordering_evening_day_fraction")
           .eq("id", locationId)
           .single(),
         prepIdsAtLocation.length === 0
@@ -610,9 +621,14 @@ export default function OrderingPage() {
       setSuggestionLoadError(null);
 
       const loc = locRes.data as {
+        name?: string | null;
         full_capacity_revenue?: number | null;
         ordering_evening_day_fraction?: number | null;
       } | null;
+      const locationName = loc?.name ?? "";
+      const mediSaladNeedPrep = mediSaladPrepItemIdFromAll
+        ? (lpiAll.find((row) => row.prep_item_id === mediSaladPrepItemIdFromAll)?.base_quantity ?? 1)
+        : 0;
       const recipes = (recipeRes.data as PrepItemIngredientRow[]) ?? [];
       // `prep_item_ingredients.raw_ingredient_id` may point to source-location raw IDs.
       // Remap those recipe rows by raw-ingredient name to this location's raw IDs.
@@ -685,6 +701,10 @@ export default function OrderingPage() {
         if (!prep) continue;
         neededByPrepItemId[row.prep_item_id] = row.base_quantity ?? 1;
       }
+      if (mediSaladPrepItemIdFromAll && neededByPrepItemId[mediSaladPrepItemIdFromAll] == null) {
+        const mediRow = lpiAll.find((row) => row.prep_item_id === mediSaladPrepItemIdFromAll);
+        neededByPrepItemId[mediSaladPrepItemIdFromAll] = mediRow?.base_quantity ?? 1;
+      }
       const locationPrepIds = new Set(lpi.map((row) => row.prep_item_id));
       const recipeFiltered = recipesMappedToLocation.filter(
         (r) => rawIds.has(r.raw_ingredient_id) && locationPrepIds.has(r.prep_item_id)
@@ -704,12 +724,7 @@ export default function OrderingPage() {
         prepYieldByPrepItemId,
       });
       let dailyRawNeed: Record<string, number> = { ...dailyRawNeedBase };
-      const mediSaladPrepItemId =
-        lpi.find((row) =>
-          (row.prep_items?.name ?? "").toLowerCase().includes("medi salad")
-        )?.prep_item_id ?? null;
-      const locationName =
-        locationOptions.find((l) => l.id === locationId)?.name ?? "";
+      const mediSaladPrepItemId = mediSaladPrepItemIdFromAll;
       dailyRawNeed = applyMediSaladVanGelderOverride({
         locationName,
         dailyRawNeed,
@@ -763,28 +778,34 @@ export default function OrderingPage() {
         orderPackByRawId[ing.id] = getBestPackSize(packs);
         if (isPicklingRawName(ing.name)) picklingLeadTimeRawIds.add(ing.id);
       }
-      const baseSuggested = applyMaxOrderBaseCaps({
+      const baseSuggested = applyMediSaladBaseSuggestedCleanup({
+        locationName,
+        mediSaladPrepItemId,
+        mediSaladNeedPrep,
         rawIngredients,
-        baseSuggested: applyStockParToBaseSuggested({
-        rawIngredients,
-        currentRawStock: currentStock,
-        baseSuggested: suggestOrderBaseQuantities({
-          today: todayForCover,
-          todayDateStr: d,
-          dailyRawNeedAtFullCapacity: dailyRawNeed,
-          currentRawStock: currentStock,
-          prepStockCreditByRawId,
-          preferredSupplierByRawId,
-          schedulesBySupplierJs,
-          orderIntervalDaysByRawId,
-          orderingEveningDayFraction: loc?.ordering_evening_day_fraction,
-          revenueCentsByDate,
-          fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
-          picklingLeadTimeRawIds,
-          picklingLeadTimeDays: PICKLING_LEAD_TIME_DAYS,
+        baseSuggested: applyMaxOrderBaseCaps({
+          rawIngredients,
+          baseSuggested: applyStockParToBaseSuggested({
+            rawIngredients,
+            currentRawStock: currentStock,
+            baseSuggested: suggestOrderBaseQuantities({
+              today: todayForCover,
+              todayDateStr: d,
+              dailyRawNeedAtFullCapacity: dailyRawNeed,
+              currentRawStock: currentStock,
+              prepStockCreditByRawId,
+              preferredSupplierByRawId,
+              schedulesBySupplierJs,
+              orderIntervalDaysByRawId,
+              orderingEveningDayFraction: loc?.ordering_evening_day_fraction,
+              revenueCentsByDate,
+              fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
+              picklingLeadTimeRawIds,
+              picklingLeadTimeDays: PICKLING_LEAD_TIME_DAYS,
+            }),
+            orderPackByRawId,
+          }),
         }),
-        orderPackByRawId,
-      }),
       });
       const baseRawIds = Object.keys(baseSuggested);
       /**
@@ -889,6 +910,8 @@ export default function OrderingPage() {
         if (baseAmt <= 0) continue;
         const pc = packCounts[rid];
         if (pc != null && pc > 0) {
+          const ing = rawIngredients.find((r) => r.id === rid);
+          if (!passesMinOrderPackThreshold(ing?.name, pc)) continue;
           const entry = packAndUnitByRawId[rid];
           const mult = entry?.pack?.order_pack_multiple ?? 1;
           finalSuggested[rid] = roundUpToMultiple(pc, mult);
@@ -899,7 +922,9 @@ export default function OrderingPage() {
         const mergedPacks = packsForRawMerged(rid);
         const bps = ing ? basePerOneStocktakeInputUnit(ing, mergedPacks) : null;
         if (bps != null && bps > 0) {
-          finalSuggested[rid] = Math.max(1, Math.ceil(baseAmt / bps));
+          const stocktakePcs = Math.max(1, Math.ceil(baseAmt / bps));
+          if (!passesMinOrderPackThreshold(ing?.name, stocktakePcs)) continue;
+          finalSuggested[rid] = stocktakePcs;
           kindByRaw[rid] = "stocktake";
         } else {
           finalSuggested[rid] = Math.max(1, Math.ceil(baseAmt));
@@ -1311,14 +1336,9 @@ export default function OrderingPage() {
     return new Set(sortedSuppliers.filter((s) => !visible.has(s.id)).map((s) => s.id));
   }, [sortedSuppliers, visibleSuppliers]);
 
-  /**
-   * When order lines are empty, fill supplier cards from the computed suggestion (including when
-   * supplemental pack rows load later). Does not overwrite lines once the user has any lines.
-   */
+  /** Keep supplier cards in sync with the latest computed suggestion. */
   useEffect(() => {
     if (!locationId) return;
-    const anyLines = Object.values(orderBySupplier).some((a) => a.length > 0);
-    if (anyLines) return;
     if (Object.keys(suggestedOrder).length === 0) return;
     const hasAssignable = Object.entries(suggestedOrder).some(
       ([rid, q]) => q > 0 && suggestionSupplierByRaw[rid]
@@ -1331,11 +1351,9 @@ export default function OrderingPage() {
       packSizesByIngredient,
       suggestionOrderKindByRaw
     );
-    if (Object.keys(next).length === 0) return;
     setOrderBySupplier(next);
   }, [
     locationId,
-    orderBySupplier,
     suggestedOrder,
     suggestionSupplierByRaw,
     suggestionOrderKindByRaw,
