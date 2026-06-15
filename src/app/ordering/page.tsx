@@ -16,6 +16,7 @@ import {
   isRawDeliverableTomorrow,
   supplierScheduleDayToJsDay,
   aggregateDailyRawNeedFromPrep,
+  dedupePrepItemIngredientRows,
   suggestOrderBaseQuantities,
   baseAmountsToPackCounts,
   getBestPackSize,
@@ -675,6 +676,7 @@ export default function OrderingPage() {
           })
           .filter((row): row is PrepItemIngredientRow => Boolean(row));
       }
+      recipesMappedToLocation = dedupePrepItemIngredientRows(recipesMappedToLocation);
       const stockList = (stockRes.data as { raw_ingredient_id: string; quantity: number }[]) ?? [];
       const prepStockRows =
         (prepQtyRes.data as { prep_item_id: string; quantity: number }[]) ?? [];

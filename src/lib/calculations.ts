@@ -314,6 +314,21 @@ export type PrepItemIngredientRow = {
   quantity_per_unit: number;
 };
 
+/** One row per prep→raw link (DB may store duplicate rows per location before ID remap). */
+export function dedupePrepItemIngredientRows(
+  rows: PrepItemIngredientRow[]
+): PrepItemIngredientRow[] {
+  const seen = new Set<string>();
+  const out: PrepItemIngredientRow[] = [];
+  for (const row of rows) {
+    const key = `${row.prep_item_id}:${row.raw_ingredient_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
 /**
  * From "to make" per prep item and recipe (prep_item_ingredients), compute how much of each
  * raw ingredient is needed. Then subtract current raw stock to get suggested order quantity.
