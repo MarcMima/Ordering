@@ -232,26 +232,26 @@ export function LeveranciersDocumentsPanel({
   return (
     <div className="space-y-6">
       {err && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+        <div className="alert-error rounded-xl px-4 py-3 text-sm">
           {err}
         </div>
       )}
 
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="help-text">
         Suppliers come from your location&apos;s ordering list (Admin → Suppliers). You can attach several files per
         supplier — for example a completed questionnaire and a food safety certificate (FSSC, etc.). Use PDF or images.
       </p>
 
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <p className="help-text">Loading…</p>
       ) : !locationId ? (
-        <p className="text-sm text-amber-800 dark:text-amber-200">Choose a location in the header first.</p>
+        <p className="text-sm text-accent-terracotta">Choose a location in the header first.</p>
       ) : masterSuppliers.length === 0 && orphanHaccp.length === 0 ? (
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-400">
+        <div className="card help-text">
           <p>No suppliers for this location yet.</p>
           <p className="mt-2">
             Add them under{" "}
-            <Link href="/admin" className="font-medium text-zinc-900 underline dark:text-zinc-100">
+            <Link href="/admin" className="font-medium text-ink underline">
               Admin → Suppliers
             </Link>
             , then return here. You can also add a one-off name below for a supplier that is not in the ordering list.
@@ -260,7 +260,7 @@ export function LeveranciersDocumentsPanel({
       ) : null}
 
       {!loading && locationId && (masterSuppliers.length > 0 || orphanHaccp.length > 0) && (
-        <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/40">
+        <ul className="divide-y divide-brand-green/10 card">
           {masterSuppliers.map((s) => {
             const h = haccpByNorm.get(normName(s.name)) ?? null;
             const paths = documentPathsForSupplier(h);
@@ -301,13 +301,13 @@ export function LeveranciersDocumentsPanel({
         </ul>
       )}
 
-      <div className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50/80 p-4 dark:border-zinc-600 dark:bg-zinc-900/40">
-        <p className="mb-3 text-sm font-medium text-zinc-800 dark:text-zinc-200">
+      <div className="rounded-xl border border-dashed border-brand-green/15 bg-background/80 p-4">
+        <p className="mb-3 text-sm font-medium text-ink">
           Supplier not in the list above?
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="min-w-[12rem] flex-1 text-sm">
-            <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Name</span>
+            <span className="mb-1 block text-ink-soft">Name</span>
             <input
               className="input w-full"
               value={newName}
@@ -325,7 +325,7 @@ export function LeveranciersDocumentsPanel({
             type="button"
             disabled={adding || !newName.trim()}
             onClick={() => void addExtraSupplier()}
-            className="rounded-xl bg-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-900 disabled:opacity-50 dark:bg-zinc-700 dark:text-zinc-100"
+            className="btn-secondary rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
           >
             {adding ? "Adding…" : "Add row"}
           </button>
@@ -362,17 +362,17 @@ function SupplierDocRow({
     <li className="px-4 py-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-[10rem]">
-          <span className="font-medium text-zinc-900 dark:text-zinc-50">{label}</span>
-          {isOrphan && <span className="ml-2 text-xs text-zinc-400">(extra)</span>}
+          <span className="font-medium text-ink">{label}</span>
+          {isOrphan && <span className="ml-2 text-xs text-ink-soft/60">(extra)</span>}
         </div>
 
         <div className="flex flex-1 flex-col gap-2 sm:items-end">
           <label className="text-sm sm:text-right">
-            <span className="mb-1 block text-zinc-500 sm:hidden">Add document</span>
+            <span className="mb-1 block text-ink-soft/80 sm:hidden">Add document</span>
             <input
               type="file"
               accept=".pdf,image/*,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="max-w-full text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-100 file:px-2 file:py-1 file:text-sm dark:text-zinc-400 dark:file:bg-zinc-700 sm:max-w-[16rem]"
+              className="max-w-full text-xs text-ink-soft file:mr-2 file:rounded-lg file:border-0 file:bg-brand-sand/50 file:px-2 file:py-1 file:text-sm sm:max-w-[16rem]"
               disabled={busy}
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -385,26 +385,26 @@ function SupplierDocRow({
       </div>
 
       {paths.length > 0 ? (
-        <ul className="mt-3 space-y-2 border-t border-zinc-100 pt-3 dark:border-zinc-700/80">
+        <ul className="mt-3 space-y-2 border-t border-brand-green/10 pt-3">
           {paths.map((p) => (
             <li
               key={p}
               className="flex flex-wrap items-center justify-between gap-2 text-sm"
             >
-              <span className="min-w-0 truncate text-zinc-700 dark:text-zinc-300" title={fileLabel(p)}>
+              <span className="min-w-0 truncate text-ink-soft" title={fileLabel(p)}>
                 {fileLabel(p)}
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  className="rounded-lg border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  className="rounded-lg border border-brand-green/15 px-2.5 py-1 text-xs font-medium text-ink hover:bg-background"
                   onClick={() => onOpenPath(p)}
                 >
                   Open
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                  className="rounded-lg px-2 py-1 text-xs text-accent-terracotta hover:bg-brand-sand/40"
                   disabled={removingPath === p}
                   onClick={() => onRemovePath(p)}
                 >
@@ -415,7 +415,7 @@ function SupplierDocRow({
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-zinc-400">
+        <p className="mt-2 text-xs text-ink-soft/60">
           {haccp ? "No documents yet — upload one or more files above." : "Upload creates the supplier link."}
         </p>
       )}

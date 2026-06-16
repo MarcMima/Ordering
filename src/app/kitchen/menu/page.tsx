@@ -5,7 +5,7 @@ export default function KitchenMenuPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-500 dark:bg-zinc-900">
+        <div className="flex min-h-screen items-center justify-center bg-background text-ink-soft/80">
           Loading…
         </div>
       }

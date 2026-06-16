@@ -63,18 +63,18 @@ export function ThermometerForm() {
 
   return (
     <div className="max-w-lg space-y-5">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="help-text">
         Boiling water target ≥ 100 °C; ice melting target 0 °C. Deviation = largest deviation from these targets.
       </p>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Test date</span>
+        <span className="mb-1 block font-medium text-ink">Test date</span>
         <input type="date" className="input" value={datum} onChange={(e) => setDatum(e.target.value)} />
       </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Boiling temperature (°C)</span>
+          <span className="mb-1 block text-ink-soft">Boiling temperature (°C)</span>
           <input
             className={temperatureInputClass(kokSt)}
             inputMode="decimal"
@@ -84,7 +84,7 @@ export function ThermometerForm() {
           />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Ice melting temperature (°C)</span>
+          <span className="mb-1 block text-ink-soft">Ice melting temperature (°C)</span>
           <input
             className={temperatureInputClass(smSt)}
             inputMode="decimal"
@@ -97,11 +97,7 @@ export function ThermometerForm() {
 
       {afwijking != null && (
         <div
-          className={`rounded-lg border px-3 py-2 text-sm ${
-            warn
-              ? "border-amber-400 bg-amber-50 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
-              : "border-zinc-200 bg-zinc-50 text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-          }`}
+          className={`rounded-lg border px-3 py-2 text-sm ${ warn ? "border-accent-orange bg-brand-sand/60 text-ink" : "border-brand-green/10 bg-background text-ink " }`}
         >
           <strong>Calculated deviation:</strong> {afwijking.toFixed(2)} °C
           {warn && (
@@ -113,12 +109,12 @@ export function ThermometerForm() {
       )}
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Corrective action (optional)</span>
+        <span className="mb-1 block font-medium text-ink">Corrective action (optional)</span>
         <textarea className="input min-h-[72px]" value={maatregel} onChange={(e) => setMaatregel(e.target.value)} />
       </label>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Initials</span>
+        <span className="mb-1 block font-medium text-ink">Initials</span>
         <input className="input" value={paraaf} onChange={(e) => setParaaf(e.target.value)} />
       </label>
 
@@ -127,11 +123,11 @@ export function ThermometerForm() {
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save test"}
         </button>
-        {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
+        {message && <span className="help-text">{message}</span>}
       </div>
     </div>
   );

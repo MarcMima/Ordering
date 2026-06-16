@@ -191,18 +191,18 @@ export function IngangscontroleForm({
 
     return (
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{supplier}</h2>
-        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+        <h2 className="section-title">{supplier}</h2>
+        <div className="overflow-x-auto rounded-xl border border-brand-green/10">
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-zinc-200 bg-zinc-50 text-left dark:border-zinc-600 dark:bg-zinc-800/90">
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">#</th>
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Product</th>
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Type</th>
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Temperature (°C)</th>
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Packaging</th>
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Use by date</th>
-                <th className="px-2 py-2 font-medium text-zinc-700 dark:text-zinc-200">Correct</th>
+              <tr className="border-b border-brand-green/10 bg-background text-left">
+                <th className="px-2 py-2 font-medium text-ink-soft">#</th>
+                <th className="px-2 py-2 font-medium text-ink-soft">Product</th>
+                <th className="px-2 py-2 font-medium text-ink-soft">Type</th>
+                <th className="px-2 py-2 font-medium text-ink-soft">Temperature (°C)</th>
+                <th className="px-2 py-2 font-medium text-ink-soft">Packaging</th>
+                <th className="px-2 py-2 font-medium text-ink-soft">Use by date</th>
+                <th className="px-2 py-2 font-medium text-ink-soft">Correct</th>
               </tr>
             </thead>
             <tbody>
@@ -214,8 +214,8 @@ export function IngangscontroleForm({
                     ? lteMaxStatus(r.temperatuur, 7)
                     : "empty";
                 return (
-                  <tr key={`${supplier}-${j}`} className="border-b border-zinc-100 dark:border-zinc-700/80">
-                    <td className="px-2 py-1.5 tabular-nums text-zinc-500">{j + 1}</td>
+                  <tr key={`${supplier}-${j}`} className="border-b border-brand-green/10">
+                    <td className="px-2 py-1.5 tabular-nums text-ink-soft/80">{j + 1}</td>
                     <td className="p-1">
                       <input
                         className="input w-full min-w-[8rem] py-1 text-sm"
@@ -313,13 +313,13 @@ export function IngangscontroleForm({
 
   return (
     <div className="space-y-8">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="help-text">
         Five products per supplier: Bidfood and Van Gelder. One check date applies to all lines. Fresh (V): temperature
         colours follow max 7 °C (green below, amber on 7 °C, red above 7,1 °C).
       </p>
 
       <label className="block max-w-xs text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Check date</span>
+        <span className="mb-1 block font-medium text-ink">Check date</span>
         <input
           type="date"
           className="input w-full"
@@ -336,7 +336,7 @@ export function IngangscontroleForm({
       {renderTable(1)}
 
       <label className="block max-w-sm text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Sign-off (initials)</span>
+        <span className="mb-1 block font-medium text-ink">Sign-off (initials)</span>
         <input
           className="input w-full"
           value={signOff}
@@ -350,11 +350,11 @@ export function IngangscontroleForm({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
+        {message && <span className="help-text">{message}</span>}
       </div>
     </div>
   );

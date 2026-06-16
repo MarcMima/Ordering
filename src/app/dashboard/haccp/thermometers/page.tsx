@@ -44,29 +44,29 @@ export default function ThermometersPage() {
 
   return (
     <HaccpFormGate formKey={APP_FORM_KEYS.haccp_thermometers}>
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-2xl px-4 py-6 pb-24 sm:px-6">
         <div className="mb-6">
           <Link
             href="/dashboard/haccp"
-            className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="text-sm font-medium text-ink-soft/80 hover:text-ink"
           >
             ← HACCP overview
           </Link>
         </div>
-        <h1 className="mb-2 text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
+        <h1 className="mb-2 section-title text-xl sm:text-2xl">
           Thermometer test
         </h1>
-        <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mb-6 help-text">
           Intended as a quarterly check. After a passing test without corrective action, the overview moves this
           card to the bottom and tones it down for {THERMOMETER_QUIET_WEEKS} weeks.
         </p>
 
-        {loadingLatest && <p className="mb-6 text-sm text-zinc-500">Loading…</p>}
+        {loadingLatest && <p className="mb-6 help-text">Loading…</p>}
 
         {!loadingLatest && quiet && latest && quietEnd && (
-          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
+          <div className="mb-6 badge-success rounded-xl border px-4 py-3 text-sm">
             <strong>Quiet period.</strong> Last test on {latest.datum} was within tolerance and no corrective action
             was recorded. Routine prominence returns from{" "}
             <span className="font-medium tabular-nums">
@@ -79,11 +79,11 @@ export default function ThermometersPage() {
         {!loadingLatest && !quiet && <ThermometerForm />}
 
         {!loadingLatest && quiet && (
-          <details className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
-            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-800 dark:text-zinc-100 [&::-webkit-details-marker]:hidden">
-              <span className="underline decoration-zinc-400 underline-offset-2">Optional: record another test</span>
+          <details className="card">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
+              <span className="underline decoration-brand-tan underline-offset-2">Optional: record another test</span>
             </summary>
-            <div className="border-t border-zinc-200 p-4 dark:border-zinc-600">
+            <div className="border-t border-brand-green/10 p-4">
               <ThermometerForm />
             </div>
           </details>

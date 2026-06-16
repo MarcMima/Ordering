@@ -50,11 +50,7 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-center text-[11px] font-medium leading-tight transition-colors touch-manipulation sm:min-h-0 sm:px-1.5 sm:text-xs ${
-                isActive
-                  ? "text-brand-green"
-                  : "text-ink-soft/70 hover:text-brand-green"
-              }`}
+              className={`flex min-h-[3.25rem] min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-center text-[11px] font-medium leading-tight transition-colors touch-manipulation sm:min-h-0 sm:px-1.5 sm:text-xs ${ isActive ? "text-brand-green" : "text-ink-soft/70 hover:text-brand-green" }`}
               aria-current={isActive ? "page" : undefined}
             >
               <span className="text-base leading-none sm:text-lg" aria-hidden>

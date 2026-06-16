@@ -91,29 +91,29 @@ export function KitchenMenuContent() {
   const visibleItems = activeCat ? (byCategory.get(activeCat) ?? []) : [];
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-6xl px-4 py-8 pb-24 sm:px-6">
         <Link
           href="/kitchen"
-          className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          className="text-sm font-medium text-ink-soft/80 hover:text-ink"
         >
           ← Kitchen
         </Link>
-        <h1 className="mt-4 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Menu (data)</h1>
-        <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 className="mt-4 page-title">Menu (data)</h1>
+        <p className="mt-2 max-w-2xl help-text">
           Dishes from <code className="text-xs">menu_items</code>. Pick a category on the left; click a dish to see
           components (prep / raw ingredients / bowl bases) for nutrition &amp; food cost.
         </p>
 
-        {loading && <p className="mt-6 text-sm text-zinc-500">Loading…</p>}
+        {loading && <p className="mt-6 help-text">Loading…</p>}
         {err && (
-          <p className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+          <p className="mt-6 alert-error rounded-xl px-4 py-3 text-sm">
             {err}
           </p>
         )}
         {!loading && !err && items.length === 0 && (
-          <p className="mt-6 text-sm text-zinc-500">
+          <p className="mt-6 help-text">
             No menu yet. Run migrations and <code className="text-xs">supabase db push</code>.
           </p>
         )}
@@ -134,8 +134,8 @@ export function KitchenMenuContent() {
                     className={[
                       "whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors",
                       active
-                        ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                        : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50",
+                        ? "border-brand-green bg-brand-green text-white"
+                        : "border-brand-green/10 bg-surface text-ink-soft hover:border-brand-green/15 hover:bg-background ",
                     ].join(" ")}
                   >
                     {labelForCategory(cat)}
@@ -148,7 +148,7 @@ export function KitchenMenuContent() {
             </nav>
 
             <div className="min-w-0 flex-1">
-              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500">
+              <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-soft/80">
                 {labelForCategory(activeCat)}
               </h2>
               <ul className="space-y-2">
@@ -156,14 +156,14 @@ export function KitchenMenuContent() {
                   <li key={m.id}>
                     <Link
                       href={`/kitchen/menu/${m.id}`}
-                      className="flex flex-col rounded-xl border border-zinc-200 bg-white px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+                      className="flex flex-col card px-4 py-3 transition-colors hover:border-brand-green/25 hover:bg-background"
                     >
-                      <span className="font-medium text-zinc-900 dark:text-zinc-50">{m.name}</span>
-                      <span className="mt-0.5 text-xs text-zinc-500">
+                      <span className="font-medium text-ink">{m.name}</span>
+                      <span className="mt-0.5 text-xs text-ink-soft/70">
                         {m.category}
                         {m.subcategory ? ` · ${m.subcategory}` : ""}
                       </span>
-                      <span className="mt-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">Details →</span>
+                      <span className="mt-2 text-xs font-medium text-ink-soft/80">Details →</span>
                     </Link>
                   </li>
                 ))}

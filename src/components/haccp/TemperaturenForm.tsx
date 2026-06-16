@@ -188,25 +188,26 @@ export function TemperaturenForm({
   return (
     <div className="space-y-8">
       {equipmentErr && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+        <div className="alert-warning rounded-lg">
           Equipment list: {equipmentErr}. Apply migration 063 and ensure RLS allows access.
         </div>
       )}
 
       {violationCount > 0 && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+        <p className="alert-error rounded-lg">
           <strong>{violationCount}</strong> reading(s) outside the required limit (see red cells).
         </p>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Weekly temperature check</h2>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Record once per week. Pick the day of the check, then fill one row per appliance. Koeling: groen onder de
-          norm, amber op de grens (±0,1 °C), rood te warm. Warmte: groen vanaf minimum, amber net te laag, rood te koud.
+        <h2 className="section-title">Weekly temperature check</h2>
+        <p className="help-text">
+          Record once per week. Pick the day of the check, then fill one row per appliance. Cooling: green below
+          limit, amber at the limit (±0.1 °C band), red too warm. Hot holding: green from minimum up, amber slightly low,
+          red too cold.
         </p>
         <label className="block max-w-xs text-sm">
-          <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Day of check</span>
+          <span className="mb-1 block font-medium text-ink">Day of check</span>
           <select
             className="input w-full"
             value={weeklyCheckDow}
@@ -222,19 +223,19 @@ export function TemperaturenForm({
       </section>
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Equipment</h2>
-        <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+        <h2 className="mb-3 section-title">Equipment</h2>
+        <div className="overflow-x-auto rounded-xl border border-brand-green/10">
           <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/80">
-                <th className="px-2 py-2 text-left font-medium text-zinc-700 dark:text-zinc-200">Fridge / unit</th>
-                <th className="px-2 py-2 text-left font-medium text-zinc-700 dark:text-zinc-200">Norm</th>
-                <th className="px-2 py-2 text-left font-medium text-zinc-700 dark:text-zinc-200">Temperature</th>
-                <th className="px-2 py-2 text-left font-medium text-zinc-700 dark:text-zinc-200">Exact temperature</th>
-                <th className="px-2 py-2 text-center font-medium text-zinc-700 dark:text-zinc-200">FIFO</th>
-                <th className="px-2 py-2 text-center font-medium text-zinc-700 dark:text-zinc-200">Clean</th>
-                <th className="px-2 py-2 text-left font-medium text-zinc-700 dark:text-zinc-200">Corrective action</th>
-                <th className="px-2 py-2 text-left font-medium text-zinc-700 dark:text-zinc-200">Signature</th>
+              <tr className="border-b border-brand-green/10 bg-background">
+                <th className="px-2 py-2 text-left font-medium text-ink-soft">Fridge / unit</th>
+                <th className="px-2 py-2 text-left font-medium text-ink-soft">Norm</th>
+                <th className="px-2 py-2 text-left font-medium text-ink-soft">Temperature</th>
+                <th className="px-2 py-2 text-left font-medium text-ink-soft">Exact temperature</th>
+                <th className="px-2 py-2 text-center font-medium text-ink-soft">FIFO</th>
+                <th className="px-2 py-2 text-center font-medium text-ink-soft">Clean</th>
+                <th className="px-2 py-2 text-left font-medium text-ink-soft">Corrective action</th>
+                <th className="px-2 py-2 text-left font-medium text-ink-soft">Signature</th>
               </tr>
             </thead>
             <tbody>
@@ -250,11 +251,11 @@ export function TemperaturenForm({
                     ? normStatus(eq.norm_kind, eq.norm_value, row.exact_temperature as number)
                     : "empty";
                 return (
-                  <tr key={eq.id} className="border-b border-zinc-100 dark:border-zinc-700/80">
-                    <td className="whitespace-nowrap px-2 py-2 font-medium text-zinc-800 dark:text-zinc-100">
+                  <tr key={eq.id} className="border-b border-brand-green/10">
+                    <td className="whitespace-nowrap px-2 py-2 font-medium text-ink">
                       {eq.label}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-zinc-600 dark:text-zinc-300">
+                    <td className="whitespace-nowrap px-2 py-2 text-ink-soft">
                       {eq.norm_display}
                     </td>
                     <td className="p-1">
@@ -281,19 +282,13 @@ export function TemperaturenForm({
                           }
                         />
                       ) : (
-                        <span className="text-zinc-400">—</span>
+                        <span className="text-ink-soft/60">—</span>
                       )}
                     </td>
                     <td className="p-1 text-center">
                       {eq.show_fifo ? (
                         <select
-                          className={`input inline-block w-[4.5rem] py-1 text-xs ${
-                            row.fifo_ok === true
-                              ? "border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30"
-                              : row.fifo_ok === false
-                                ? "border-red-500 bg-red-50 dark:border-red-500 dark:bg-red-950/50"
-                                : ""
-                          }`}
+                          className={`input inline-block w-[4.5rem] py-1 text-xs ${ row.fifo_ok === true ? "border-brand-green bg-brand-sage/25" : row.fifo_ok === false ? "border-accent-terracotta bg-brand-sand/40" : "" }`}
                           value={
                             row.fifo_ok === true ? "yes" : row.fifo_ok === false ? "no" : ""
                           }
@@ -309,18 +304,12 @@ export function TemperaturenForm({
                           <option value="no">No</option>
                         </select>
                       ) : (
-                        <span className="text-zinc-400">—</span>
+                        <span className="text-ink-soft/60">—</span>
                       )}
                     </td>
                     <td className="p-1 text-center">
                       <select
-                        className={`input inline-block w-[4.5rem] py-1 text-xs ${
-                          row.clean_ok === true
-                            ? "border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30"
-                            : row.clean_ok === false
-                              ? "border-red-500 bg-red-50 dark:border-red-500 dark:bg-red-950/50"
-                              : ""
-                        }`}
+                        className={`input inline-block w-[4.5rem] py-1 text-xs ${ row.clean_ok === true ? "border-brand-green bg-brand-sage/25" : row.clean_ok === false ? "border-accent-terracotta bg-brand-sand/40" : "" }`}
                         value={row.clean_ok === true ? "yes" : row.clean_ok === false ? "no" : ""}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -366,7 +355,7 @@ export function TemperaturenForm({
 
       <section>
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Notes</span>
+          <span className="mb-1 block font-medium text-ink">Notes</span>
           <textarea
             className="input min-h-[88px]"
             value={opmerkingen}
@@ -374,7 +363,7 @@ export function TemperaturenForm({
           />
         </label>
         <label className="mt-4 block text-sm">
-          <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">
+          <span className="mb-1 block font-medium text-ink">
             Week sign-off (initials)
           </span>
           <input
@@ -390,11 +379,11 @@ export function TemperaturenForm({
           type="button"
           onClick={() => void save()}
           disabled={saving || equipment.length === 0}
-          className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
+        {message && <span className="help-text">{message}</span>}
       </div>
     </div>
   );

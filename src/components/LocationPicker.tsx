@@ -53,11 +53,7 @@ export function LocationPicker({
             aria-checked={selected}
             disabled={disabled}
             onClick={() => onChange(loc.id)}
-            className={`min-h-[48px] rounded-xl border px-4 py-3 text-left text-base font-medium touch-manipulation transition-colors ${
-              selected
-                ? "border-brand-green bg-brand-green text-white"
-                : "border-brand-green/20 bg-surface text-ink hover:border-brand-green/35 hover:bg-brand-sand/30"
-            }`}
+            className={`min-h-[48px] rounded-xl border px-4 py-3 text-left text-base font-medium touch-manipulation transition-colors ${ selected ? "border-brand-green bg-brand-green text-white" : "border-brand-green/20 bg-surface text-ink hover:border-brand-green/35 hover:bg-brand-sand/30" }`}
           >
             {loc.name}
           </button>

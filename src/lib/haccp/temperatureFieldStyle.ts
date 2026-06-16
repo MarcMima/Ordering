@@ -7,13 +7,10 @@
 export type TempFieldStatus = "empty" | "good" | "warn" | "bad";
 
 const BASE = "input w-full tabular-nums border transition-colors";
-const NEUTRAL = "border-zinc-200 bg-white dark:border-zinc-600 dark:bg-zinc-900";
-const GOOD =
-  "border-emerald-500 bg-emerald-50 text-emerald-950 dark:border-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-100";
-const WARN =
-  "border-amber-400 bg-amber-50 text-amber-950 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-100";
-const BAD =
-  "border-red-500 bg-red-50 text-red-900 dark:border-red-500 dark:bg-red-950/50 dark:text-red-100";
+const NEUTRAL = "border-brand-green/15 bg-surface";
+const GOOD = "border-brand-green bg-brand-sage/25 text-brand-green";
+const WARN = "border-accent-orange bg-brand-sand/60 text-ink";
+const BAD = "border-accent-terracotta bg-brand-sand/50 text-accent-terracotta";
 
 export function temperatureInputClass(status: TempFieldStatus, extra?: string): string {
   const s =

@@ -309,12 +309,12 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
         node: (
           <SectionShell key="cooling" title="Cooling" complete={completion.cooling}>
             <div className="space-y-3">
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                Product: <span className="font-medium text-zinc-900 dark:text-zinc-100">Hummus</span> (fixed).
+              <p className="help-text">
+                Product: <span className="font-medium text-ink">Hummus</span> (fixed).
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Date</span>
+                  <span className="mb-1 block text-ink-soft">Date</span>
                   <input
                     type="date"
                     className="input w-full"
@@ -325,7 +325,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Time (start)</span>
+                  <span className="mb-1 block text-ink-soft">Time (start)</span>
                   <input
                     className="input w-full"
                     placeholder="e.g. 14:30"
@@ -338,8 +338,8 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Start temp (°C)</span>
-                  <span className="mb-1 block text-xs text-zinc-500">Norm ≥ 75 °C</span>
+                  <span className="mb-1 block text-ink-soft">Start temp (°C)</span>
+                  <span className="mb-1 block text-xs text-ink-soft/70">Norm ≥ 75 °C</span>
                   <input
                     className={temperatureInputClass(
                       gteMinStatus(row.terugkoelen_temp_begin, 75),
@@ -353,8 +353,8 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">After 2 h (°C)</span>
-                  <span className="mb-1 block text-xs text-zinc-500">Target ≤ 20 °C</span>
+                  <span className="mb-1 block text-ink-soft">After 2 h (°C)</span>
+                  <span className="mb-1 block text-xs text-ink-soft/70">Target ≤ 20 °C</span>
                   <input
                     className={temperatureInputClass(
                       lteMaxStatus(row.terugkoelen_temp_2uur, 20),
@@ -368,8 +368,8 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                   />
                 </label>
                 <label className="text-sm">
-                  <span className="mb-1 block text-zinc-600 dark:text-zinc-400">After 5 h (°C)</span>
-                  <span className="mb-1 block text-xs text-zinc-500">Target ≤ 7 °C</span>
+                  <span className="mb-1 block text-ink-soft">After 5 h (°C)</span>
+                  <span className="mb-1 block text-xs text-ink-soft/70">Target ≤ 7 °C</span>
                   <input
                     className={temperatureInputClass(
                       lteMaxStatus(row.terugkoelen_temp_5uur, 7),
@@ -384,7 +384,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 </label>
               </div>
               <label className="block text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Corrective action</span>
+                <span className="mb-1 block text-ink-soft">Corrective action</span>
                 <textarea
                   className="input min-h-[64px]"
                   value={row.terugkoelen_maatregel ?? ""}
@@ -394,7 +394,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Initials</span>
+                <span className="mb-1 block text-ink-soft">Initials</span>
                 <input
                   className="input max-w-xs"
                   value={row.terugkoelen_paraaf ?? ""}
@@ -403,7 +403,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                   }
                 />
               </label>
-              <p className="text-xs text-zinc-500">Frequency (paper): 1× per week</p>
+              <p className="text-xs text-ink-soft/70">Frequency (paper): 1× per week</p>
             </div>
           </SectionShell>
         ),
@@ -448,7 +448,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
           <SectionShell key="serve" title="Serving temperature (warm / cold)" complete={completion.serve}>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Warm product</span>
+                <span className="mb-1 block text-ink-soft">Warm product</span>
                 <select
                   className="input w-full"
                   value={row.serveertemp_warm_product ?? ""}
@@ -468,7 +468,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 </select>
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Cold product</span>
+                <span className="mb-1 block text-ink-soft">Cold product</span>
                 <select
                   className="input w-full"
                   value={row.serveertemp_koud_product ?? ""}
@@ -488,8 +488,8 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 </select>
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Warm (°C)</span>
-                <span className="mb-1 block text-xs text-zinc-500">≥ 60 °C</span>
+                <span className="mb-1 block text-ink-soft">Warm (°C)</span>
+                <span className="mb-1 block text-xs text-ink-soft/70">≥ 60 °C</span>
                 <input
                   className={temperatureInputClass(gteMinStatus(row.serveertemp_warm, 60), "tabular-nums")}
                   inputMode="decimal"
@@ -500,8 +500,8 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 />
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Cold (°C)</span>
-                <span className="mb-1 block text-xs text-zinc-500">≤ 7 °C</span>
+                <span className="mb-1 block text-ink-soft">Cold (°C)</span>
+                <span className="mb-1 block text-xs text-ink-soft/70">≤ 7 °C</span>
                 <input
                   className={temperatureInputClass(lteMaxStatus(row.serveertemp_koud, 7), "tabular-nums")}
                   inputMode="decimal"
@@ -512,7 +512,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 />
               </label>
               <label className="sm:col-span-2 text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Initials</span>
+                <span className="mb-1 block text-ink-soft">Initials</span>
                 <input
                   className="input max-w-xs"
                   value={row.serveertemp_paraaf ?? ""}
@@ -521,7 +521,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                   }
                 />
               </label>
-              <p className="sm:col-span-2 text-xs text-zinc-500">Frequency (paper): 1× per week</p>
+              <p className="sm:col-span-2 text-xs text-ink-soft/70">Frequency (paper): 1× per week</p>
             </div>
           </SectionShell>
         ),
@@ -539,8 +539,8 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 productOptions={REHEATED_OPTIONS}
               />
               <label className="block max-w-xs text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-400">Reheat time (minutes)</span>
-                <span className="mb-1 block text-xs text-zinc-500">Norm: within &lt; 60 minutes</span>
+                <span className="mb-1 block text-ink-soft">Reheat time (minutes)</span>
+                <span className="mb-1 block text-xs text-ink-soft/70">Norm: within &lt; 60 minutes</span>
                 <input
                   className="input tabular-nums"
                   inputMode="decimal"
@@ -550,7 +550,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                   }
                 />
               </label>
-              <p className="text-xs text-zinc-500">Frequency (paper): 1× per week</p>
+              <p className="text-xs text-ink-soft/70">Frequency (paper): 1× per week</p>
             </div>
           </SectionShell>
         ),
@@ -593,7 +593,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
 
   return (
     <div className="space-y-10">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="help-text">
         Based on the paper form &ldquo;Registratie bereiden / serveren&rdquo;. Fryer checks are recorded under
         weekly equipment temperatures. Norms: warm ≥ 60 °C, cold ≤ 7 °C where stated.
       </p>
@@ -607,11 +607,11 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
+        {message && <span className="help-text">{message}</span>}
       </div>
     </div>
   );
@@ -633,13 +633,13 @@ function SectionShell({
   }, [complete]);
 
   return (
-    <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
+    <section className="space-y-3 card">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
+        <h2 className="section-title">{title}</h2>
         {complete && (
           <button
             type="button"
-            className="shrink-0 text-sm font-medium text-zinc-600 underline decoration-zinc-400 underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="shrink-0 text-sm font-medium text-ink-soft underline decoration-brand-tan underline-offset-2 hover:text-ink"
             onClick={() => setExpanded((e) => !e)}
           >
             {expanded ? "Minimize" : "Expand"}
@@ -656,7 +656,7 @@ function SectionShell({
         {children}
         {complete && !expanded && (
           <div
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white to-transparent dark:from-zinc-800/95 dark:to-transparent"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white to-transparent"
             aria-hidden
           />
         )}
@@ -689,10 +689,10 @@ function MetingenBlock({
   return (
     <SectionShell complete={complete} title={title}>
       <div className="space-y-3">
-        {subtitle && <p className="text-sm text-zinc-600 dark:text-zinc-400">{subtitle}</p>}
+        {subtitle && <p className="help-text">{subtitle}</p>}
         <MetingenTable rows={rows} onChange={onRowsChange} norm={norm} productOptions={productOptions} />
-        <p className="text-xs text-zinc-500">{frequency}</p>
-        {footerNote && <p className="text-xs text-zinc-500">{footerNote}</p>}
+        <p className="text-xs text-ink-soft/70">{frequency}</p>
+        {footerNote && <p className="text-xs text-ink-soft/70">{footerNote}</p>}
       </div>
     </SectionShell>
   );
@@ -721,7 +721,7 @@ function MetingenTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 text-left dark:border-zinc-600">
+          <tr className="border-b border-brand-green/10 text-left">
             <th className="py-2 pr-2">Date</th>
             <th className="py-2 pr-2">Product</th>
             <th className="py-2 pr-2">Temp (°C)</th>
@@ -732,7 +732,7 @@ function MetingenTable({
         </thead>
         <tbody>
           {rows.map((line, i) => (
-            <tr key={i} className="border-b border-zinc-100 dark:border-zinc-700/80">
+            <tr key={i} className="border-b border-brand-green/10">
               <td className="py-1.5 pr-2">
                 <input
                   type="date"
@@ -774,7 +774,7 @@ function MetingenTable({
                   onChange={(e) => patch(i, { temp: parseNum(e.target.value) })}
                 />
               </td>
-              <td className="py-1.5 pr-2 text-xs text-zinc-500">{norm}</td>
+              <td className="py-1.5 pr-2 text-xs text-ink-soft/70">{norm}</td>
               <td className="py-1.5 pr-2">
                 <input
                   className="input py-1 text-sm"

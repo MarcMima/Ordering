@@ -7,32 +7,32 @@ import { useLocation } from "@/contexts/LocationContext";
 import { getHaccpStoreId } from "@/lib/haccp/types";
 import { WEEKDAY_LABELS_EN_SHORT } from "@/lib/haccp/week";
 
-/** Afstemming op KHN schoonmaakschema: D=dagelijks W=wekelijks M=maandelijks N=na gebruik */
+/** KHN cleaning schedule keys: D=daily W=weekly M=monthly N=after use */
 const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string; frequency: string }[] = [
-  { key: "vriezers", label: "Vriezers", frequency: "D · M" },
-  { key: "verdampers", label: "Verdampers", frequency: "D · M" },
-  { key: "magazijnstellingen", label: "Magazijnstellingen", frequency: "D · M" },
-  { key: "schappen", label: "Schappen / stellingen", frequency: "D · M" },
-  { key: "koelingen", label: "Koelingen", frequency: "D" },
-  { key: "frituren", label: "Frituren", frequency: "D · W" },
-  { key: "afzuiging", label: "Afzuiging (incl. roosters)", frequency: "D · W" },
-  { key: "wanden", label: "Wanden", frequency: "D · W" },
+  { key: "vriezers", label: "Freezers", frequency: "D · M" },
+  { key: "verdampers", label: "Evaporators", frequency: "D · M" },
+  { key: "magazijnstellingen", label: "Warehouse shelving", frequency: "D · M" },
+  { key: "schappen", label: "Shelves / racks", frequency: "D · M" },
+  { key: "koelingen", label: "Refrigeration units", frequency: "D" },
+  { key: "frituren", label: "Fryers", frequency: "D · W" },
+  { key: "afzuiging", label: "Exhaust (incl. filters)", frequency: "D · W" },
+  { key: "wanden", label: "Walls", frequency: "D · W" },
   { key: "bain_marie", label: "Bain-marie", frequency: "D · W" },
-  { key: "saladiere", label: "Saladiere", frequency: "D" },
+  { key: "saladiere", label: "Salad bars", frequency: "D" },
   { key: "grill", label: "Grill", frequency: "D" },
-  { key: "werkbanken", label: "Werkbanken", frequency: "D" },
-  { key: "vloer", label: "Vloer", frequency: "D" },
-  { key: "vaatwasser", label: "Vaatwasser", frequency: "D" },
-  { key: "afvalbakken", label: "Afvalbakken", frequency: "D" },
-  { key: "schoonmaakmateriaal", label: "Schoonmaakmateriaal", frequency: "D" },
-  { key: "handcontactpunten", label: "Handcontactpunten", frequency: "D" },
-  { key: "handenwas", label: "Handenwasgelegenheid", frequency: "D" },
-  { key: "spoelbakken", label: "Spoelbakken", frequency: "D" },
-  { key: "magnetron", label: "Magnetron", frequency: "D · N" },
-  { key: "snijgereedschap", label: "Snijgereedschap", frequency: "D · N" },
-  { key: "snijplanken", label: "Snijplanken", frequency: "D · N" },
-  { key: "keukenmachines", label: "Keukenmachines", frequency: "D · N" },
-  { key: "kleine_materialen", label: "Kleine productiematerialen", frequency: "D · N" },
+  { key: "werkbanken", label: "Work tables", frequency: "D" },
+  { key: "vloer", label: "Floor", frequency: "D" },
+  { key: "vaatwasser", label: "Dishwasher", frequency: "D" },
+  { key: "afvalbakken", label: "Waste bins", frequency: "D" },
+  { key: "schoonmaakmateriaal", label: "Cleaning supplies", frequency: "D" },
+  { key: "handcontactpunten", label: "High-touch surfaces", frequency: "D" },
+  { key: "handenwas", label: "Hand-wash station", frequency: "D" },
+  { key: "spoelbakken", label: "Sinks", frequency: "D" },
+  { key: "magnetron", label: "Microwave", frequency: "D · N" },
+  { key: "snijgereedschap", label: "Cutting tools", frequency: "D · N" },
+  { key: "snijplanken", label: "Cutting boards", frequency: "D · N" },
+  { key: "keukenmachines", label: "Kitchen machines", frequency: "D · N" },
+  { key: "kleine_materialen", label: "Small production items", frequency: "D · N" },
 ];
 
 function bool7(v: unknown): (boolean | null)[] {
@@ -132,22 +132,22 @@ export function SchoonmaakForm({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="help-text">
         Tap each cell: · → ✓ → ✗ → · (n/a / clean / not clean). Frequentie volgens schoonmaakschema (D=dagelijks,
         W=wekelijks, M=maandelijks, N=na gebruik).
       </p>
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+      <div className="overflow-x-auto rounded-xl border border-brand-green/10">
         <table className="w-full min-w-[980px] border-collapse text-xs sm:text-sm">
           <thead>
-            <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/80">
-              <th className="sticky left-0 z-10 bg-zinc-50 px-2 py-2 text-left font-medium dark:bg-zinc-800">
+            <tr className="border-b border-brand-green/10 bg-background">
+              <th className="sticky left-0 z-10 bg-background px-2 py-2 text-left font-medium">
                 Object
               </th>
-              <th className="whitespace-nowrap px-1 py-2 text-left text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
+              <th className="whitespace-nowrap px-1 py-2 text-left text-[11px] font-medium text-ink-soft">
                 Freq.
               </th>
               {WEEKDAY_LABELS_EN_SHORT.map((d) => (
-                <th key={d} className="min-w-[2.5rem] px-0.5 py-2 text-center font-medium text-zinc-600">
+                <th key={d} className="min-w-[2.5rem] px-0.5 py-2 text-center font-medium text-ink-soft">
                   {d}
                 </th>
               ))}
@@ -155,11 +155,11 @@ export function SchoonmaakForm({
           </thead>
           <tbody>
             {OBJECTS.map((o) => (
-              <tr key={o.key} className="border-b border-zinc-100 dark:border-zinc-700/80">
-                <td className="sticky left-0 z-10 bg-white px-2 py-1 font-medium text-zinc-800 dark:bg-zinc-900">
+              <tr key={o.key} className="border-b border-brand-green/10">
+                <td className="sticky left-0 z-10 bg-surface px-2 py-1 font-medium text-ink">
                   {o.label}
                 </td>
-                <td className="whitespace-nowrap px-1 py-1 text-[10px] leading-tight text-zinc-500 dark:text-zinc-400">
+                <td className="whitespace-nowrap px-1 py-1 text-[10px] leading-tight text-ink-soft/80">
                   {o.frequency}
                 </td>
                 {WEEKDAY_LABELS_EN_SHORT.map((_, day) => {
@@ -171,13 +171,7 @@ export function SchoonmaakForm({
                         type="button"
                         title="Tap to cycle"
                         onClick={() => setDay(o.key, day)}
-                        className={`h-9 w-full rounded-md border text-base font-semibold ${
-                          v === true
-                            ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-100"
-                            : v === false
-                              ? "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-100"
-                              : "border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-500"
-                        }`}
+                        className={`h-9 w-full rounded-md border text-base font-semibold ${ v === true ? "border-brand-green bg-brand-sage/25 text-brand-green" : v === false ? "border-accent-terracotta bg-brand-sand/40 text-accent-terracotta" : "border-brand-green/10 bg-background text-ink-soft/60 " }`}
                       >
                         {triLabel(v)}
                       </button>
@@ -191,7 +185,7 @@ export function SchoonmaakForm({
       </div>
 
       <label className="block text-sm">
-        <span className="mb-1 block font-medium text-zinc-800 dark:text-zinc-200">Completed by</span>
+        <span className="mb-1 block font-medium text-ink">Completed by</span>
         <input
           className="input"
           value={(row.uitgevoerd_door as string) ?? ""}
@@ -204,11 +198,11 @@ export function SchoonmaakForm({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {message && <span className="text-sm text-zinc-600 dark:text-zinc-300">{message}</span>}
+        {message && <span className="help-text">{message}</span>}
       </div>
     </div>
   );

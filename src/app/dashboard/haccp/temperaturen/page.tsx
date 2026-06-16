@@ -46,17 +46,17 @@ function Inner() {
 
   return (
     <HaccpFormGate formKey={APP_FORM_KEYS.haccp_temperatures}>
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+      <div className="min-h-screen bg-background font-sans">
         <TopNav />
         <main className="mx-auto max-w-4xl px-4 py-6 pb-24 sm:px-6">
           <HaccpPageHeader title="Temperatures" week={week} year={year} basePath="/dashboard/haccp/temperaturen" />
           {err && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+            <div className="mb-4 alert-error rounded-xl px-4 py-3 text-sm">
               {err}
             </div>
           )}
           {row === undefined ? (
-            <p className="text-zinc-500">Loading…</p>
+            <p className="text-ink-soft/80">Loading…</p>
           ) : (
             <TemperaturenForm
               key={`${week}-${year}`}
@@ -76,8 +76,8 @@ export default function TemperaturenPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-zinc-50 p-8 dark:bg-zinc-900">
-          <p className="text-zinc-500">Loading…</p>
+        <div className="min-h-screen bg-background font-sans p-8">
+          <p className="text-ink-soft/80">Loading…</p>
         </div>
       }
     >

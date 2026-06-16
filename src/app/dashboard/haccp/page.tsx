@@ -210,42 +210,42 @@ function HaccpOverviewContent() {
   }, [week, year, wy, locations, locationId]);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-2xl px-4 py-6 pb-24 sm:px-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/dashboard"
-            className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="text-sm font-medium text-ink-soft/80 hover:text-ink"
           >
             ← Dashboard
           </Link>
-          <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1 dark:border-zinc-600 dark:bg-zinc-800">
+          <div className="flex items-center gap-1 card rounded-lg p-1">
             <Link
               href={`/dashboard/haccp?week=${formatWeekYearParam(prev.week, prev.year)}`}
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
             >
               ← Week
             </Link>
-            <span className="px-2 text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
+            <span className="px-2 text-sm tabular-nums text-ink-soft">
               {year} · week {week}
             </span>
             <Link
               href={`/dashboard/haccp?week=${formatWeekYearParam(next.week, next.year)}`}
-              className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
             >
               Week →
             </Link>
           </div>
         </div>
 
-        <h1 className="mb-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">HACCP</h1>
-        <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 className="mb-2 page-title">HACCP</h1>
+        <p className="mb-6 help-text">
           Week overview: open or complete (sign-off / completed / lines filled).
         </p>
 
         {error && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <div className="mb-4 alert-warning">
             {error}
           </div>
         )}
@@ -254,31 +254,27 @@ function HaccpOverviewContent() {
           {(cards ?? []).map((c) => (
             <li key={c.href}>
               {c.disabled ? (
-                <div className="block rounded-xl border border-dashed border-zinc-300 bg-zinc-50/80 p-4 opacity-70 dark:border-zinc-600 dark:bg-zinc-900/40">
+                <div className="block rounded-xl border border-dashed border-brand-green/15 bg-background/80 p-4 opacity-70">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium text-zinc-700 dark:text-zinc-200">{c.title}</p>
-                      <p className="mt-1 text-sm text-zinc-500">{c.description}</p>
+                      <p className="font-medium text-ink-soft">{c.title}</p>
+                      <p className="mt-1 help-text">{c.description}</p>
                     </div>
-                    <span className="shrink-0 text-xs text-zinc-400">Soon</span>
+                    <span className="shrink-0 text-xs text-ink-soft/60">Soon</span>
                   </div>
                 </div>
               ) : (
                 <Link
                   href={c.href}
-                  className={`block rounded-xl border p-4 transition-colors ${
-                    c.muted
-                      ? "border-zinc-100 bg-zinc-50/90 opacity-75 hover:border-zinc-200 hover:bg-zinc-100/90 dark:border-zinc-800 dark:bg-zinc-900/60 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/60"
-                      : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
-                  }`}
+                  className={`block rounded-xl border p-4 transition-colors ${ c.muted ? "border-brand-green/10 bg-background/90 opacity-75 hover:border-brand-green/10 hover:bg-brand-sand/50 " : "border-brand-green/10 bg-surface hover:border-brand-green/15 hover:bg-background " }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p
                         className={
                           c.muted
-                            ? "text-sm font-medium text-zinc-600 dark:text-zinc-300"
-                            : "font-medium text-zinc-900 dark:text-zinc-50"
+                            ? "text-sm font-medium text-ink-soft"
+                            : "font-medium text-ink "
                         }
                       >
                         {c.title}
@@ -286,21 +282,15 @@ function HaccpOverviewContent() {
                       <p
                         className={
                           c.muted
-                            ? "mt-1 text-xs text-zinc-500 dark:text-zinc-500"
-                            : "mt-1 text-sm text-zinc-500 dark:text-zinc-400"
+                            ? "mt-1 text-xs text-ink-soft/70"
+                            : "mt-1 help-text"
                         }
                       >
                         {c.description}
                       </p>
                     </div>
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
-                        c.done === true
-                          ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100"
-                          : c.done === false
-                            ? "bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-                            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
-                      }`}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${ c.done === true ? "badge-success" : c.done === false ? "badge-pending" : "bg-brand-sand/50 text-ink-soft" }`}
                     >
                       {c.done === true ? "Done" : c.done === false ? "Open" : "—"}
                     </span>
@@ -310,7 +300,7 @@ function HaccpOverviewContent() {
             </li>
           ))}
           {!cards && !error && (
-            <li className="text-sm text-zinc-500">Loading…</li>
+            <li className="help-text">Loading…</li>
           )}
         </ul>
       </main>
@@ -322,8 +312,8 @@ export default function HaccpDashboardPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-zinc-50 p-8 dark:bg-zinc-900">
-          <p className="text-zinc-500">Loading…</p>
+        <div className="min-h-screen bg-background font-sans p-8">
+          <p className="text-ink-soft/80">Loading…</p>
         </div>
       }
     >

@@ -21,30 +21,30 @@ export function HaccpPageHeader({ title, week, year, basePath }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/dashboard/haccp"
-            className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="text-sm font-medium text-ink-soft/80 hover:text-ink"
           >
             ← HACCP overview
           </Link>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white p-1 dark:border-zinc-600 dark:bg-zinc-800">
+        <div className="flex items-center gap-1 card rounded-lg p-1">
           <Link
             href={`${basePath}?week=${prevQ}`}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
           >
             ← Week
           </Link>
-          <span className="px-2 text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
+          <span className="px-2 text-sm tabular-nums text-ink-soft">
             {year} · week {week}
           </span>
           <Link
             href={`${basePath}?week=${nextQ}`}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
           >
             Week →
           </Link>
         </div>
       </div>
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">{title}</h1>
+      <h1 className="section-title text-xl sm:text-2xl">{title}</h1>
     </div>
   );
 }

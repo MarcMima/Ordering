@@ -55,13 +55,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
   };
 
   const stepClassName = (active: boolean, done: boolean) =>
-    `flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3 ${
-      active
-        ? "bg-brand-green text-white"
-        : done
-          ? "bg-brand-sage/30 text-brand-green hover:bg-brand-sage/45"
-          : "bg-brand-sand/50 text-ink-soft hover:bg-brand-sand"
-    }`;
+    `flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3 ${ active ? "bg-brand-green text-white" : done ? "bg-brand-sage/30 text-brand-green hover:bg-brand-sage/45" : "bg-brand-sand/50 text-ink-soft hover:bg-brand-sand" }`;
 
   return (
     <nav aria-label="Daily workflow" className="card mb-6">
@@ -78,13 +72,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
           const inner = (
             <>
               <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                  active
-                    ? "bg-white/25 text-white"
-                    : done
-                      ? "bg-brand-green text-white"
-                      : "bg-brand-tan/60 text-ink-soft"
-                }`}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${ active ? "bg-white/25 text-white" : done ? "bg-brand-green text-white" : "bg-brand-tan/60 text-ink-soft" }`}
               >
                 {step.short}
               </span>

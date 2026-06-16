@@ -16,11 +16,11 @@ const tiles = [
 
 export default function KitchenHubPage() {
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-lg px-4 py-8 pb-24 sm:px-6">
-        <h1 className="mb-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Kitchen</h1>
-        <p className="mb-8 text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 className="mb-2 page-title">Kitchen</h1>
+        <p className="mb-8 help-text">
           Daily kitchen workflows for the selected location. Pick a task below.
         </p>
         <ul className="space-y-3">
@@ -28,11 +28,11 @@ export default function KitchenHubPage() {
             <li key={t.href}>
               <Link
                 href={t.href}
-                className="block rounded-xl border border-zinc-200 bg-white p-4 transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
+                className="block card transition-colors hover:border-brand-green/15 hover:bg-background"
               >
-                <span className="block font-medium text-zinc-900 dark:text-zinc-50">{t.title}</span>
-                <span className="mt-1 block text-sm text-zinc-500 dark:text-zinc-400">{t.description}</span>
-                <span className="mt-2 block text-sm font-medium text-zinc-600 dark:text-zinc-300">Open →</span>
+                <span className="block font-medium text-ink">{t.title}</span>
+                <span className="mt-1 block help-text">{t.description}</span>
+                <span className="mt-2 block text-sm font-medium text-ink-soft">Open →</span>
               </Link>
             </li>
           ))}
