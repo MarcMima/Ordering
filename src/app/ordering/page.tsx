@@ -16,6 +16,7 @@ import {
   isRawDeliverableTomorrow,
   supplierScheduleDayToJsDay,
   aggregateDailyRawNeedFromPrep,
+  calcNeededQuantity,
   dedupePrepItemIngredientRows,
   suggestOrderBaseQuantities,
   baseAmountsToPackCounts,
@@ -29,12 +30,20 @@ import { formatDecimal2, formatOrderAmount, formatPrepQuantity } from "@/lib/for
 import { localCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
+  applyDailyNeedMultipliers,
+  applyGarlicPeeledOrderGate,
   applyMaxOrderBaseCaps,
   applyMediSaladBaseSuggestedCleanup,
   applyMediSaladSuggestedPacksCleanup,
   applyMediSaladVanGelderOverride,
   applyMinOrderPackThresholds,
+  applyProductionGatedBaseSuggested,
+  applyProductionGatedRawDailyNeed,
+  PRODUCTION_GATED_RAW_NAMES,
+  isParsleyRawName,
   locationUsesVanGelderMediSaladTub,
+  mergeWeeklyIntervalDailyNeed,
+  parsleyOrderSplit,
   passesMinOrderPackThreshold,
 } from "@/lib/orderingAdjustments";
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
@@ -42,7 +51,7 @@ import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTi
 import { computeRawCoveredByFinishedPrep } from "@/lib/prepStockRawCredit";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
-import { isWeeklyStocktakeDueOnDate } from "@/lib/stocktakeWeek";
+import { isWeeklyStocktakeDueOnDate, buildOrderingStockByRawId } from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
   isRawVisibleOnStocktake,
@@ -174,7 +183,8 @@ function buildOrderLinesFromSuggestion(
   rawIngredients: RawIngredient[],
   packSizesByIngredient: Record<string, IngredientPackSize[]>,
   orderKindByRaw: Record<string, SuggestionOrderKind>,
-  locationId?: string | null
+  locationId?: string | null,
+  baseSuggestedByRaw?: Record<string, number>
 ): Record<string, OrderLine[]> {
   const next: Record<string, OrderLine[]> = {};
   const useVgMediTub = locationUsesVanGelderMediSaladTub(null, locationId);
@@ -192,6 +202,34 @@ function buildOrderLinesFromSuggestion(
     const packs = packsForOrder(allPacks);
     const best = getBestPackSize(packs);
     const kind = orderKindByRaw[rawId] ?? "pack";
+
+    if (isParsleyRawName(ing.name) && baseSuggestedByRaw?.[rawId] != null) {
+      const split = parsleyOrderSplit(baseSuggestedByRaw[rawId]);
+      const orderPacks = packsForOrder(allPacks);
+      const box4 = orderPacks.find((p) => p.size === 4 && p.size_unit === "kg")
+        ?? orderPacks.find((p) => (p.display_unit_label ?? "").toLowerCase().includes("4"))
+        ?? getBestPackSize(orderPacks);
+      const bag1 = orderPacks.find((p) => p.size === 1 && p.size_unit === "kg" && p.id !== box4?.id)
+        ?? orderPacks.find((p) => p.size === 1 && p.size_unit === "kg");
+      const pushLine = (pack: IngredientPackSize | null | undefined, quantity: number) => {
+        if (!pack || quantity <= 0) return;
+        const line: OrderLine = {
+          raw_ingredient_id: rawId,
+          raw_ingredient_name: ing.name,
+          pack_size_id: pack.id,
+          pack_size_label: `${pack.size} ${pack.size_unit}`,
+          size: pack.size,
+          size_unit: pack.size_unit,
+          price_cents: pack.price_cents ?? null,
+          quantity,
+        };
+        if (!next[supplierId]) next[supplierId] = [];
+        next[supplierId].push(line);
+      };
+      pushLine(box4, split.box4kg);
+      pushLine(bag1, split.bag1kg);
+      continue;
+    }
 
     if (kind === "stocktake") {
       const stLabel = stocktakeOrderUnitLabel(ing, allPacks);
@@ -361,6 +399,8 @@ export default function OrderingPage() {
   const [dispatchStatusBySupplier, setDispatchStatusBySupplier] = useState<Record<string, DispatchStatus>>({});
   const [suggestionRefreshToken, setSuggestionRefreshToken] = useState(0);
   const [suggestedOrder, setSuggestedOrder] = useState<Record<string, number>>({});
+  /** Base-unit order need per raw (for parsley 4kg + 1kg split lines). */
+  const [baseSuggestedByRaw, setBaseSuggestedByRaw] = useState<Record<string, number>>({});
   /** Preferred supplier per raw for the current suggestion. */
   const [suggestionSupplierByRaw, setSuggestionSupplierByRaw] = useState<Record<string, string | null>>({});
   /** Per raw: pack / stocktake / recipe units when there is no order pack line. */
@@ -436,11 +476,7 @@ export default function OrderingPage() {
       supabase
         .from("raw_ingredients")
         .select(
-          `id, name, unit, location_id, order_interval_days,
-          stocktake_unit_label, stocktake_content_amount, stocktake_content_unit,
-          ingredient_pack_sizes (
-            id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple
-          )`
+          `id, name, unit, location_id, order_interval_days, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
         )
         .eq("location_id", locationId)
         .order("name"),
@@ -510,6 +546,7 @@ export default function OrderingPage() {
     if (!locationId || !rawsMatchLocation) {
       setPrepStocktakeComplete(false);
       setSuggestedOrder({});
+      setBaseSuggestedByRaw({});
       setSuggestionSupplierByRaw({});
       setSuggestionOrderKindByRaw({});
       setSuggestedUnassignedRawIds([]);
@@ -526,6 +563,10 @@ export default function OrderingPage() {
     const rawIdList = Array.from(rawIds);
     const supabase = createClient();
     const todayForCover = new Date(`${d}T12:00:00`);
+    const [stockWindowY, stockWindowM, stockWindowD] = d.split("-").map(Number);
+    const stockWindowStartDate = new Date(stockWindowY, stockWindowM - 1, stockWindowD);
+    stockWindowStartDate.setDate(stockWindowStartDate.getDate() - 7);
+    const stockWindowStart = localCalendarDateString(stockWindowStartDate);
 
     /** Avoids setState / pack fetch after unmount or React Strict Mode re-run (stale async). */
     let alive = true;
@@ -533,13 +574,14 @@ export default function OrderingPage() {
       const lpiRes = await supabase
         .from("location_prep_items")
         .select(
-          "prep_item_id, base_quantity, prep_items(id, name, content_amount, content_unit, recipe_output_amount, recipe_output_unit, ingredient_qty_is_per_recipe_batch, stocktake_visible)"
+          "prep_item_id, base_quantity, prep_items(id, name, content_amount, content_unit, recipe_output_amount, recipe_output_unit, ingredient_qty_is_per_recipe_batch, stocktake_visible, batch_size)"
         )
         .eq("location_id", locationId);
       if (!alive) return;
       if (lpiRes.error) {
         setPrepStocktakeComplete(false);
         setSuggestedOrder({});
+      setBaseSuggestedByRaw({});
         setSuggestionSupplierByRaw({});
         setSuggestionOrderKindByRaw({});
         setSuggestedUnassignedRawIds([]);
@@ -587,9 +629,10 @@ export default function OrderingPage() {
               .limit(10000),
         supabase
           .from("daily_stock_counts")
-          .select("raw_ingredient_id, quantity")
+          .select("raw_ingredient_id, quantity, date")
           .eq("location_id", locationId)
-          .eq("date", d),
+          .gte("date", stockWindowStart)
+          .lte("date", d),
         supabase.from("suppliers").select("id").eq("location_id", locationId),
         supabase
           .from("supplier_ingredients")
@@ -623,6 +666,7 @@ export default function OrderingPage() {
       if (err) {
         setPrepStocktakeComplete(false);
         setSuggestedOrder({});
+      setBaseSuggestedByRaw({});
         setSuggestionSupplierByRaw({});
         setSuggestionOrderKindByRaw({});
         setSuggestedUnassignedRawIds([]);
@@ -677,13 +721,19 @@ export default function OrderingPage() {
           .filter((row): row is PrepItemIngredientRow => Boolean(row));
       }
       recipesMappedToLocation = dedupePrepItemIngredientRows(recipesMappedToLocation);
-      const stockList = (stockRes.data as { raw_ingredient_id: string; quantity: number }[]) ?? [];
+      const stockRows =
+        (stockRes.data as { raw_ingredient_id: string; quantity: number; date: string }[]) ?? [];
       const prepStockRows =
         (prepQtyRes.data as { prep_item_id: string; quantity: number }[]) ?? [];
       const prepStockByPrepItemId = Object.fromEntries(
         prepStockRows.map((r) => [r.prep_item_id, Number(r.quantity)])
       );
-      const currentStock = Object.fromEntries(stockList.map((s) => [s.raw_ingredient_id, Number(s.quantity)]));
+      const currentStock = buildOrderingStockByRawId({
+        rows: stockRows,
+        todayDateStr: d,
+        rawIngredients,
+      });
+      const stockListToday = stockRows.filter((s) => s.date === d);
       setCurrentRawStockById(currentStock);
 
       const schedulesBySupplierJsEarly: Record<string, number[]> = {};
@@ -714,10 +764,17 @@ export default function OrderingPage() {
         revenueCentsByDate[row.date] = row.target_amount_cents;
       }
       const neededByPrepItemId: Record<string, number> = {};
+      const revenueMultiplier = getRevenueMultiplier({
+        todayRevenueCents: revCents,
+        fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
+      });
       for (const row of lpi) {
         const prep = row.prep_items;
         if (!prep) continue;
-        neededByPrepItemId[row.prep_item_id] = row.base_quantity ?? 1;
+        neededByPrepItemId[row.prep_item_id] = calcNeededQuantity({
+          baseQuantity: row.base_quantity ?? 0,
+          revenueMultiplier,
+        });
       }
       if (mediSaladPrepItemIdFromAll && neededByPrepItemId[mediSaladPrepItemIdFromAll] == null) {
         const mediRow = lpiAll.find((row) => row.prep_item_id === mediSaladPrepItemIdFromAll);
@@ -753,15 +810,56 @@ export default function OrderingPage() {
         prepYieldByPrepItemId,
         mediSaladPrepItemId,
       });
+      dailyRawNeed = applyDailyNeedMultipliers({ dailyRawNeed, rawIngredients });
+      dailyRawNeed = applyProductionGatedRawDailyNeed({
+        dailyRawNeed,
+        rawIngredients,
+        recipeFiltered,
+        locationPrepItems: lpi,
+        prepStockByPrepItemId,
+        revenueMultiplier,
+      });
+      const productionGatedZeroRawIds = new Set(
+        rawIngredients
+          .filter(
+            (ing) =>
+              PRODUCTION_GATED_RAW_NAMES.has((ing.name ?? "").toLowerCase().trim()) &&
+              (dailyRawNeed[ing.id] ?? 0) <= 0
+          )
+          .map((ing) => ing.id)
+      );
+      const prepLinkedRawIds = new Set(recipeFiltered.map((r) => r.raw_ingredient_id));
+      const basePerStocktakeUnitByRawId: Record<string, number> = {};
+      for (const ing of rawIngredients) {
+        const packs = packSizes
+          .filter((p) => p.raw_ingredient_id === ing.id)
+          .map(normalizePackRow);
+        const bps = basePerOneStocktakeInputUnit(ing, packs);
+        if (bps != null && bps > 0) basePerStocktakeUnitByRawId[ing.id] = bps;
+      }
+      dailyRawNeed = mergeWeeklyIntervalDailyNeed({
+        dailyRawNeed,
+        rawIngredients,
+        prepLinkedRawIds,
+        basePerStocktakeUnitByRawId,
+        recentCountedRawIds: new Set(stockRows.map((r) => r.raw_ingredient_id)),
+      });
       const locationSupplierIds = new Set(
         ((supRes.data as { id: string }[]) ?? []).map((s) => s.id)
       );
       const siRows =
         (siRes.data as { supplier_id: string; raw_ingredient_id: string; is_preferred: boolean }[]) ?? [];
+      const preferredSupplierIdByRaw: Record<string, string> = {};
+      for (const r of siRows) {
+        if (!locationSupplierIds.has(r.supplier_id)) continue;
+        if (r.is_preferred) preferredSupplierIdByRaw[r.raw_ingredient_id] = r.supplier_id;
+      }
       const supplierRawIds: Record<string, string[]> = {};
       const byRaw: Record<string, { supplier_id: string; is_preferred: boolean }[]> = {};
       for (const r of siRows) {
         if (!locationSupplierIds.has(r.supplier_id)) continue;
+        const prefId = preferredSupplierIdByRaw[r.raw_ingredient_id];
+        if (prefId && prefId !== r.supplier_id) continue;
         if (!supplierRawIds[r.supplier_id]) supplierRawIds[r.supplier_id] = [];
         if (!supplierRawIds[r.supplier_id].includes(r.raw_ingredient_id)) {
           supplierRawIds[r.supplier_id].push(r.raw_ingredient_id);
@@ -797,33 +895,41 @@ export default function OrderingPage() {
         orderPackByRawId[ing.id] = getBestPackSize(packs);
         if (isPicklingRawName(ing.name)) picklingLeadTimeRawIds.add(ing.id);
       }
-      const baseSuggested = applyMediSaladBaseSuggestedCleanup({
-        locationId,
-        locationName,
-        mediSaladPrepItemId,
-        mediSaladNeedPrep,
+      const baseSuggested = applyProductionGatedBaseSuggested({
         rawIngredients,
-        baseSuggested: applyMaxOrderBaseCaps({
+        gatedRawIdsWithZeroNeed: productionGatedZeroRawIds,
+        baseSuggested: applyGarlicPeeledOrderGate({
           rawIngredients,
-          baseSuggested: applyStockParToBaseSuggested({
+          currentRawStock: currentStock,
+          baseSuggested: applyMediSaladBaseSuggestedCleanup({
+            locationId,
+            locationName,
+            mediSaladPrepItemId,
+            mediSaladNeedPrep,
             rawIngredients,
-            currentRawStock: currentStock,
-            baseSuggested: suggestOrderBaseQuantities({
-              today: todayForCover,
-              todayDateStr: d,
-              dailyRawNeedAtFullCapacity: dailyRawNeed,
-              currentRawStock: currentStock,
-              prepStockCreditByRawId,
-              preferredSupplierByRawId,
-              schedulesBySupplierJs,
-              orderIntervalDaysByRawId,
-              orderingEveningDayFraction: loc?.ordering_evening_day_fraction,
-              revenueCentsByDate,
-              fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
-              picklingLeadTimeRawIds,
-              picklingLeadTimeDays: PICKLING_LEAD_TIME_DAYS,
+            baseSuggested: applyMaxOrderBaseCaps({
+              rawIngredients,
+              baseSuggested: applyStockParToBaseSuggested({
+                rawIngredients,
+                currentRawStock: currentStock,
+                baseSuggested: suggestOrderBaseQuantities({
+                  today: todayForCover,
+                  todayDateStr: d,
+                  dailyRawNeedAtFullCapacity: dailyRawNeed,
+                  currentRawStock: currentStock,
+                  prepStockCreditByRawId,
+                  preferredSupplierByRawId,
+                  schedulesBySupplierJs,
+                  orderIntervalDaysByRawId,
+                  orderingEveningDayFraction: loc?.ordering_evening_day_fraction,
+                  revenueCentsByDate,
+                  fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
+                  picklingLeadTimeRawIds,
+                  picklingLeadTimeDays: PICKLING_LEAD_TIME_DAYS,
+                }),
+                orderPackByRawId,
+              }),
             }),
-            orderPackByRawId,
           }),
         }),
       });
@@ -842,10 +948,7 @@ export default function OrderingPage() {
       const packsRes = await supabase
         .from("raw_ingredients")
         .select(
-          `id,
-          ingredient_pack_sizes (
-            id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple
-          )`
+          `id, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
         )
         .eq("location_id", locationId)
         .limit(10000);
@@ -928,9 +1031,17 @@ export default function OrderingPage() {
       const finalSuggested: Record<string, number> = {};
       for (const [rid, baseAmt] of Object.entries(baseSuggested)) {
         if (baseAmt <= 0) continue;
+        const ing = rawIngredients.find((r) => r.id === rid);
+        if (isParsleyRawName(ing?.name)) {
+          const split = parsleyOrderSplit(baseAmt);
+          if (split.box4kg > 0) {
+            finalSuggested[rid] = split.box4kg;
+            kindByRaw[rid] = "pack";
+          }
+          continue;
+        }
         const pc = packCounts[rid];
         if (pc != null && pc > 0) {
-          const ing = rawIngredients.find((r) => r.id === rid);
           if (!passesMinOrderPackThreshold(ing?.name, pc)) continue;
           const entry = packAndUnitByRawId[rid];
           const mult = entry?.pack?.order_pack_multiple ?? 1;
@@ -938,7 +1049,6 @@ export default function OrderingPage() {
           kindByRaw[rid] = "pack";
           continue;
         }
-        const ing = rawIngredients.find((r) => r.id === rid);
         const mergedPacks = packsForRawMerged(rid);
         const bps = ing ? basePerOneStocktakeInputUnit(ing, mergedPacks) : null;
         if (bps != null && bps > 0) {
@@ -988,6 +1098,7 @@ export default function OrderingPage() {
       if (!alive || requestLocationId !== locationId) return;
       setSupplementalPackSizes(supplementalPacks);
       setMediSaladNeedPrep(mediSaladNeedPrep);
+      setBaseSuggestedByRaw(baseSuggested);
       setSuggestedOrder(suggestedForUi);
       setSuggestionOrderKindByRaw(kindForUi);
       setSuggestionSupplierByRaw(preferredSupplierByRawId);
@@ -1002,7 +1113,7 @@ export default function OrderingPage() {
         packRowsLoadedFromDb: supplementalPacks.length,
         packFetchError: packLoadErrors.length > 0 ? packLoadErrors.join(" · ") : null,
         locationRawCount: rawIdList.length,
-        stockRowsForDate: stockList.length,
+        stockRowsForDate: stockListToday.length,
         revenueCoverDates,
         revenueEveningDate: d,
         packConversionLineCount,
@@ -1012,6 +1123,7 @@ export default function OrderingPage() {
       if (!alive) return;
       setPrepStocktakeComplete(false);
       setSuggestedOrder({});
+      setBaseSuggestedByRaw({});
       setSuggestionSupplierByRaw({});
       setSuggestionOrderKindByRaw({});
       setSuggestedUnassignedRawIds([]);
@@ -1397,7 +1509,8 @@ export default function OrderingPage() {
       rawIngredients,
       packSizesByIngredient,
       packCleanup.kindByRaw as Record<string, SuggestionOrderKind>,
-      locationId
+      locationId,
+      baseSuggestedByRaw
     );
     setOrderBySupplier(next);
   }, [
@@ -1409,6 +1522,7 @@ export default function OrderingPage() {
     rawIngredients,
     packSizesByIngredient,
     mediSaladNeedPrep,
+    baseSuggestedByRaw,
   ]);
 
   const removeLine = (supplierId: string, index: number) => {
@@ -1419,6 +1533,25 @@ export default function OrderingPage() {
         delete next[supplierId];
         return next;
       }
+      return { ...prev, [supplierId]: list };
+    });
+  };
+
+  const updateLineQuantity = (supplierId: string, index: number, quantity: number) => {
+    const qty = Math.max(0, Math.round(quantity));
+    setOrderBySupplier((prev) => {
+      const list = [...(prev[supplierId] ?? [])];
+      if (!list[index]) return prev;
+      if (qty <= 0) {
+        list.splice(index, 1);
+        if (list.length === 0) {
+          const next = { ...prev };
+          delete next[supplierId];
+          return next;
+        }
+        return { ...prev, [supplierId]: list };
+      }
+      list[index] = { ...list[index], quantity: qty };
       return { ...prev, [supplierId]: list };
     });
   };
@@ -1649,26 +1782,26 @@ export default function OrderingPage() {
       !isPlanning && hasOrderWork && (!hasWeekdaySchedule || onDemandSup || tomorrowIsDelivery);
 
     const sectionClass = isPlanning
-      ? "rounded-xl border border-zinc-200 bg-zinc-100/70 p-3 opacity-80 dark:border-zinc-700 dark:bg-zinc-900/40"
+      ? "rounded-xl border border-brand-green/10 bg-brand-sand/50 p-3 opacity-80 "
       : !hasOrderWork
-        ? "rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 dark:border-zinc-600 dark:bg-zinc-900/60"
+        ? "rounded-xl border border-dashed border-brand-green/15 bg-background p-4 "
         : cardEmphasized
-          ? "rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800"
-          : "rounded-xl border border-dashed border-zinc-300 bg-zinc-50/90 p-4 dark:border-zinc-600 dark:bg-zinc-900/50";
+          ? "card "
+          : "rounded-xl border border-dashed border-brand-green/15 bg-background/90 p-4 ";
     const headingClass = isPlanning
-      ? "font-medium text-zinc-500 dark:text-zinc-500"
+      ? "font-medium text-ink-soft/80"
       : !hasOrderWork
-        ? "font-medium text-zinc-500 dark:text-zinc-400"
+        ? "font-medium text-ink-soft/80"
         : cardEmphasized
-          ? "font-semibold text-zinc-900 dark:text-zinc-100"
-          : "font-medium text-zinc-600 dark:text-zinc-400";
+          ? "font-semibold text-ink"
+          : "font-medium text-ink-soft";
     const deliveryMetaClass = isPlanning
-      ? "text-xs text-zinc-400 dark:text-zinc-600"
+      ? "text-xs text-ink-soft/60"
       : !hasOrderWork
-        ? "text-sm text-zinc-400 dark:text-zinc-500"
+        ? "text-sm text-ink-soft/60"
         : cardEmphasized
-          ? "text-sm text-zinc-500 dark:text-zinc-400"
-          : "text-sm text-zinc-500 dark:text-zinc-500";
+          ? "help-text"
+          : "help-text";
     const supplierRawIds = supplierRawIdsBySupplier[sup.id] ?? [];
     const addableRawIds = supplierRawIds.filter((rid) => {
       if (linesToShow.some((line) => line.raw_ingredient_id === rid)) return false;
@@ -1686,12 +1819,12 @@ export default function OrderingPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h2 className={headingClass}>{sup.name}</h2>
             {isPlanning && (
-              <span className="rounded-full bg-zinc-200/90 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-500">
+              <span className="badge-pending rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide">
                 Do not send
               </span>
             )}
             {onDemandSup && !isPlanning && (
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">
+              <span className="rounded-full bg-brand-sand/50 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
                 On demand
               </span>
             )}
@@ -1700,8 +1833,8 @@ export default function OrderingPage() {
         </div>
 
         {isPlanning && (
-          <div className="mb-2 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-500">
-            <p className="font-medium text-zinc-600 dark:text-zinc-500">Not an order day — planning preview only</p>
+          <div className="mb-2 rounded-lg border border-brand-green/10 bg-background/80 px-3 py-2 text-xs text-ink-soft/70">
+            <p className="font-medium text-ink-soft">Not an order day — planning preview only</p>
             {hasWeekdaySchedule && (
               <p className="mt-1">
                 Deliveries: {formatJsDeliveryDays(deliveryDaysForSup)}. Order the day before delivery — do not send
@@ -1712,20 +1845,20 @@ export default function OrderingPage() {
         )}
 
         {!hasAnyWork && !isPlanning && (
-          <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
+          <p className="mb-3 text-xs text-ink-soft/70">
             No order suggestion and no lines — nothing to do here for now.
           </p>
         )}
 
         {isPlanning && hasOrderWork && (
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <p className="text-xs text-zinc-500 dark:text-zinc-600">
+            <p className="text-xs text-ink-soft/70">
               {linesToShow.length} suggested item{linesToShow.length === 1 ? "" : "s"} — for reference only
             </p>
             <button
               type="button"
               onClick={() => togglePlanningExpanded(sup.id)}
-              className="rounded-md border border-zinc-200 bg-white/60 px-2 py-1 text-[11px] font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-500"
+              className="rounded-md border border-brand-sage/50 bg-surface/60 px-2 py-1 text-[11px] font-medium text-ink-soft/80"
             >
               {planningExpanded ? "Hide preview" : "Show preview"}
             </button>
@@ -1748,15 +1881,15 @@ export default function OrderingPage() {
                   key={`${sup.id}-${line.raw_ingredient_id}-${idx}`}
                   className={
                     isPlanning
-                      ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-dashed border-zinc-200 bg-zinc-50/40 px-3 py-2 text-xs text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900/20 dark:text-zinc-500"
-                      : "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-zinc-100 bg-zinc-50/50 px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-900/50"
+                      ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-dashed border-brand-green/10 bg-background/40 px-3 py-2 text-xs text-ink-soft/70 "
+                      : "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-brand-green/10 bg-background/50 px-3 py-2.5 text-sm "
                   }
                 >
                   <span
                     className={
                       isPlanning
-                        ? "min-w-[7rem] flex-1 font-normal text-zinc-500 dark:text-zinc-500"
-                        : "min-w-[7rem] flex-1 font-medium text-zinc-900 dark:text-zinc-100"
+                        ? "min-w-[7rem] flex-1 font-normal text-ink-soft/80"
+                        : "min-w-[7rem] flex-1 font-medium text-ink"
                     }
                   >
                     {row.product}
@@ -1764,17 +1897,34 @@ export default function OrderingPage() {
                   <span
                     className={
                       isPlanning
-                        ? "w-14 shrink-0 tabular-nums text-zinc-500 dark:text-zinc-500"
-                        : "w-14 shrink-0 tabular-nums text-zinc-800 dark:text-zinc-200"
+                        ? "w-14 shrink-0 tabular-nums text-ink-soft/80"
+                        : "w-14 shrink-0 tabular-nums text-ink"
                     }
                   >
-                    {row.countTimes}
+                    {isPlanning ? (
+                      row.countTimes
+                    ) : (
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={line.quantity}
+                        onChange={(e) =>
+                          updateLineQuantity(sup.id, idx, Number(e.target.value))
+                        }
+                        className="w-14 rounded border border-brand-green/15 bg-surface px-1 py-0.5 text-right text-sm tabular-nums text-ink"
+                        aria-label={`Quantity for ${row.product}`}
+                      />
+                    )}
                   </span>
+                  {!isPlanning && (
+                    <span className="w-3 shrink-0 text-ink-soft">×</span>
+                  )}
                   <span
                     className={
                       isPlanning
-                        ? "min-w-[6rem] flex-1 text-zinc-500 dark:text-zinc-500"
-                        : "min-w-[6rem] flex-1 text-zinc-700 dark:text-zinc-300"
+                        ? "min-w-[6rem] flex-1 text-ink-soft/80"
+                        : "min-w-[6rem] flex-1 text-ink-soft"
                     }
                   >
                     {row.packType}
@@ -1782,8 +1932,8 @@ export default function OrderingPage() {
                   <span
                     className={
                       isPlanning
-                        ? "w-24 shrink-0 text-right font-normal tabular-nums text-zinc-500 dark:text-zinc-500"
-                        : "w-24 shrink-0 text-right font-medium tabular-nums text-zinc-900 dark:text-zinc-100"
+                        ? "w-24 shrink-0 text-right font-normal tabular-nums text-ink-soft/80"
+                        : "w-24 shrink-0 text-right font-medium tabular-nums text-ink"
                     }
                   >
                     {row.totalLabel}
@@ -1792,7 +1942,7 @@ export default function OrderingPage() {
                     <button
                       type="button"
                       onClick={() => removeLine(sup.id, idx)}
-                      className="shrink-0 rounded-lg border border-red-200 px-2 py-1.5 text-xs text-red-600 dark:border-red-800 dark:text-red-400"
+                      className="shrink-0 alert-error rounded-lg px-2 py-1.5 text-xs"
                     >
                       Remove
                     </button>
@@ -1805,14 +1955,14 @@ export default function OrderingPage() {
 
         {!isPlanning && linesToShow.length > 0 && (
           <div className="mt-3 flex flex-wrap items-end gap-2">
-            <span className="rounded-md bg-zinc-100 px-2 py-1 text-[11px] text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200">
+            <span className="rounded-md bg-brand-sand/50 px-2 py-1 text-[11px] text-ink-soft">
               Delivery: as soon as possible
             </span>
             <button
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, true)}
               disabled={Boolean(dispatchStatusBySupplier[sup.id]?.loading)}
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-800 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+              className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs font-medium text-ink disabled:opacity-50"
             >
               {dispatchStatusBySupplier[sup.id]?.loading ? "Running…" : "Dry run supplier"}
             </button>
@@ -1820,7 +1970,7 @@ export default function OrderingPage() {
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, false)}
               disabled={Boolean(dispatchStatusBySupplier[sup.id]?.loading)}
-              className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+              className="btn-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50"
             >
               {dispatchStatusBySupplier[sup.id]?.loading ? "Sending…" : "Send supplier"}
             </button>
@@ -1829,7 +1979,7 @@ export default function OrderingPage() {
 
         {!isPlanning && addableRawIds.length > 0 && (
           <div className="mt-3 flex flex-wrap items-end gap-2">
-            <label className="flex flex-col gap-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="flex flex-col gap-1 text-xs font-medium text-ink-soft">
               Add item
               <select
                 value={selectedNewRaw}
@@ -1839,7 +1989,7 @@ export default function OrderingPage() {
                     [sup.id]: e.target.value,
                   }))
                 }
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs text-ink"
               >
                 {addableRawIds.map((rid) => {
                   const ing = rawIngredients.find((r) => r.id === rid);
@@ -1854,7 +2004,7 @@ export default function OrderingPage() {
             <button
               type="button"
               onClick={() => selectedNewRaw && addLineForSupplierRaw(sup.id, selectedNewRaw)}
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-xs font-medium text-zinc-800 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+              className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs font-medium text-ink"
             >
               Add to order
             </button>
@@ -1862,12 +2012,12 @@ export default function OrderingPage() {
         )}
 
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.message && (
-          <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+          <p className="mt-2 text-xs text-brand-green">
             {dispatchStatusBySupplier[sup.id]?.message}
           </p>
         )}
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.error && (
-          <p className="mt-2 text-xs text-red-700 dark:text-red-300">
+          <p className="mt-2 text-xs text-accent-terracotta">
             {dispatchStatusBySupplier[sup.id]?.error}
           </p>
         )}
@@ -1876,14 +2026,14 @@ export default function OrderingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-2xl px-4 py-6 pb-28 sm:px-6">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
+          <h1 className="section-title text-xl sm:text-2xl">
             Ordering
           </h1>
-          <Link href="/dashboard" className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80">
             Dashboard
           </Link>
         </div>
@@ -1896,29 +2046,29 @@ export default function OrderingPage() {
         />
 
         {error && (
-          <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <div className="alert-error mb-4 rounded-xl p-4 text-sm">
             {error}
           </div>
         )}
 
         {submitted && (
-          <div className="mb-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200">
+          <div className="badge-success mb-4 rounded-xl p-4 text-sm">
             Orders submitted successfully.
           </div>
         )}
 
         {suggestionLoadError && (
-          <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <div className="alert-error mb-4 rounded-xl p-4 text-sm">
             Failed to load order suggestion: {suggestionLoadError}
           </div>
         )}
 
         {locationName && (
-          <div className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+          <div className="mb-4 help-text">
             <p>
-              Order for: <strong className="text-zinc-800 dark:text-zinc-200">{locationName}</strong>
+              Order for: <strong className="text-ink">{locationName}</strong>
             </p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+            <p className="mt-1 text-xs text-ink-soft/70">
               Each card lists items for that supplier from Admin (supplier ingredients). You see product, amount, and
               unit — adjust mappings in Admin if something is wrong. Confirm once to save orders in the app.
             </p>
@@ -1928,7 +2078,7 @@ export default function OrderingPage() {
         <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
 
         {suggestedUnassignedRawIds.length > 0 && (
-          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+          <div className="mb-4 alert-warning rounded-lg text-xs">
             <span className="font-medium">No preferred supplier in Admin for:</span>{" "}
             {suggestedUnassignedRawIds
               .map((id) => rawIngredients.find((r) => r.id === id)?.name ?? id)
@@ -1944,26 +2094,26 @@ export default function OrderingPage() {
           Object.keys(suggestedOrder).length === 0 &&
           suggestedUnassignedRawIds.length === 0 &&
           suggestionInsight && (
-            <div className="mb-6 rounded-xl border border-zinc-200 bg-zinc-100/60 p-4 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
-              <p className="font-medium text-zinc-900 dark:text-zinc-100">No automatic suggestion</p>
+            <div className="mb-6 rounded-xl border border-brand-green/10 bg-brand-sand/50/60 p-4 text-sm text-ink-soft">
+              <p className="font-medium text-ink">No automatic suggestion</p>
               <p className="mt-2 text-xs leading-relaxed">
                 The suggestion uses <strong>prep need × cover window − stock</strong> (not stocktake alone). Below is what
                 loaded for date <strong>{suggestionInsight.dateUsed}</strong> (local date on this device — same calendar
                 day you should use for stocktake).
               </p>
-              <p className="mt-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+              <p className="mt-2 text-xs leading-relaxed text-ink-soft">
                 <strong>Note:</strong> order need = cover window + evening + pickling lead − section 2 raw stock −
                 finished prep credit (pickles, yoghurt, aubergine, lemon juice, feta, pomegranate, …). Prep counts
                 from section 1 apply even when other prep lines are still open.
               </p>
-              <p className="mt-3 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+              <p className="mt-3 text-xs leading-relaxed text-ink-soft">
                 <strong>Order packs vs stocktake:</strong> the app first computes need in <strong>base units</strong> (as
                 on recipes). With an <strong>order pack</strong> (<code className="text-[11px]">ingredient_pack_sizes</code>
                 ) that converts to order packs. <strong>Without order packs</strong> it falls back to the same{" "}
                 <strong>stocktake unit</strong> as on the count (master B/C/D or stocktake-pack), often the ordering
                 unit. Only if that is missing does it round in <strong>recipe units</strong>.
               </p>
-              <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+              <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-ink-soft">
                 <li>Raw ingredients for location in app: {suggestionInsight.locationRawCount}</li>
                 <li>Prep products linked to location: {suggestionInsight.prepLinkedCount}</li>
                 <li>Recipe rows (prep → raw) for those preps: {suggestionInsight.recipeRowsForLocation}</li>
@@ -1986,19 +2136,19 @@ export default function OrderingPage() {
                 <li>Pack rows loaded from DB for this suggestion: {suggestionInsight.packRowsLoadedFromDb}</li>
               </ul>
               {suggestionInsight.packFetchError && (
-                <p className="mt-2 text-xs font-medium text-red-700 dark:text-red-300">
+                <p className="mt-2 text-xs font-medium text-accent-terracotta">
                   Pack query partially failed: {suggestionInsight.packFetchError}
                 </p>
               )}
               {suggestionInsight.stockRowsForDate === 0 && (
-                <p className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">
+                <p className="mt-3 text-xs font-medium text-accent-terracotta">
                   There are no stock counts in the database for {suggestionInsight.dateUsed}. Check that stocktake was
                   saved on the <strong>same calendar day</strong> (the app used to use UTC midnight — that can be off by
                   one day).
                 </p>
               )}
               {suggestionInsight.prepLinkedCount > 0 && suggestionInsight.recipeRowsForLocation === 0 && (
-                <p className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">
+                <p className="mt-3 text-xs font-medium text-accent-terracotta">
                   No recipe rows are linked to this location&apos;s prep products. Fill{" "}
                   <strong>prep_item_ingredients</strong> (Admin / import).
                 </p>
@@ -2006,7 +2156,7 @@ export default function OrderingPage() {
               {suggestionInsight.recipeRowsForLocation > 0 &&
                 suggestionInsight.dailyRawNeedSum <= 0 &&
                 suggestionInsight.prepLinkedCount > 0 && (
-                  <p className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">
+                  <p className="mt-3 text-xs font-medium text-accent-terracotta">
                     Daily need is 0 (e.g. revenue target = 0 or missing revenue row while full capacity is set). With no
                     revenue target for today we plan with multiplier 1.
                   </p>
@@ -2014,13 +2164,13 @@ export default function OrderingPage() {
               {suggestionInsight.baseOrderNeedSum <= 0 &&
                 suggestionInsight.dailyRawNeedSum > 0 &&
                 suggestionInsight.stockRowsForDate > 0 && (
-                  <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
+                  <p className="mt-3 text-xs text-ink-soft">
                     On this calculation, entered stock covers need until after the next delivery (or there is no
                     shortfall in base units).
                   </p>
                 )}
               {suggestionInsight.baseOrderNeedSum > 0 && suggestionInsight.suggestionLineCount === 0 && (
-                <p className="mt-3 text-xs font-medium text-amber-800 dark:text-amber-200">
+                <p className="mt-3 text-xs font-medium text-accent-terracotta">
                   There is calculated need in base units but no suggestion lines (e.g. no raws linked to suppliers in
                   Admin → supplier ingredients).
                 </p>
@@ -2028,7 +2178,7 @@ export default function OrderingPage() {
               {suggestionInsight.baseOrderNeedSum > 0 &&
                 suggestionInsight.suggestionLineCount > 0 &&
                 suggestionInsight.baseFallbackLineCount > 0 && (
-                  <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
+                  <p className="mt-3 text-xs text-ink-soft">
                     {suggestionInsight.packRowsLoadedFromDb === 0
                       ? "Tip: no order pack rows yet — the app uses stocktake units (B/C/D) or recipe units where possible. Add ingredient_pack_sizes for order packs and pricing."
                       : "Some raws are missing a valid order pack — those lines use stocktake or recipe units. Check Admin → pack sizes (size &gt; 0, order/both)."}
@@ -2038,22 +2188,22 @@ export default function OrderingPage() {
           )}
 
         {loading ? (
-          <p className="py-8 text-zinc-500">Loading…</p>
+          <p className="py-8 text-ink-soft/80">Loading…</p>
         ) : !locationId ? (
-          <p className="py-8 text-zinc-500">Select a location.</p>
+          <p className="py-8 text-ink-soft/80">Select a location.</p>
         ) : suppliers.length === 0 ? (
-          <p className="py-8 text-zinc-500">No suppliers for this location. Add them in Admin → Suppliers.</p>
+          <p className="py-8 text-ink-soft/80">No suppliers for this location. Add them in Admin → Suppliers.</p>
         ) : (
           <div className="mt-6 space-y-8">
             {suppliersByOrderMode.active.map((sup) => renderSupplierCard(sup, "active"))}
 
             {suppliersByOrderMode.planning.length > 0 && (
-              <div className="space-y-4 border-t border-dashed border-zinc-300 pt-6 dark:border-zinc-600">
-                <div className="rounded-xl border border-zinc-200 bg-zinc-100/80 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-900/50">
-                  <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+              <div className="space-y-4 border-t border-dashed border-brand-green/15 pt-6">
+                <div className="rounded-xl border border-brand-green/10 bg-brand-sand/50/80 px-4 py-3">
+                  <p className="text-sm font-medium text-ink-soft">
                     Planning only — do not order today
                   </p>
-                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+                  <p className="mt-1 text-xs text-ink-soft/70">
                     {suppliersByOrderMode.planning.map((s) => s.name).join(", ")} has suggestions for reference, but
                     tomorrow is not a delivery day. Send orders on the day before delivery.
                   </p>
@@ -2072,7 +2222,7 @@ export default function OrderingPage() {
               type="button"
               onClick={confirmOrder}
               disabled={submitting}
-              className="w-full rounded-xl bg-zinc-900 py-3 text-base font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+              className="btn-primary input-lg w-full rounded-xl py-3 text-base font-medium disabled:opacity-50"
             >
               {submitting ? "Submitting…" : "Confirm order (save only)"}
             </button>
@@ -2080,10 +2230,10 @@ export default function OrderingPage() {
         )}
 
         <div className="mt-8 flex gap-4">
-          <Link href="/prep-list" className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          <Link href="/prep-list" className="text-sm font-medium text-ink-soft">
             ← Prep List
           </Link>
-          <Link href="/admin" className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          <Link href="/admin" className="text-sm font-medium text-ink-soft">
             Admin →
           </Link>
         </div>

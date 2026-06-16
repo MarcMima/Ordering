@@ -1,4 +1,5 @@
 import type { PrepItemIngredientRow } from "@/lib/calculations";
+import { calcNeededQuantity, calcToMake } from "@/lib/calculations";
 import type { RawIngredient } from "@/lib/types";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 
@@ -28,6 +29,92 @@ function normName(name: string | null | undefined): string {
 function rawIdByName(rawIngredients: RawIngredient[], name: string): string | null {
   const want = normName(name);
   return rawIngredients.find((r) => normName(r.name) === want)?.id ?? null;
+}
+
+/** Scale daily raw need before cover-window / pack math (kitchen calibration Jun 2026). */
+export const DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
+  "romaine lettuce": 0.5,
+  aubergine: 0.6,
+  "medi salad 3kg": 0.8,
+  cucumber: 0.8,
+  "red onion sliced fine": 0.7,
+  "red cabbage shredded": 0.6,
+};
+
+const PARSLEY_RAW_NAME = "parsley";
+const PARSLEY_BOX_G = 4000;
+const PARSLEY_ADDON_G = 1000;
+const GARLIC_PEELED_RAW_NAME = "garlic peeled";
+const GARLIC_PEELED_ORDER_THRESHOLD_G = 250;
+
+/** Only suggest orders when linked prep still needs production (toMake > 0). */
+export const PRODUCTION_GATED_RAW_NAMES = new Set([
+  "green chili",
+  "carrot julienne",
+]);
+
+export function applyProductionGatedRawDailyNeed(params: {
+  dailyRawNeed: Record<string, number>;
+  rawIngredients: RawIngredient[];
+  recipeFiltered: PrepItemIngredientRow[];
+  locationPrepItems: {
+    prep_item_id: string;
+    base_quantity?: number | null;
+    prep_items?: { batch_size?: number | null } | null;
+  }[];
+  prepStockByPrepItemId: Record<string, number>;
+  revenueMultiplier: number;
+}): Record<string, number> {
+  const {
+    dailyRawNeed,
+    rawIngredients,
+    recipeFiltered,
+    locationPrepItems,
+    prepStockByPrepItemId,
+    revenueMultiplier,
+  } = params;
+  const toMakeByPrepId: Record<string, number> = {};
+  for (const row of locationPrepItems) {
+    const needed = calcNeededQuantity({
+      baseQuantity: row.base_quantity ?? 0,
+      revenueMultiplier,
+    });
+    const toMake = calcToMake({
+      needed,
+      currentStock: prepStockByPrepItemId[row.prep_item_id] ?? 0,
+      batchSize: row.prep_items?.batch_size ?? null,
+    });
+    toMakeByPrepId[row.prep_item_id] = toMake;
+  }
+
+  const out = { ...dailyRawNeed };
+  for (const ing of rawIngredients) {
+    if (!PRODUCTION_GATED_RAW_NAMES.has(normName(ing.name))) continue;
+    const linkedPrepIds = [
+      ...new Set(
+        recipeFiltered
+          .filter((r) => r.raw_ingredient_id === ing.id)
+          .map((r) => r.prep_item_id)
+      ),
+    ];
+    const anyToMake = linkedPrepIds.some((pid) => (toMakeByPrepId[pid] ?? 0) > 0);
+    if (!anyToMake) out[ing.id] = 0;
+  }
+  return out;
+}
+
+/** Drop production-gated lines after cover-window math (safety net). */
+export function applyProductionGatedBaseSuggested(params: {
+  baseSuggested: Record<string, number>;
+  rawIngredients: RawIngredient[];
+  gatedRawIdsWithZeroNeed: ReadonlySet<string>;
+}): Record<string, number> {
+  const out = { ...params.baseSuggested };
+  for (const ing of params.rawIngredients) {
+    if (!PRODUCTION_GATED_RAW_NAMES.has(normName(ing.name))) continue;
+    if (params.gatedRawIdsWithZeroNeed.has(ing.id)) delete out[ing.id];
+  }
+  return out;
 }
 
 /** Max suggested order in base units (g/ml/pcs) per delivery. */
@@ -188,6 +275,52 @@ export function applyMediSaladSuggestedPacksCleanup(params: {
   return { suggestedPacks: out, kindByRaw: kindOut };
 }
 
+/** Apply per-ingredient daily-need multipliers (after prep aggregation, before ordering math). */
+export function applyDailyNeedMultipliers(params: {
+  dailyRawNeed: Record<string, number>;
+  rawIngredients: RawIngredient[];
+}): Record<string, number> {
+  const out = { ...params.dailyRawNeed };
+  for (const ing of params.rawIngredients) {
+    const mult = DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+    if (mult == null || mult === 1) continue;
+    const cur = out[ing.id];
+    if (cur != null && cur > 0) out[ing.id] = cur * mult;
+  }
+  return out;
+}
+
+/** Garlic peeled: only suggest when stock is below 250 g. */
+export function applyGarlicPeeledOrderGate(params: {
+  rawIngredients: RawIngredient[];
+  currentRawStock: Record<string, number>;
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  const garlicId = rawIdByName(params.rawIngredients, GARLIC_PEELED_RAW_NAME);
+  if (!garlicId) return params.baseSuggested;
+  const stock = params.currentRawStock[garlicId] ?? 0;
+  if (stock >= GARLIC_PEELED_ORDER_THRESHOLD_G) {
+    const out = { ...params.baseSuggested };
+    delete out[garlicId];
+    return out;
+  }
+  return params.baseSuggested;
+}
+
+/** Parsley: 4 kg boxes as base unit; above that, add 1 kg packs for the remainder. */
+export function parsleyOrderSplit(baseGrams: number): { box4kg: number; bag1kg: number } {
+  if (baseGrams <= 0) return { box4kg: 0, bag1kg: 0 };
+  let boxes = Math.floor(baseGrams / PARSLEY_BOX_G);
+  const remainder = baseGrams - boxes * PARSLEY_BOX_G;
+  if (boxes === 0) boxes = 1;
+  const bag1kg = remainder > 0 ? Math.ceil(remainder / PARSLEY_ADDON_G) : 0;
+  return { box4kg: boxes, bag1kg };
+}
+
+export function isParsleyRawName(name: string | null | undefined): boolean {
+  return normName(name) === PARSLEY_RAW_NAME;
+}
+
 export function applyMaxOrderBaseCaps(params: {
   rawIngredients: RawIngredient[];
   baseSuggested: Record<string, number>;
@@ -214,6 +347,33 @@ export function applyMinOrderPackThresholds(params: {
     if (!passesMinOrderPackThreshold(ing.name, out[ing.id] ?? 0)) {
       delete out[ing.id];
     }
+  }
+  return out;
+}
+
+/**
+ * Weekly items (order_interval_days ≥ 2) without prep-driven need: plan ~1 stocktake unit
+ * per interval (e.g. one box per week for GéDé packaging).
+ */
+export function mergeWeeklyIntervalDailyNeed(params: {
+  dailyRawNeed: Record<string, number>;
+  rawIngredients: RawIngredient[];
+  prepLinkedRawIds: ReadonlySet<string>;
+  basePerStocktakeUnitByRawId: Record<string, number | null | undefined>;
+  recentCountedRawIds: ReadonlySet<string>;
+}): Record<string, number> {
+  const out = { ...params.dailyRawNeed };
+  for (const ing of params.rawIngredients) {
+    const interval = ing.order_interval_days;
+    if (interval == null || interval < 2) continue;
+    const sd = ing.stocktake_day_of_week;
+    if (sd == null || sd < 0 || sd > 6) continue;
+    if (params.prepLinkedRawIds.has(ing.id)) continue;
+    if (!params.recentCountedRawIds.has(ing.id)) continue;
+    if ((out[ing.id] ?? 0) > 0) continue;
+    const bps = params.basePerStocktakeUnitByRawId[ing.id];
+    if (bps == null || !Number.isFinite(bps) || bps <= 0) continue;
+    out[ing.id] = bps / Math.floor(interval);
   }
   return out;
 }
