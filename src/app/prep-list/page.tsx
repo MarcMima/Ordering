@@ -203,14 +203,14 @@ export default function PrepListPage() {
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
+          <h1 className="section-title text-xl sm:text-2xl">
             Prep List
           </h1>
-          <Link href="/dashboard" className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80">
             Dashboard
           </Link>
         </div>
@@ -218,32 +218,32 @@ export default function PrepListPage() {
         <DailyWorkflowStepper />
 
         {error && (
-          <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <div className="alert-error mb-4 rounded-xl p-4 text-sm">
             {error}
           </div>
         )}
 
         <div className="space-y-4 no-print">
           {locationName && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="help-text">
               Location: <strong>{locationName}</strong>
             </p>
           )}
-          <p className="text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+          <p className="text-xs leading-relaxed text-ink-soft/80">
             Stock / Make here is based on <strong>section 1</strong> (finished prep products,{" "}
             <code className="text-[11px]">daily_prep_counts</code>). Raw ingredients (section 2, e.g. chicken from
             delivery) are handled separately in Ordering — enter both on stocktake if you want both in the numbers.
           </p>
           <div>
-            <span className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="mb-1 block label">
               Date
             </span>
-            <p className="flex h-12 items-center rounded-xl border border-zinc-200 bg-white px-4 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
+            <p className="flex h-12 items-center card px-4">
               {date || localCalendarDateString()}
             </p>
           </div>
           {revenueTargetCents != null && (
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="help-text">
               Revenue target: €{formatEuroFromCents(revenueTargetCents)} · vs full capacity:{" "}
               {formatDecimal2(revenueMultiplier)}×
             </p>
@@ -251,11 +251,11 @@ export default function PrepListPage() {
         </div>
 
         {loading ? (
-          <p className="py-8 text-zinc-500">Loading…</p>
+          <p className="py-8 text-ink-soft/80">Loading…</p>
         ) : !locationId ? (
-          <p className="py-8 text-zinc-500">Select a location.</p>
+          <p className="py-8 text-ink-soft/80">Select a location.</p>
         ) : todayRows.length === 0 && tomorrowRows.length === 0 ? (
-          <p className="py-8 text-zinc-500">No prep items to show, or all items are fully stocked.</p>
+          <p className="py-8 text-ink-soft/80">No prep items to show, or all items are fully stocked.</p>
         ) : (
           <>
             <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
@@ -263,7 +263,7 @@ export default function PrepListPage() {
               <button
                 type="button"
                 onClick={handlePrint}
-                className="rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+                className="btn-primary rounded-xl px-4 py-2.5 text-sm font-medium"
               >
                 Print
               </button>
@@ -274,23 +274,23 @@ export default function PrepListPage() {
                 const item = row.prep_items!;
                 const priorityClass =
                   priority === 1
-                    ? "border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10"
+                    ? "border-l-4 border-accent-terracotta bg-brand-sand/40"
                     : priority === 2
-                      ? "border-l-4 border-amber-500 bg-amber-50/50 dark:bg-amber-900/10"
-                      : "border-l-4 border-emerald-500 bg-emerald-50/30 dark:bg-emerald-900/10";
+                      ? "border-l-4 border-accent-orange bg-brand-sand/50"
+                      : "border-l-4 border-brand-green bg-brand-sage/25";
 
                 return (
                   <div
                     key={row.id}
-                    className={`rounded-xl border border-zinc-200 p-4 dark:border-zinc-700 ${priorityClass}`}
+                    className={`rounded-xl border border-brand-green/10 p-4 ${priorityClass}`}
                   >
                     {item.requires_overnight && (
-                      <div className="mb-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                      <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium">
                         Overnight: {item.overnight_alert || "Prepare the day before."}
                       </div>
                     )}
                     {item.special_alert && (
-                      <div className="mb-2 rounded-lg bg-blue-100 px-3 py-2 text-sm text-blue-900 dark:bg-blue-900/30 dark:text-blue-200">
+                      <div className="mb-2 rounded-lg bg-brand-sage/30 px-3 py-2 text-sm text-brand-green">
                         {item.special_alert}
                       </div>
                     )}
@@ -299,15 +299,15 @@ export default function PrepListPage() {
                         type="checkbox"
                         checked={!!completed[item.id]}
                         onChange={() => toggleDone(item.id)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded border-zinc-300"
+                        className="mt-1 h-5 w-5 shrink-0 rounded border-brand-green/15"
                         aria-label={`Done: ${item.name}`}
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-zinc-900 dark:text-zinc-100">{item.name}</p>
+                        <p className="font-medium text-ink">{item.name}</p>
                         {item.unit && (
-                          <p className="text-sm text-zinc-500 dark:text-zinc-400">{item.unit}</p>
+                          <p className="help-text">{item.unit}</p>
                         )}
-                        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                        <p className="mt-1 help-text">
                           Stock: {formatPrepQuantity(currentStock)} · Needed:{" "}
                           {formatPrepQuantity(needed)} · Make:{" "}
                           <strong>{formatPrepQuantity(toMake)}</strong>
@@ -322,8 +322,8 @@ export default function PrepListPage() {
               })}
 
               {tomorrowRows.length > 0 && (
-                <section className="border-t border-zinc-200 pt-6 dark:border-zinc-700">
-                  <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                <section className="border-t border-brand-green/10 pt-6">
+                  <h2 className="mb-3 section-title">
                     Tomorrow (overnight)
                   </h2>
                   <div className="space-y-4">
@@ -331,21 +331,21 @@ export default function PrepListPage() {
                       const item = row.prep_items!;
                       const priorityClass =
                         priority === 1
-                          ? "border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10"
+                          ? "border-l-4 border-accent-terracotta bg-brand-sand/40"
                           : priority === 2
-                            ? "border-l-4 border-amber-500 bg-amber-50/50 dark:bg-amber-900/10"
-                            : "border-l-4 border-emerald-500 bg-emerald-50/30 dark:bg-emerald-900/10";
+                            ? "border-l-4 border-accent-orange bg-brand-sand/50"
+                            : "border-l-4 border-brand-green bg-brand-sage/25";
 
                       return (
                         <div
                           key={row.id}
-                          className={`rounded-xl border border-zinc-200 p-4 dark:border-zinc-700 ${priorityClass}`}
+                          className={`rounded-xl border border-brand-green/10 p-4 ${priorityClass}`}
                         >
-                          <div className="mb-2 rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+                          <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium">
                             Overnight: {item.overnight_alert || "Prepare the day before."}
                           </div>
                           {item.special_alert && (
-                            <div className="mb-2 rounded-lg bg-blue-100 px-3 py-2 text-sm text-blue-900 dark:bg-blue-900/30 dark:text-blue-200">
+                            <div className="mb-2 rounded-lg bg-brand-sage/30 px-3 py-2 text-sm text-brand-green">
                               {item.special_alert}
                             </div>
                           )}
@@ -354,15 +354,15 @@ export default function PrepListPage() {
                               type="checkbox"
                               checked={!!completed[item.id]}
                               onChange={() => toggleDone(item.id)}
-                              className="mt-1 h-5 w-5 shrink-0 rounded border-zinc-300"
+                              className="mt-1 h-5 w-5 shrink-0 rounded border-brand-green/15"
                               aria-label={`Done: ${item.name}`}
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="font-medium text-zinc-900 dark:text-zinc-100">{item.name}</p>
+                              <p className="font-medium text-ink">{item.name}</p>
                               {item.unit && (
-                                <p className="text-sm text-zinc-500 dark:text-zinc-400">{item.unit}</p>
+                                <p className="help-text">{item.unit}</p>
                               )}
-                              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                              <p className="mt-1 help-text">
                                 Stock: {formatPrepQuantity(currentStock)} · Needed:{" "}
                                 {formatPrepQuantity(needed)} · Make:{" "}
                                 <strong>{formatPrepQuantity(toMake)}</strong>
@@ -380,10 +380,10 @@ export default function PrepListPage() {
         )}
 
         <div className="mt-8 flex gap-4 no-print">
-          <Link href="/stocktake" className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          <Link href="/stocktake" className="text-sm font-medium text-ink-soft">
             ← Stocktake
           </Link>
-          <Link href="/ordering" className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+          <Link href="/ordering" className="text-sm font-medium text-ink-soft">
             Ordering →
           </Link>
         </div>

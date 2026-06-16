@@ -27,12 +27,17 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import { localCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
+import {
+  isPrepVisibleOnStocktake,
+  isRawVisibleOnStocktake,
+} from "@/lib/stocktakeVisibility";
 import type { IngredientPackSize, PrepItem, RawIngredient } from "@/lib/types";
 import {
   isRawDeliverableTomorrow,
   supplierScheduleDayToJsDay,
 } from "@/lib/calculations";
 import { formatDecimal2 } from "@/lib/format";
+import { isWeeklyStocktakeDueOnDate } from "@/lib/stocktakeWeek";
 
 type StocktakeDeliveryMeta = {
   schedules: { supplier_id: string; day_of_week: number }[];
@@ -53,11 +58,6 @@ type LocationPrepItem = {
   display_order?: number | null;
   prep_items: PrepItem | null;
 };
-
-/** Master I: hidden when false. */
-function isVisibleOnStocktakeList(ing: RawIngredient): boolean {
-  return ing.stocktake_visible !== false;
-}
 
 /** Weekly bucket: master J → stocktake_day_of_week set (0–6). Daily = null/undefined. */
 function isWeeklyStocktakeItem(ing: RawIngredient): boolean {
@@ -131,17 +131,17 @@ function PrepCountField({
           const n = parseFloat(raw);
           onCommit(prepItemId, !Number.isFinite(n) || n < 0 ? 0 : n);
         }}
-        className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+        className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-brand-green/15 bg-background px-4 text-xl font-medium tabular-nums touch-manipulation"
         aria-label={`Count for ${label}`}
       />
-      {isSaving && <span className="text-xs text-zinc-400">Saving</span>}
+      {isSaving && <span className="text-xs text-ink-soft/60">Saving</span>}
     </div>
   );
 }
 
 export default function StocktakePage() {
   const router = useRouter();
-  const { locationId } = useLocation();
+  const { locationId, locations } = useLocation();
   const [date] = useState(() => localCalendarDateString());
   const [expectedRevenue, setExpectedRevenue] = useState("");
   const [revenueSaving, setRevenueSaving] = useState(false);
@@ -167,8 +167,10 @@ export default function StocktakePage() {
   );
   const [showOnlyMissing, setShowOnlyMissing] = useState(false);
 
-  const STOCKTAKE_LEAVE_INCOMPLETE_MSG =
-    "Stocktake is nog niet compleet (finished products en/of raw ingredients). Toch doorgaan naar de volgende stap?";
+  const currentLocation = useMemo(
+    () => locations.find((l) => l.id === locationId),
+    [locations, locationId]
+  );
 
   useEffect(() => {
     if (showOnlyMissing) {
@@ -201,7 +203,9 @@ export default function StocktakePage() {
     Promise.all([
       supabase
         .from("location_prep_items")
-        .select("id, location_id, prep_item_id, display_order, prep_items(*)")
+        .select(
+          "id, location_id, prep_item_id, display_order, prep_items(id, name, unit, content_amount, content_unit, category, stocktake_visible)"
+        )
         .eq("location_id", locationId)
         .order("display_order")
         .order("prep_item_id")
@@ -215,12 +219,7 @@ export default function StocktakePage() {
       supabase
         .from("raw_ingredients")
         .select(
-          `id, name, unit, location_id, stocktake_visible, stocktake_day_of_week,
-          stocktake_display_order,
-          stocktake_unit_label, stocktake_content_amount, stocktake_content_unit,
-          ingredient_pack_sizes (
-            id, raw_ingredient_id, size, size_unit, grams_per_piece, pack_purpose, display_unit_label, price_cents, order_pack_multiple
-          )`
+          `id, name, unit, location_id, stocktake_visible, stocktake_day_of_week, stocktake_display_order, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, grams_per_piece, pack_purpose, display_unit_label, price_cents, order_pack_multiple )`
         )
         .eq("location_id", locationId)
         .order("stocktake_display_order", { ascending: true })
@@ -245,7 +244,7 @@ export default function StocktakePage() {
         }));
         // Drop broken joins; sort by product name for a stable list
         items = items
-          .filter((row) => row.prep_items != null)
+          .filter((row) => row.prep_items != null && isPrepVisibleOnStocktake(row.prep_items))
           .sort((a, b) => {
             const oa = a.display_order ?? 0;
             const ob = b.display_order ?? 0;
@@ -268,7 +267,7 @@ export default function StocktakePage() {
           const list = Array.isArray(nested) ? nested : nested != null ? [nested] : [];
           for (const p of list) packs.push(p);
         }
-        const visibleRaws = rawList.filter((ing) => isVisibleOnStocktakeList(ing));
+        const visibleRaws = rawList.filter((ing) => isRawVisibleOnStocktake(ing));
         const shownIds = new Set(visibleRaws.map((r) => r.id));
         const packsForList = packs.filter((p) => shownIds.has(p.raw_ingredient_id));
         const rawIds = visibleRaws.map((r) => r.id);
@@ -750,26 +749,56 @@ export default function StocktakePage() {
     [rawIngredientsForTab, rawCounts]
   );
 
+  /** Weekly-tab items that count toward “complete” today (location weekday policy or per-ingredient). */
+  const weeklyRawsDueToday = useMemo(
+    () =>
+      weeklyRaws.filter((ing) =>
+        isWeeklyStocktakeDueOnDate({
+          dateStr: date,
+          locationWeeklyDow: currentLocation?.weekly_stocktake_day_of_week,
+          ingredientWeeklyDow: ing.stocktake_day_of_week,
+        })
+      ),
+    [weeklyRaws, date, currentLocation?.weekly_stocktake_day_of_week]
+  );
+
+  const rawsRequiredForCompletion = useMemo(
+    () => [...dailyRaws, ...weeklyRawsDueToday],
+    [dailyRaws, weeklyRawsDueToday]
+  );
+
   const stocktakeFullyComplete = useMemo(() => {
     if (!locationId || loading) return true;
     const prepOk =
       totalItems === 0 || locationPrepItems.every((row) => counts[row.prep_item_id] !== undefined);
     const rawOk =
-      allVisibleRaws.length === 0 || allVisibleRaws.every((r) => rawCounts[r.id] !== undefined);
+      rawsRequiredForCompletion.length === 0 ||
+      rawsRequiredForCompletion.every((r) => rawCounts[r.id] !== undefined);
     return prepOk && rawOk;
-  }, [locationId, loading, totalItems, locationPrepItems, counts, allVisibleRaws, rawCounts]);
+  }, [
+    locationId,
+    loading,
+    totalItems,
+    locationPrepItems,
+    counts,
+    rawsRequiredForCompletion,
+    rawCounts,
+  ]);
+
+  const STOCKTAKE_LEAVE_INCOMPLETE_MSG =
+    "Stocktake is not complete yet (finished products, daily raw ingredients, and all weekly items due on the scheduled day). Set the weekly day under Admin → Locations. Continue to the next step anyway?";
 
   return (
-    <div className="min-h-screen bg-zinc-50 pb-24 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans pb-24">
       <TopNav />
       <main className="mx-auto max-w-2xl px-4 py-4 sm:px-6">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50 sm:text-2xl">
+          <h1 className="section-title text-xl sm:text-2xl">
             Stocktake
           </h1>
           <Link
             href="/dashboard"
-            className="text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 touch-manipulation"
+            className="text-sm font-medium text-ink-soft/80 hover:text-ink touch-manipulation"
           >
             Dashboard
           </Link>
@@ -781,24 +810,24 @@ export default function StocktakePage() {
         />
 
         {error && (
-          <div className="mb-4 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <div className="alert-error mb-4 rounded-xl p-4 text-sm">
             {error}
           </div>
         )}
 
         {/* Date */}
         <section className="mb-5">
-          <span className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <span className="mb-2 block label">
             Date
           </span>
-          <p className="flex h-14 min-h-[56px] items-center rounded-xl border border-zinc-200 bg-white px-4 text-base dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100">
+          <p className="flex h-14 min-h-[56px] items-center card px-4 text-base">
             {date || localCalendarDateString()}
           </p>
         </section>
 
         {/* 3. Expected revenue */}
         <section className="mb-6">
-          <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label className="mb-2 block label">
             Expected revenue (€)
           </label>
           <input
@@ -808,11 +837,11 @@ export default function StocktakePage() {
             placeholder="0"
             value={expectedRevenue}
             onChange={(e) => setExpectedRevenue(e.target.value)}
-            className="h-14 w-full min-h-[56px] rounded-xl border border-zinc-300 bg-white px-4 text-base touch-manipulation dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            className="h-14 w-full min-h-[56px] rounded-xl border border-brand-green/15 bg-surface px-4 text-base touch-manipulation"
             aria-label="Expected revenue"
           />
           {revenueSaving && (
-            <p className="mt-1.5 text-xs text-zinc-500">Saving…</p>
+            <p className="mt-1.5 text-xs text-ink-soft/70">Saving…</p>
           )}
         </section>
 
@@ -821,17 +850,13 @@ export default function StocktakePage() {
             <button
               type="button"
               onClick={() => setShowOnlyMissing((v) => !v)}
-              className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${
-                showOnlyMissing
-                  ? "bg-amber-100 text-amber-950 dark:bg-amber-900/40 dark:text-amber-100"
-                  : "border border-zinc-300 bg-white text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-              }`}
+              className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ showOnlyMissing ? "badge-pending" : "border border-brand-green/15 bg-surface text-ink " }`}
               aria-pressed={showOnlyMissing}
             >
-              {showOnlyMissing ? "Toon alles" : "Alleen nog niet ingevuld"}
+              {showOnlyMissing ? "Show all" : "Only not counted yet"}
             </button>
             {showOnlyMissing && (
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              <span className="text-xs text-ink-soft/70">
                 Finished: {missingPrepCount} open · {rawSubtab === "daily" ? "Daily" : "Weekly"} raw:{" "}
                 {missingRawCountForTab} open
               </span>
@@ -842,43 +867,39 @@ export default function StocktakePage() {
         {/* Group 1: Finished / ready products */}
         {totalItems > 0 && (
           <section className="mb-6">
-            <h2 className="mb-1 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            <h2 className="mb-1 section-title">
               1. Finished products
             </h2>
-            <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mb-4 help-text">
               Already prepared items (e.g. marinated chicken thigh, hummus, sauces). Enter how much you have <strong>ready</strong> (same unit as in your recipe book, usually grams).
             </p>
-            <div className="mb-2 flex justify-between text-sm font-medium text-zinc-600 dark:text-zinc-400">
+            <div className="mb-2 flex justify-between text-sm font-medium text-ink-soft">
               <span>Finished products progress</span>
               <span>{countedItems} / {totalItems}</span>
             </div>
-            <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-brand-sand/60">
               <div
-                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                className="h-full rounded-full bg-brand-green transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
             {totalItems > 1 && (
-              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900/40">
+              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-brand-green/10 bg-background/80 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     disabled={showOnlyMissing}
-                    title={showOnlyMissing ? "Zet filter op “Toon alles” om te herschikken" : undefined}
+                    title={showOnlyMissing ? 'Switch filter to "Show all" to reorder items' : undefined}
                     onClick={() => setPrepReorderMode((v) => !v)}
-                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${
-                      prepReorderMode
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                        : "border border-zinc-300 bg-white text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ prepReorderMode ? "bg-brand-green text-white" : "border border-brand-green/15 bg-surface text-ink " } disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-pressed={prepReorderMode}
                   >
                     {prepReorderMode ? "Done reordering" : "Reorder list (drag)"}
                   </button>
-                  {prepOrderSaving && <span className="text-xs text-zinc-500">Saving order…</span>}
+                  {prepOrderSaving && <span className="text-xs text-ink-soft/70">Saving order…</span>}
                 </div>
                 {prepReorderMode && (
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                  <p className="text-xs text-ink-soft">
                     <strong>Hold</strong> the grip on the left, then drag up or down. Order saves when you drop. Categories
                     are shown as hints; the list is one sequence for this location.
                   </p>
@@ -890,17 +911,17 @@ export default function StocktakePage() {
 
         {/* Finished products list (optional per category) */}
         {loading ? (
-          <p className="py-8 text-zinc-500">Loading items…</p>
+          <p className="py-8 text-ink-soft/80">Loading items…</p>
         ) : !locationId ? (
-          <p className="py-8 text-zinc-500">Select a location to see prep items.</p>
+          <p className="py-8 text-ink-soft/80">Select a location to see prep items.</p>
         ) : locationPrepItems.length === 0 ? (
           <div className="py-8">
-            <p className="mb-2 text-zinc-700 dark:text-zinc-300">
+            <p className="mb-2 text-ink-soft">
               No prep items linked to this location yet.
             </p>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="help-text">
               Only products linked to this location appear here. Go to{" "}
-              <Link href="/admin" className="font-medium text-zinc-900 underline dark:text-zinc-100">Admin</Link> → <strong>Locations</strong> → <strong>Manage products</strong>, or re-run the bulk import (migration 014) to link all recipes to this location.
+              <Link href="/admin" className="font-medium text-ink underline">Admin</Link> → <strong>Locations</strong> → <strong>Manage products</strong>, or re-run the bulk import (migration 014) to link all recipes to this location.
             </p>
           </div>
         ) : prepReorderMode && totalItems > 1 ? (
@@ -910,21 +931,21 @@ export default function StocktakePage() {
                 {locationPrepItems.map((row) => {
                   const item = row.prep_items;
                   if (!item) return null;
-                  const isSaving = countSaving[item.id];
+                  const isSaving = countSaving[row.prep_item_id];
                   const cat = item.category?.trim() || "All finished products";
                   return (
                     <SortableStocktakeItem
                       key={row.id}
                       id={row.id}
                       dragLabel={item.name}
-                      className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800"
+                      className="card"
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">{cat}</p>
-                          <p className="font-medium text-zinc-900 dark:text-zinc-100">{item.name}</p>
+                          <p className="text-xs font-medium uppercase tracking-wide text-ink-soft/60">{cat}</p>
+                          <p className="font-medium text-ink">{item.name}</p>
                           {item.unit && (
-                            <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                            <p className="mt-0.5 help-text">
                               {item.unit}
                               {item.content_amount != null &&
                                 item.content_unit &&
@@ -933,8 +954,8 @@ export default function StocktakePage() {
                           )}
                         </div>
                         <PrepCountField
-                          prepItemId={item.id}
-                          quantity={counts[item.id]}
+                          prepItemId={row.prep_item_id}
+                          quantity={counts[row.prep_item_id]}
                           onCommit={commitPrepCount}
                           onClear={clearPrepCount}
                           isSaving={!!isSaving}
@@ -950,32 +971,32 @@ export default function StocktakePage() {
         ) : (
           <div className="space-y-8">
             {categoryOrderDisplayed.length === 0 && showOnlyMissing && totalItems > 0 ? (
-              <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-sm text-zinc-600 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-400">
-                Alle finished products voor deze locatie zijn ingevuld.
+              <p className="rounded-xl border border-dashed border-brand-green/15 bg-background px-4 py-6 help-text">
+                All finished products for this location have been counted.
               </p>
             ) : (
               categoryOrderDisplayed.map((category) => (
               <section key={category}>
-                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-soft/80">
                   {category}
                 </h3>
                 <ul className="space-y-4">
                   {displayedItemsByCategory[category]!.map((row) => {
                     const item = row.prep_items;
                     if (!item) return null;
-                    const isSaving = countSaving[item.id];
+                    const isSaving = countSaving[row.prep_item_id];
                     return (
                       <li
                         key={row.id}
-                        className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800"
+                        className="card"
                       >
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0 flex-1">
-                            <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                            <p className="font-medium text-ink">
                               {item.name}
                             </p>
                             {item.unit && (
-                              <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                              <p className="mt-0.5 help-text">
                                 {item.unit}
                                 {item.content_amount != null &&
                                   item.content_unit &&
@@ -984,8 +1005,8 @@ export default function StocktakePage() {
                             )}
                           </div>
                           <PrepCountField
-                            prepItemId={item.id}
-                            quantity={counts[item.id]}
+                            prepItemId={row.prep_item_id}
+                            quantity={counts[row.prep_item_id]}
                             onCommit={commitPrepCount}
                             onClear={clearPrepCount}
                             isSaving={!!isSaving}
@@ -1005,26 +1026,22 @@ export default function StocktakePage() {
         {/* Group 2: Raw ingredients */}
         {allVisibleRaws.length > 0 && (
           <>
-            <section className="mt-12 border-t border-zinc-200 pt-10 dark:border-zinc-700">
-              <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            <section className="mt-12 border-t border-brand-green/10 pt-10">
+              <h2 className="mb-4 section-title">
                 2. Raw ingredients
               </h2>
               {stocktakeDeliveryMeta?.skipFilter && (
-                <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                <p className="mb-4 alert-warning rounded-lg text-xs">
                   Could not load supplier schedules; showing all daily ingredients. Check your connection and try
                   refreshing.
                 </p>
               )}
             </section>
-            <div className="mb-4 flex gap-2 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="mb-4 flex gap-2 card p-1">
               <button
                 type="button"
                 onClick={() => setRawSubtab("daily")}
-                className={`min-h-[48px] flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-manipulation ${
-                  rawSubtab === "daily"
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-900"
-                }`}
+                className={`min-h-[48px] flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-manipulation ${ rawSubtab === "daily" ? "bg-brand-green text-white" : "text-ink-soft hover:bg-background " }`}
                 aria-pressed={rawSubtab === "daily"}
               >
                 Daily ({dailyRaws.length})
@@ -1032,11 +1049,7 @@ export default function StocktakePage() {
               <button
                 type="button"
                 onClick={() => setRawSubtab("weekly")}
-                className={`min-h-[48px] flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-manipulation ${
-                  rawSubtab === "weekly"
-                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                    : "text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-900"
-                }`}
+                className={`min-h-[48px] flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-manipulation ${ rawSubtab === "weekly" ? "bg-brand-green text-white" : "text-ink-soft hover:bg-background " }`}
                 aria-pressed={rawSubtab === "weekly"}
               >
                 Weekly ({weeklyRaws.length})
@@ -1044,41 +1057,37 @@ export default function StocktakePage() {
             </div>
             {totalRaw > 0 && (
               <section className="mb-4">
-                <div className="mb-2 flex justify-between text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                <div className="mb-2 flex justify-between text-sm font-medium text-ink-soft">
                   <span>{rawSubtab === "daily" ? "Daily" : "Weekly"} raw progress</span>
                   <span>{countedRaw} / {totalRaw}</span>
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                <div className="h-3 w-full overflow-hidden rounded-full bg-brand-sand/60">
                   <div
-                    className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                    className="h-full rounded-full bg-accent-orange transition-all duration-300"
                     style={{ width: `${progressRawPercent}%` }}
                   />
                 </div>
               </section>
             )}
             {totalRaw > 1 && (
-              <div className="mb-4 flex flex-col gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900/40">
+              <div className="mb-4 flex flex-col gap-2 rounded-xl border border-brand-green/10 bg-background/80 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     disabled={showOnlyMissing}
-                    title={showOnlyMissing ? "Zet filter op “Toon alles” om te herschikken" : undefined}
+                    title={showOnlyMissing ? 'Switch filter to "Show all" to reorder items' : undefined}
                     onClick={() => setRawReorderMode((v) => !v)}
-                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${
-                      rawReorderMode
-                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                        : "border border-zinc-300 bg-white text-zinc-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
-                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ rawReorderMode ? "bg-brand-green text-white" : "border border-brand-green/15 bg-surface text-ink " } disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-pressed={rawReorderMode}
                   >
                     {rawReorderMode ? "Done reordering" : "Reorder list (drag)"}
                   </button>
                   {rawOrderSaving && (
-                    <span className="text-xs text-zinc-500">Saving order…</span>
+                    <span className="text-xs text-ink-soft/70">Saving order…</span>
                   )}
                 </div>
                 {rawReorderMode && (
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                  <p className="text-xs text-ink-soft">
                     <strong>Hold</strong> the grip on the left, then drag up or down. Daily and Weekly lists reorder
                     separately. Order saves when you drop.
                   </p>
@@ -1086,18 +1095,18 @@ export default function StocktakePage() {
               </div>
             )}
             <section className="mt-2">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-soft/80">
                 {rawSubtab === "daily" ? "Daily stock count" : "Weekly stock count"}
               </h3>
               {rawIngredientsForTab.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-sm text-zinc-600 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-400">
+                <p className="rounded-xl border border-dashed border-brand-green/15 bg-background px-4 py-6 help-text">
                   {rawSubtab === "daily"
                     ? "No ingredients match “delivery tomorrow” for today, or none are linked to a supplier with a schedule. Check Admin → Suppliers (delivery days) and ingredient–supplier links. Use the Weekly tab for other counts."
                     : "No weekly items yet. Set master column J to 1 (or set a stocktake weekday in Admin) for products you only count weekly."}
                 </p>
               ) : rawTabList.length === 0 && showOnlyMissing ? (
-                <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-sm text-zinc-600 dark:border-zinc-600 dark:bg-zinc-900/40 dark:text-zinc-400">
-                  Alles in dit tabblad is ingevuld.
+                <p className="rounded-xl border border-dashed border-brand-green/15 bg-background px-4 py-6 help-text">
+                  Everything in this tab has been counted.
                 </p>
               ) : rawReorderMode && totalRaw > 1 ? (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleRawDragEnd}>
@@ -1146,7 +1155,7 @@ export default function StocktakePage() {
         )}
 
         {!loading && locationId && allVisibleRaws.length === 0 && locationPrepItems.length > 0 && (
-          <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-6 help-text">
             Add raw ingredients under Admin → Ingredients to count them here and get order suggestions on the Ordering page.
           </p>
         )}
@@ -1154,7 +1163,7 @@ export default function StocktakePage() {
         <nav className="mt-8 flex gap-4">
           <Link
             href="/dashboard"
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            className="text-sm font-medium text-ink-soft hover:text-ink"
           >
             ← Dashboard
           </Link>
@@ -1167,7 +1176,7 @@ export default function StocktakePage() {
                 router.push("/prep-list");
               }
             }}
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            className="text-sm font-medium text-ink-soft hover:text-ink"
           >
             Prep List →
           </Link>

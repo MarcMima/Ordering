@@ -13,7 +13,7 @@ import {
 import { SortableStocktakeItem } from "./SortableStocktakeItem";
 
 const rawCardClass =
-  "rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800";
+  "card ";
 
 function parseNonNegativeAmount(text: string): number {
   const t = text.trim().replace(",", ".");
@@ -161,8 +161,8 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
   const inner = (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
-        <p className="break-words text-pretty font-medium text-zinc-900 dark:text-zinc-100">{ing.name}</p>
-        {unitHint && <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{unitHint}</p>}
+        <p className="break-words text-pretty font-medium text-ink">{ing.name}</p>
+        {unitHint && <p className="mt-0.5 help-text">{unitHint}</p>}
       </div>
       <div className="flex items-center gap-3">
         <input
@@ -178,10 +178,10 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
             commitFromText(e.currentTarget.value);
             setDraft(null);
           }}
-          className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-zinc-300 bg-zinc-50 px-4 text-xl font-medium tabular-nums touch-manipulation dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+          className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-brand-green/15 bg-background px-4 text-xl font-medium tabular-nums touch-manipulation"
           aria-label={`Stock ${ing.name}`}
         />
-        {isSaving && <span className="text-xs text-zinc-400">Saving</span>}
+        {isSaving && <span className="text-xs text-ink-soft/60">Saving</span>}
       </div>
     </div>
   );
