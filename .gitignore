@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env*.example
 
 # vercel
 .vercel
@@ -42,3 +44,7 @@ next-env.d.ts
 
 # gegenereerd uit lokale Excel (groot; opnieuw met scripts/mima_xlsx_parse.py)
 /scripts/parsed_*.json
+
+# Bidfood sandbox test-PDF bevat API-credentials; niet committen
+*Bidfood*Sandbox*.pdf
+Testdata Bidfood Sandbox*.pdf

@@ -22,8 +22,8 @@ pkill -f "next dev" 2>/dev/null || true
 pkill -f "next/dist/bin/next" 2>/dev/null || true
 sleep 1
 
-echo "3) .next/dev verwijderen (lock + cache dev)..."
-rm -rf .next/dev
+echo "3) .next cache verwijderen (lock + compile cache)..."
+rm -rf .next
 
 echo "4) Dev server starten..."
 exec npm run dev
