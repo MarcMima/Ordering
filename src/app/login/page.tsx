@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { isAuthDisabled } from "@/lib/authMode";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,6 +17,12 @@ function LoginForm() {
   const next = searchParams.get("next");
   const safeNext =
     next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+
+  useEffect(() => {
+    if (isAuthDisabled()) {
+      router.replace(safeNext);
+    }
+  }, [router, safeNext]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,7 +42,7 @@ function LoginForm() {
   return (
     <div className="mx-auto w-full max-w-sm px-4">
       <div className="mb-8 flex justify-center">
-        <Link href="/login" className="rounded-md bg-white" style={{ backgroundColor: "#ffffff" }}>
+        <Link href="/login" className="rounded-md bg-surface">
           <Image
             src="/mima-logo.png"
             alt="Mima"
@@ -47,12 +54,12 @@ function LoginForm() {
           />
         </Link>
       </div>
-      <h1 className="mb-6 text-center text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="mb-6 text-center section-title text-xl">
         Log in
       </h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label htmlFor="email" className="mb-1 block label">
             E-mail
           </label>
           <input
@@ -62,11 +69,11 @@ function LoginForm() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="h-12 w-full rounded-xl border border-zinc-300 bg-white px-4 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            className="input-lg w-full"
           />
         </div>
         <div>
-          <label htmlFor="password" className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+          <label htmlFor="password" className="mb-1 block label">
             Password
           </label>
           <input
@@ -76,18 +83,18 @@ function LoginForm() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-12 w-full rounded-xl border border-zinc-300 bg-white px-4 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
+            className="input-lg w-full"
           />
         </div>
         {error && (
-          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+          <p className="alert-error rounded-lg">
             {error}
           </p>
         )}
         <button
           type="submit"
           disabled={loading}
-          className="h-12 w-full rounded-xl bg-zinc-900 font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="h-12 w-full btn-primary input-lg rounded-xl font-medium disabled:opacity-50"
         >
           {loading ? "Signing in…" : "Sign in"}
         </button>
@@ -98,9 +105,9 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-16 dark:bg-zinc-900">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-16">
       <Suspense
-        fallback={<p className="text-center text-zinc-500 dark:text-zinc-400">Loading…</p>}
+        fallback={<p className="text-center text-ink-soft/80">Loading…</p>}
       >
         <LoginForm />
       </Suspense>

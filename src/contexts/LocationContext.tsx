@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { isAuthDisabled } from "@/lib/authMode";
 import { createClient } from "@/lib/supabase";
 import type { Location } from "@/lib/types";
 
@@ -32,11 +33,42 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const applyLocationList = useCallback((list: Location[]) => {
+    setLocations(list);
+    const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    const validStored = stored && list.some((l) => l.id === stored);
+    if (validStored && stored) {
+      setLocationIdState(stored);
+    } else if (list.length > 0) {
+      const preferred =
+        list.find((l) => l.name.toLowerCase() === DEFAULT_TEST_LOCATION_NAME.toLowerCase()) ??
+        list[0];
+      setLocationIdState(preferred.id);
+      if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, preferred.id);
+    } else {
+      setLocationIdState("");
+      if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
   const refetchLocations = useCallback(async () => {
     const supabase = createClient();
+    if (!isAuthDisabled()) {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        setError(userError?.message ?? null);
+        setLocations([]);
+        return;
+      }
+    }
     const { data, error: e } = await supabase
       .from("locations")
-      .select("id, name, full_capacity_revenue, ordering_evening_day_fraction, haccp_store_id")
+      .select(
+        "id, name, full_capacity_revenue, ordering_evening_day_fraction, weekly_stocktake_day_of_week, haccp_store_id"
+      )
       .order("name", { ascending: true });
     if (e) {
       setError(e.message);
@@ -44,16 +76,35 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       return;
     }
     setError(null);
-    setLocations((data as Location[]) ?? []);
-  }, []);
+    applyLocationList((data as Location[]) ?? []);
+  }, [applyLocationList]);
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      const supabase = createClient();
+    const supabase = createClient();
+
+    const loadLocations = async () => {
+      setLoading(true);
+      if (!isAuthDisabled()) {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+        if (!mounted) return;
+        if (userError || !user) {
+          setError(userError?.message ?? null);
+          setLocations([]);
+          setLocationIdState("");
+          setLoading(false);
+          return;
+        }
+      }
+
       const { data, error: e } = await supabase
         .from("locations")
-        .select("id, name, full_capacity_revenue, ordering_evening_day_fraction, haccp_store_id")
+        .select(
+          "id, name, full_capacity_revenue, ordering_evening_day_fraction, weekly_stocktake_day_of_week, haccp_store_id"
+        )
         .order("name", { ascending: true });
       if (!mounted) return;
       if (e) {
@@ -62,26 +113,38 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      const list = (data as Location[]) ?? [];
-      setLocations(list);
       setError(null);
-
-      const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-      const valid = list.some((l) => l.id === stored);
-      if (stored && valid) {
-        setLocationIdState(stored);
-      } else if (list.length > 0) {
-        // Prefer the TEST location for fresh sessions to keep production locations safe.
-        const preferred =
-          list.find((l) => l.name.toLowerCase() === DEFAULT_TEST_LOCATION_NAME.toLowerCase()) ??
-          list[0];
-        setLocationIdState(preferred.id);
-        if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, preferred.id);
-      }
+      applyLocationList((data as Location[]) ?? []);
       setLoading(false);
-    })();
-    return () => { mounted = false; };
-  }, []);
+    };
+
+    void loadLocations();
+
+    if (isAuthDisabled()) {
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        setLocations([]);
+        setLocationIdState("");
+        setLoading(false);
+        return;
+      }
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+        void loadLocations();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [applyLocationList]);
 
   const setLocationId = useCallback((id: string) => {
     setLocationIdState(id);

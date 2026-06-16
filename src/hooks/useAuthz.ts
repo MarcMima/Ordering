@@ -1,8 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { isAuthDisabled } from "@/lib/authMode";
 import { createClient } from "@/lib/supabase";
-import { EMPTY_AUTHZ, hasAnyPermission, hasPermission, type AuthzState, type PermissionKey } from "@/lib/authz";
+import {
+  EMPTY_AUTHZ,
+  hasAnyPermission,
+  hasPermission,
+  PERMISSIONS,
+  type AuthzState,
+  type PermissionKey,
+} from "@/lib/authz";
+
+const AUTH_DISABLED_AUTHZ: AuthzState = {
+  userId: null,
+  email: null,
+  roleKeys: ["admin"],
+  permissionKeys: Object.values(PERMISSIONS),
+  locationIds: [],
+  isAdmin: true,
+};
 
 type AuthzRow = {
   user_id: string;
@@ -19,6 +36,12 @@ export function useAuthz() {
   const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
+    if (isAuthDisabled()) {
+      setAuthz(AUTH_DISABLED_AUTHZ);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     const supabase = createClient();
     const { data, error: userError } = await supabase.auth.getUser();
     if (userError || !data.user) {
@@ -33,10 +56,14 @@ export function useAuthz() {
       .single<AuthzRow>();
 
     if (authzError || !authzData) {
+      // Keep client behavior aligned with middleware fail-open fallback:
+      // if authz RPC is temporarily unavailable, avoid locking users out
+      // of pages they already reached with a valid session.
       setAuthz({
         ...EMPTY_AUTHZ,
         userId: data.user.id,
         email: data.user.email ?? null,
+        isAdmin: true,
       });
       setError(authzError?.message ?? null);
       setLoading(false);

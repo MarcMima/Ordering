@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { isAuthDisabled } from "@/lib/authMode";
 import { createClient } from "@/lib/supabase";
 
 /**
@@ -11,9 +12,14 @@ import { createClient } from "@/lib/supabase";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [allowed, setAllowed] = useState(pathname === "/login");
+  const authOff = isAuthDisabled();
+  const [allowed, setAllowed] = useState(authOff || pathname === "/login");
 
   useEffect(() => {
+    if (authOff) {
+      setAllowed(true);
+      return;
+    }
     if (pathname === "/login") {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setAllowed(true);
@@ -68,7 +74,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [pathname, router]);
+  }, [authOff, pathname, router]);
+
+  if (authOff) {
+    return <>{children}</>;
+  }
 
   if (pathname === "/login") {
     return <>{children}</>;
@@ -76,7 +86,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!allowed) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-background text-ink-soft">
         Checking session…
       </div>
     );

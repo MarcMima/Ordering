@@ -1,3 +1,4 @@
+import { isAuthDisabled } from "@/lib/authMode";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -19,6 +20,16 @@ function normalizePath(pathname: string): string {
 export async function updateSession(request: NextRequest) {
   const pathname = normalizePath(request.nextUrl.pathname);
   const isLogin = pathname === "/login";
+
+  if (isAuthDisabled()) {
+    if (isLogin) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next({ request });
+  }
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (!isLogin) {
