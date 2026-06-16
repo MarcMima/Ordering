@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
+import { isAuthDisabled } from "@/lib/authMode";
 import { useCan, PERMISSIONS } from "@/hooks/useCan";
 
 type LocationOption = { id: string; name: string };
@@ -37,7 +38,26 @@ const ROLE_OPTIONS: Array<{ key: "admin" | "manager" | "employee"; label: string
 ];
 
 export default function AdminUsersPage() {
+  const authOff = isAuthDisabled();
   const { allowed, loading: canLoading } = useCan(PERMISSIONS.usersManage);
+
+  if (authOff) {
+    return (
+      <div className="min-h-screen bg-background font-sans">
+        <TopNav />
+        <main className="mx-auto max-w-lg px-4 py-12 text-center">
+          <h1 className="section-title text-xl">Users disabled</h1>
+          <p className="mt-3 help-text">
+            Login and user management are turned off. Set{" "}
+            <code className="text-xs">NEXT_PUBLIC_AUTH_DISABLED=false</code> to re-enable.
+          </p>
+          <Link href="/admin" className="mt-6 inline-block label">
+            ← Admin
+          </Link>
+        </main>
+      </div>
+    );
+  }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,10 +163,10 @@ export default function AdminUsersPage() {
 
   if (canLoading || loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+      <div className="min-h-screen bg-background font-sans">
         <TopNav />
         <main className="mx-auto max-w-6xl px-4 py-8">
-          <p className="text-sm text-zinc-500">Loading users…</p>
+          <p className="help-text">Loading users…</p>
         </main>
       </div>
     );
@@ -154,11 +174,11 @@ export default function AdminUsersPage() {
 
   if (!allowed) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+      <div className="min-h-screen bg-background font-sans">
         <TopNav />
         <main className="mx-auto max-w-4xl px-4 py-8">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
-            Je hebt geen rechten om gebruikersbeheer te openen.
+          <div className="alert-warning rounded-xl p-4 text-sm">
+            You do not have permission to open user management.
           </div>
         </main>
       </div>
@@ -166,62 +186,62 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Users & roles</h1>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Beheer gebruikers, rol en locatie-toegang.
+            <h1 className="page-title">Users & roles</h1>
+            <p className="mt-1 help-text">
+              Manage users, roles, and location access.
             </p>
           </div>
           <Link
             href="/admin"
-            className="text-sm text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+            className="help-text hover:text-ink"
           >
             ← Admin
           </Link>
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-300">
+          <div className="alert-error rounded-xl">
             {error}
           </div>
         )}
         {message && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-300">
+          <div className="badge-success rounded-xl border p-3 text-sm">
             {message}
           </div>
         )}
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Nieuwe gebruiker</h2>
+        <section className="rounded-2xl border border-brand-sage/50 bg-surface p-4">
+          <h2 className="text-lg font-medium text-ink">New user</h2>
           <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={createUser}>
-            <label className="text-sm text-zinc-700 dark:text-zinc-300">
-              E-mail
+            <label className="text-sm text-ink-soft">
+              Email
               <input
                 value={newUser.email}
                 onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 dark:border-zinc-600 dark:bg-zinc-900"
+                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
                 type="email"
                 required
               />
             </label>
-            <label className="text-sm text-zinc-700 dark:text-zinc-300">
-              Weergavenaam
+            <label className="text-sm text-ink-soft">
+              Display name
               <input
                 value={newUser.displayName}
                 onChange={(e) => setNewUser((s) => ({ ...s, displayName: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 dark:border-zinc-600 dark:bg-zinc-900"
+                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
               />
             </label>
-            <label className="text-sm text-zinc-700 dark:text-zinc-300">
-              Rol
+            <label className="text-sm text-ink-soft">
+              Role
               <select
                 value={newUser.roleKey}
                 onChange={(e) => setNewUser((s) => ({ ...s, roleKey: e.target.value as NewUserForm["roleKey"] }))}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 dark:border-zinc-600 dark:bg-zinc-900"
+                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
               >
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r.key} value={r.key}>
@@ -230,19 +250,19 @@ export default function AdminUsersPage() {
                 ))}
               </select>
             </label>
-            <label className="text-sm text-zinc-700 dark:text-zinc-300">
-              Aanmaakmethode
+            <label className="text-sm text-ink-soft">
+              Creation method
               <select
                 value={newUser.flow}
                 onChange={(e) => setNewUser((s) => ({ ...s, flow: e.target.value as NewUserForm["flow"] }))}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-300 bg-white px-3 dark:border-zinc-600 dark:bg-zinc-900"
+                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
               >
-                <option value="invite">Invite vanuit app</option>
-                <option value="link_existing">Koppel bestaand Supabase-account</option>
+                <option value="invite">Invite from app</option>
+                <option value="link_existing">Link existing Supabase account</option>
               </select>
             </label>
-            <label className="text-sm text-zinc-700 dark:text-zinc-300 md:col-span-2">
-              Locaties (voor manager/employee)
+            <label className="text-sm text-ink-soft md:col-span-2">
+              Locations (for manager/employee)
               <select
                 multiple
                 value={newUser.locationIds}
@@ -252,7 +272,7 @@ export default function AdminUsersPage() {
                     locationIds: Array.from(e.target.selectedOptions).map((o) => o.value),
                   }))
                 }
-                className="mt-1 min-h-28 w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                className="mt-1 min-h-28 w-full rounded-xl border border-brand-green/15 bg-surface px-3 py-2"
               >
                 {sortedLocations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -265,26 +285,26 @@ export default function AdminUsersPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="h-11 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                className="btn-primary h-11 rounded-xl px-4 text-sm font-medium disabled:opacity-50"
               >
-                {saving ? "Opslaan…" : "Gebruiker toevoegen"}
+                {saving ? "Saving…" : "Add user"}
               </button>
             </div>
           </form>
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Bestaande gebruikers</h2>
+        <section className="rounded-2xl border border-brand-sage/50 bg-surface p-4">
+          <h2 className="text-lg font-medium text-ink">Existing users</h2>
           <div className="mt-4 space-y-3">
             {users.map((u) => {
               const draft = drafts[u.id];
               if (!draft) return null;
               return (
-                <div key={u.id} className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-700">
-                  <div className="mb-2 text-sm text-zinc-500">{u.email ?? "(geen e-mail)"}</div>
+                <div key={u.id} className="rounded-xl border border-brand-green/10 p-3">
+                  <div className="mb-2 help-text">{u.email ?? "(no email)"}</div>
                   <div className="grid gap-3 md:grid-cols-2">
-                    <label className="text-sm text-zinc-700 dark:text-zinc-300">
-                      Weergavenaam
+                    <label className="text-sm text-ink-soft">
+                      Display name
                       <input
                         value={draft.displayName}
                         onChange={(e) =>
@@ -293,11 +313,11 @@ export default function AdminUsersPage() {
                             [u.id]: { ...s[u.id], displayName: e.target.value },
                           }))
                         }
-                        className="mt-1 h-10 w-full rounded-lg border border-zinc-300 bg-white px-2.5 dark:border-zinc-600 dark:bg-zinc-900"
+                        className="mt-1 h-10 w-full rounded-lg border border-brand-green/15 bg-surface px-2.5"
                       />
                     </label>
-                    <label className="text-sm text-zinc-700 dark:text-zinc-300">
-                      Rol
+                    <label className="text-sm text-ink-soft">
+                      Role
                       <select
                         value={draft.roleKey}
                         onChange={(e) =>
@@ -309,7 +329,7 @@ export default function AdminUsersPage() {
                             },
                           }))
                         }
-                        className="mt-1 h-10 w-full rounded-lg border border-zinc-300 bg-white px-2.5 dark:border-zinc-600 dark:bg-zinc-900"
+                        className="mt-1 h-10 w-full rounded-lg border border-brand-green/15 bg-surface px-2.5"
                       >
                         {ROLE_OPTIONS.map((r) => (
                           <option key={r.key} value={r.key}>
@@ -318,8 +338,8 @@ export default function AdminUsersPage() {
                         ))}
                       </select>
                     </label>
-                    <label className="text-sm text-zinc-700 dark:text-zinc-300 md:col-span-2">
-                      Locaties
+                    <label className="text-sm text-ink-soft md:col-span-2">
+                      Locations
                       <select
                         multiple
                         value={draft.locationIds}
@@ -332,7 +352,7 @@ export default function AdminUsersPage() {
                             },
                           }))
                         }
-                        className="mt-1 min-h-24 w-full rounded-lg border border-zinc-300 bg-white px-2.5 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                        className="mt-1 min-h-24 w-full rounded-lg border border-brand-green/15 bg-surface px-2.5 py-2"
                       >
                         {sortedLocations.map((loc) => (
                           <option key={loc.id} value={loc.id}>
@@ -341,7 +361,7 @@ export default function AdminUsersPage() {
                         ))}
                       </select>
                     </label>
-                    <label className="inline-flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                    <label className="inline-flex items-center gap-2 text-sm text-ink-soft">
                       <input
                         type="checkbox"
                         checked={draft.active}
@@ -352,7 +372,7 @@ export default function AdminUsersPage() {
                           }))
                         }
                       />
-                      Actief
+                      Active
                     </label>
                   </div>
                   <div className="mt-3">
@@ -360,9 +380,9 @@ export default function AdminUsersPage() {
                       type="button"
                       disabled={saving}
                       onClick={() => void saveUser(u.id)}
-                      className="h-10 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                      className="btn-primary h-10 rounded-lg px-3 text-sm font-medium disabled:opacity-50"
                     >
-                      Opslaan
+                      Save
                     </button>
                   </div>
                 </div>

@@ -73,9 +73,9 @@ function sourceLabel(source: string) {
 
 function sourceBadge(source: string) {
   const base = "rounded px-1.5 py-0.5 text-[10px] font-semibold";
-  if (source === "scraper") return `${base} bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400`;
-  if (source === "invoice_import") return `${base} bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400`;
-  return `${base} bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400`;
+  if (source === "scraper") return `${base} bg-brand-sage/30 text-brand-green`;
+  if (source === "invoice_import") return `${base} bg-brand-sand/70 text-ink-soft`;
+  return `${base} bg-brand-sand/50 text-ink-soft`;
 }
 
 function AddPriceForm({
@@ -130,13 +130,13 @@ function AddPriceForm({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-zinc-900">
-      <h3 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-zinc-100">Prijs invoeren</h3>
+    <div className="card p-5">
+      <h3 className="mb-4 text-sm font-semibold text-ink">Prijs invoeren</h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="col-span-2 sm:col-span-1">
-          <label className="mb-1 block text-xs text-zinc-500">Grondstof</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Grondstof</label>
           <select
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={ingredientId}
             onChange={(e) => setIngredientId(e.target.value)}
           >
@@ -150,9 +150,9 @@ function AddPriceForm({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Leverancier</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Leverancier</label>
           <select
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={supplierId}
             onChange={(e) => setSupplierId(e.target.value)}
           >
@@ -166,70 +166,70 @@ function AddPriceForm({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Pakgrootte (gram)</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Pakgrootte (gram)</label>
           <input
             type="number"
             min={1}
             placeholder="bijv. 5000"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={packSizeGrams}
             onChange={(e) => setPackSizeGrams(e.target.value)}
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Label verpakking</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Label verpakking</label>
           <input
             type="text"
             placeholder="bijv. 5 kg zak"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={packSizeLabel}
             onChange={(e) => setPackSizeLabel(e.target.value)}
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Prijs (€, excl. BTW)</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Prijs (€, excl. BTW)</label>
           <input
             type="number"
             min={0}
             step={0.01}
             placeholder="bijv. 12.50"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={priceEuros}
             onChange={(e) => setPriceEuros(e.target.value)}
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">Ingangsdatum</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Ingangsdatum</label>
           <input
             type="date"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
           />
         </div>
 
         <div className="col-span-2 sm:col-span-3">
-          <label className="mb-1 block text-xs text-zinc-500">Notitie (optioneel)</label>
+          <label className="mb-1 block text-xs text-ink-soft/70">Notitie (optioneel)</label>
           <input
             type="text"
             placeholder="bijv. prijsstijging door droogte"
-            className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="w-full card rounded-lg px-3 py-2 text-sm"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
         </div>
       </div>
 
-      {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-2 text-xs text-accent-terracotta">{error}</p>}
 
       <button
         type="button"
         onClick={() => void handleSave()}
         disabled={saving}
-        className="mt-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
+        className="btn-primary mt-4 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
       >
         {saving ? "Opslaan…" : "Prijs opslaan"}
       </button>
@@ -239,24 +239,24 @@ function AddPriceForm({
 
 function PriceRow({ entry }: { entry: PriceEntry }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 last:border-0 dark:border-zinc-800">
+    <div className="flex items-center justify-between gap-3 border-b border-brand-green/10 px-4 py-3 last:border-0">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{entry.ingredient_name}</p>
-        <p className="text-xs text-zinc-500">
+        <p className="truncate text-sm font-medium text-ink">{entry.ingredient_name}</p>
+        <p className="text-xs text-ink-soft/70">
           {entry.supplier_name ?? "—"} · {entry.pack_size_label ?? `${entry.pack_size_grams}g`}
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+        <p className="text-sm font-semibold tabular-nums text-ink">
           {formatPrice(entry.price_cents)}
         </p>
         {entry.price_cents_per_gram != null && (
-          <p className="text-xs text-zinc-400">{formatPricePerKg(entry.price_cents_per_gram)}</p>
+          <p className="text-xs text-ink-soft/60">{formatPricePerKg(entry.price_cents_per_gram)}</p>
         )}
       </div>
       <div className="shrink-0 text-right">
         <span className={sourceBadge(entry.source)}>{sourceLabel(entry.source)}</span>
-        <p className="mt-0.5 text-[10px] text-zinc-400">{entry.effective_date}</p>
+        <p className="mt-0.5 text-[10px] text-ink-soft/60">{entry.effective_date}</p>
       </div>
     </div>
   );
@@ -265,33 +265,33 @@ function PriceRow({ entry }: { entry: PriceEntry }) {
 function ScraperStatus({ runs }: { runs: ScraperRun[] }) {
   if (!runs.length) return null;
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900">
-      <div className="border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Laatste scraper runs</h3>
+    <div className="card">
+      <div className="border-b border-brand-green/10 px-4 py-3">
+        <h3 className="text-sm font-semibold text-ink">Laatste scraper runs</h3>
       </div>
       <div>
         {runs.map((run) => (
           <div
             key={run.id}
-            className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 last:border-0 dark:border-zinc-800"
+            className="flex items-center justify-between gap-3 border-b border-brand-green/10 px-4 py-3 last:border-0"
           >
             <div>
-              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{run.supplier_name}</p>
-              <p className="text-xs text-zinc-500">{new Date(run.run_at).toLocaleString("nl-NL")}</p>
+              <p className="text-sm font-medium text-ink">{run.supplier_name}</p>
+              <p className="text-xs text-ink-soft/70">{new Date(run.run_at).toLocaleString("nl-NL")}</p>
             </div>
             <div className="text-right">
               <span
                 className={`rounded px-2 py-0.5 text-xs font-semibold ${
                   run.status === "success"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                    ? "badge-success"
                     : run.status === "partial"
-                      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-                      : "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400"
+                      ? "badge-pending"
+                      : "alert-error rounded px-2 py-0.5 text-xs"
                 }`}
               >
                 {run.status}
               </span>
-              <p className="mt-0.5 text-xs text-zinc-400">
+              <p className="mt-0.5 text-xs text-ink-soft/60">
                 {run.prices_updated ?? 0} bijgewerkt · {run.prices_unchanged ?? 0} ongewijzigd
               </p>
             </div>
@@ -374,10 +374,10 @@ export default function AdminPricesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+      <div className="min-h-screen bg-background font-sans">
         <TopNav />
         <div className="flex min-h-[50vh] items-center justify-center">
-          <p className="text-sm text-zinc-400">Prijzen laden…</p>
+          <p className="text-sm text-ink-soft/60">Prijzen laden…</p>
         </div>
       </div>
     );
@@ -388,28 +388,28 @@ export default function AdminPricesPage() {
   const missingPrice = Math.max(0, totalIngredients - withPrice);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <div className="mx-auto max-w-2xl px-4 pb-32 pt-6 sm:px-6">
         <Link
           href="/admin"
-          className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          className="text-sm font-medium text-ink-soft/80 hover:text-ink"
         >
           ← Admin
         </Link>
         <div className="mb-6 mt-4 flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Prijzen</h1>
-            <p className="text-sm text-zinc-500">
+            <h1 className="section-title text-xl">Prijzen</h1>
+            <p className="help-text">
               {withPrice} actuele prijsregels (view ingredient_current_prices). {totalIngredients} grondstoffen in DB.
-              {missingPrice > 0 && <span className="ml-1 text-amber-600">Indicatie: veel grondstoffen zonder actuele rij.</span>}
+              {missingPrice > 0 && <span className="ml-1 text-accent-orange">Indicatie: veel grondstoffen zonder actuele rij.</span>}
             </p>
           </div>
           <button
             type="button"
             onClick={() => void triggerScrapers()}
             disabled={triggeringScrapers}
-            className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+            className="shrink-0 card rounded-lg px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-background disabled:opacity-60"
           >
             {triggeringScrapers ? "Bezig…" : "↻ Scrapers draaien"}
           </button>
@@ -424,12 +424,12 @@ export default function AdminPricesPage() {
           placeholder="Zoek grondstof…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm shadow-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-900"
+          className="mb-4 w-full card px-4 py-2.5 text-sm shadow-sm placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-brand-sage/50"
         />
 
-        <div className="mb-6 overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
+        <div className="mb-6 overflow-hidden rounded-xl border border-brand-green/10">
           {filtered.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-zinc-400">
+            <p className="px-4 py-8 text-center text-sm text-ink-soft/60">
               {search ? "Geen resultaten." : "Nog geen prijzen ingevoerd."}
             </p>
           ) : (
@@ -440,14 +440,14 @@ export default function AdminPricesPage() {
         <ScraperStatus runs={scraperRuns} />
 
         <div className="mt-6 grid gap-4">
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Food cost quality checks</h3>
+          <div className="card">
+            <h3 className="text-sm font-semibold text-ink">Food cost quality checks</h3>
             {foodCostIssues.length === 0 ? (
-              <p className="mt-2 text-xs text-zinc-500">Geen issues gevonden.</p>
+              <p className="mt-2 text-xs text-ink-soft/70">Geen issues gevonden.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {foodCostIssues.slice(0, 20).map((row, idx) => (
-                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-zinc-200 px-2 py-1.5 dark:border-zinc-700">
+                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-brand-green/10 px-2 py-1.5">
                     <span className="font-medium">{row.ingredient_name}</span> · {row.issue_code} · {row.message}
                   </li>
                 ))}
@@ -455,14 +455,14 @@ export default function AdminPricesPage() {
             )}
           </div>
 
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Nutrition sanity checks</h3>
+          <div className="card">
+            <h3 className="text-sm font-semibold text-ink">Nutrition sanity checks</h3>
             {nutritionIssues.length === 0 ? (
-              <p className="mt-2 text-xs text-zinc-500">Geen issues gevonden.</p>
+              <p className="mt-2 text-xs text-ink-soft/70">Geen issues gevonden.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {nutritionIssues.slice(0, 20).map((row, idx) => (
-                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-zinc-200 px-2 py-1.5 dark:border-zinc-700">
+                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-brand-green/10 px-2 py-1.5">
                     <span className="font-medium">{row.ingredient_name}</span> · {row.issue_code} · {row.message}
                   </li>
                 ))}
@@ -470,14 +470,14 @@ export default function AdminPricesPage() {
             )}
           </div>
 
-          <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Declared vs computed (kcal)</h3>
+          <div className="card">
+            <h3 className="text-sm font-semibold text-ink">Declared vs computed (kcal)</h3>
             {nutritionDiscrepancies.length === 0 ? (
-              <p className="mt-2 text-xs text-zinc-500">Nog geen afwijkingen om te tonen.</p>
+              <p className="mt-2 text-xs text-ink-soft/70">Nog geen afwijkingen om te tonen.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {nutritionDiscrepancies.slice(0, 20).map((row, idx) => (
-                  <li key={`${row.menu_item_name}-${idx}`} className="rounded border border-zinc-200 px-2 py-1.5 dark:border-zinc-700">
+                  <li key={`${row.menu_item_name}-${idx}`} className="rounded border border-brand-green/10 px-2 py-1.5">
                     <span className="font-medium">{row.menu_item_name}</span> · declared {row.declared_kcal ?? "—"} kcal ·
                     computed {row.computed_kcal ?? "—"} kcal · diff {row.kcal_diff_pct?.toFixed(1)}%
                     {row.has_lab_inputs ? " · lab input" : ""}
@@ -489,10 +489,10 @@ export default function AdminPricesPage() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+        <div className="alert-warning mt-6 rounded-xl p-4 text-sm">
           <p className="font-medium">Over de automatische scraper</p>
           <p className="mt-1 text-xs leading-relaxed">
-            Edge Function <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/40">scrape-prices</code> moet
+            Edge Function <code className="rounded bg-brand-sand/70 px-1">scrape-prices</code> moet
             nog per leverancier worden ingericht. CSV/API van leveranciers is meestal betrouwbaarder dan scrapen.
           </p>
         </div>

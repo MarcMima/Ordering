@@ -75,24 +75,24 @@ export default function HaccpEquipmentAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-5xl px-4 py-8 pb-24">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <Link
               href="/admin"
-              className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400"
+              className="text-sm font-medium text-ink-soft/80 hover:text-ink"
             >
               ← Admin
             </Link>
-            <h1 className="mt-2 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+            <h1 className="mt-2 page-title">
               HACCP equipment per store
             </h1>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mt-1 help-text">
               Each row is one appliance line on the weekly temperature sheet. Use a different{" "}
               <strong>store ID</strong> for another restaurant layout (set{" "}
-              <code className="rounded bg-zinc-200 px-1 dark:bg-zinc-700">locations.haccp_store_id</code>{" "}
+              <code className="rounded bg-brand-sand/60 px-1">locations.haccp_store_id</code>{" "}
               to match).
             </p>
           </div>
@@ -100,7 +100,7 @@ export default function HaccpEquipmentAdminPage() {
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <label className="text-sm">
-            <span className="mb-1 block font-medium text-zinc-700 dark:text-zinc-300">Store ID</span>
+            <span className="mb-1 block font-medium text-ink-soft">Store ID</span>
             <input
               type="number"
               className="input w-28"
@@ -112,32 +112,32 @@ export default function HaccpEquipmentAdminPage() {
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600"
+            className="rounded-lg border border-brand-green/15 px-3 py-2 text-sm"
           >
             Reload
           </button>
           <button
             type="button"
             onClick={() => void addRow()}
-            className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+            className="btn-primary rounded-lg px-3 py-2 text-sm font-medium"
           >
             Add row
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+          <div className="mb-4 alert-error rounded-lg">
             {error}
           </div>
         )}
 
         {loading ? (
-          <p className="text-zinc-500">Loading…</p>
+          <p className="text-ink-soft/80">Loading…</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+          <div className="overflow-x-auto rounded-xl border border-brand-green/10">
             <table className="w-full min-w-[800px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800">
+                <tr className="border-b border-brand-green/10 bg-background">
                   <th className="px-2 py-2 text-left">Order</th>
                   <th className="px-2 py-2 text-left">Label</th>
                   <th className="px-2 py-2 text-left">Norm (display)</th>
@@ -150,7 +150,7 @@ export default function HaccpEquipmentAdminPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-zinc-100 dark:border-zinc-700/80">
+                  <tr key={r.id} className="border-b border-brand-green/10">
                     <td className="p-1">
                       <input
                         type="number"
@@ -219,7 +219,7 @@ export default function HaccpEquipmentAdminPage() {
                         type="button"
                         onClick={() => void remove(r.id)}
                         disabled={savingId === r.id}
-                        className="text-xs text-red-600 hover:underline dark:text-red-400"
+                        className="text-xs text-accent-terracotta hover:underline"
                       >
                         Delete
                       </button>

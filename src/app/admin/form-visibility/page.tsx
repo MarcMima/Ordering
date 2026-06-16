@@ -52,43 +52,43 @@ export default function FormVisibilityAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900">
+    <div className="min-h-screen bg-background font-sans">
       <TopNav />
       <main className="mx-auto max-w-lg px-4 py-8 pb-24">
         <Link
           href="/admin"
-          className="text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400"
+          className="text-sm font-medium text-ink-soft/80 hover:text-ink"
         >
           ← Admin
         </Link>
-        <h1 className="mt-4 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Form visibility</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        <h1 className="mt-4 page-title">Form visibility</h1>
+        <p className="mt-2 help-text">
           Hidden forms no longer appear on the HACCP overview. Direct URLs show a short notice instead of the form.
         </p>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+          <div className="mt-4 alert-error rounded-lg">
             {error}
           </div>
         )}
 
         {loading ? (
-          <p className="mt-6 text-zinc-500">Loading…</p>
+          <p className="mt-6 text-ink-soft/80">Loading…</p>
         ) : (
           <ul className="mt-6 space-y-2">
             {rows.map((r) => (
               <li
                 key={r.form_key}
-                className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800"
+                className="flex items-center justify-between gap-3 card px-4 py-3"
               >
-                <span className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{r.label}</span>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+                <span className="text-sm font-medium text-ink">{r.label}</span>
+                <label className="flex cursor-pointer items-center gap-2 help-text">
                   <input
                     type="checkbox"
                     checked={r.visible}
                     disabled={savingKey === r.form_key}
                     onChange={(e) => void toggle(r.form_key, e.target.checked)}
-                    className="rounded border-zinc-300"
+                    className="rounded border-brand-green/15"
                   />
                   Visible
                 </label>
