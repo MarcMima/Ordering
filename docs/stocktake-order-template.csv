@@ -19,18 +19,19 @@ finished_product,"Babe ghanouj",17
 finished_product,"Boiled eggs",18
 finished_product,"Pomegranate",19
 finished_product,"Feta",20
-finished_product,"Shifka peppers",21
-finished_product,"Mediterranean pickles",22
-finished_product,"Mint",23
-finished_product,"Parsley",24
-finished_product,"Rose lemonade",25
-finished_product,"Tahin brownie dough",26
-finished_product,"Za'atar flatbread chips",27
-finished_product,"Lebanese lentil soup",28
-finished_product,"Mudardara",29
-finished_product,"Turmeric rice",30
-finished_product,"Chicken marinade",31
-finished_product,"Pickling liquid",32
+finished_product,"Olives",21
+finished_product,"Shifka peppers",22
+finished_product,"Mediterranean pickles",23
+finished_product,"Mint",24
+finished_product,"Parsley",25
+finished_product,"Rose lemonade",26
+finished_product,"Tahin brownie dough",27
+finished_product,"Za'atar flatbread chips",28
+finished_product,"Lebanese lentil soup",29
+finished_product,"Mudardara",30
+finished_product,"Turmeric rice",31
+finished_product,"Chicken marinade",32
+finished_product,"Pickling liquid",33
 raw_daily,"All purpose flour",33
 raw_daily,"Baking powder",34
 raw_daily,"Baking soda",35
@@ -38,18 +39,19 @@ raw_daily,"Bulgur",36
 raw_daily,"Chickpeas",37
 raw_daily,"Green lentils",38
 raw_daily,"Red lentils",39
-raw_daily,"Rice basmati",40
+raw_daily,"Rice flour",40
 raw_daily,"Rice pandan",41
-raw_daily,"Rice flour",42
-raw_daily,"Eggs",43
-raw_daily,"Salt",44
-raw_daily,"Stock",45
-raw_daily,"Sugar brown",46
-raw_daily,"Sugar white",47
-raw_daily,"Tomato puree",48
-raw_daily,"Vanilla extract",49
-raw_daily,"Flaxseed broken",50
-raw_daily,"Cacao powder",51
+raw_daily,"Rice parboiled",42
+raw_daily,"Medi salad 3kg",43
+raw_daily,"Eggs",44
+raw_daily,"Salt",45
+raw_daily,"Stock",46
+raw_daily,"Sugar brown",47
+raw_daily,"Sugar white",48
+raw_daily,"Tomato puree",49
+raw_daily,"Vanilla extract",50
+raw_daily,"Flaxseed broken",51
+raw_daily,"Cacao powder",52
 raw_daily,"MSG (Ve Tsin)",52
 raw_daily,"Chili powder",53
 raw_daily,"Coriander",54
@@ -79,7 +81,6 @@ raw_daily,"Parsley",77
 raw_daily,"Green chili",78
 raw_daily,"Chicken",79
 raw_daily,"Feta cheese",80
-raw_daily,"Yoghurt",81
 raw_daily,"Coca Cola",82
 raw_daily,"Coca Cola Zero",83
 raw_daily,"SOOF Cardamom",84
@@ -134,11 +135,13 @@ raw_weekly,"Sauce lid",132
 raw_weekly,"Soup container",133
 raw_weekly,"Soup lids",134
 raw_weekly,"Stirrer",135
-raw_weekly,"Toiletpaper",136
-raw_weekly,"Daysticker Friday",137
-raw_weekly,"Daysticker Monday",138
-raw_weekly,"Daysticker Saturday",139
-raw_weekly,"Daysticker Sunday",140
-raw_weekly,"Daysticker Thursday",141
-raw_weekly,"Daysticker Tuesday",142
-raw_weekly,"Daysticker Wednesday",143
+raw_weekly,"Garbage bags blue 145L (roll 20)",135
+raw_weekly,"Napkins Airlaid white 40x40 (pack 60)",136
+raw_weekly,"Toiletpaper",137
+raw_weekly,"Daysticker Friday",138
+raw_weekly,"Daysticker Monday",139
+raw_weekly,"Daysticker Saturday",140
+raw_weekly,"Daysticker Sunday",141
+raw_weekly,"Daysticker Thursday",142
+raw_weekly,"Daysticker Tuesday",143
+raw_weekly,"Daysticker Wednesday",144

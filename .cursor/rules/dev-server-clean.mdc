@@ -1,0 +1,15 @@
+---
+description: Bij lokale Next.js dev-problemen altijd zelf npm run dev:clean uitvoeren
+alwaysApply: true
+---
+
+# Dev server — altijd zelf opruimen
+
+Wanneer lokale ontwikkeling speelt (UI kapot, “Compiling…” blijft hangen, poort 3000 bezet, stale HMR, na grote frontend-wijzigingen):
+
+1. **Niet** de gebruiker vragen om `npm run dev:clean` te draaien — **doe het zelf** via de Shell tool.
+2. Voer uit vanaf repo-root: `npm run dev:clean` **op de achtergrond** (`block_until_ms: 0`), tenzij je alleen poorten/cache wilt legen zonder server (dan: kill poorten 3000/3001, `pkill -f "next dev"`, `rm -rf .next`).
+3. Wacht kort op `✓ Ready` in de terminal-output voordat je de gebruiker vraagt de browser te verversen.
+4. Meld kort wat je gedaan hebt (oude processen gestopt, cache gewist, server herstart).
+
+Uitzondering: gebruiker zegt expliciet dat de dev-server niet herstart mag worden.

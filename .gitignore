@@ -48,3 +48,14 @@ next-env.d.ts
 # Bidfood sandbox test-PDF bevat API-credentials; niet committen
 *Bidfood*Sandbox*.pdf
 Testdata Bidfood Sandbox*.pdf
+
+# Van Gelder API probe exports (lokaal)
+tmp_vg_*.json
+
+# Grote Excel review exports (lokaal gegenereerd)
+exports_*_match_review*.xlsx
+docs/*-export.xlsx
+docs/*-overzicht.xlsx
+docs/*-mapping-review.xlsx
+docs/gede-jph-mapping.xlsx
+docs/van-gelder-variants-bestellijst.xlsx

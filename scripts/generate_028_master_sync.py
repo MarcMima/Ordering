@@ -55,17 +55,17 @@ Hand soap	can	5	l				Bidfood	0	1
 All purpose flour	bag	1	kg				Bidfood	1	
 Baking powder	can	1	kg				Bidfood	1	
 Baking soda	box	454	g				Bidfood	1	
-Cumin	pack	1	kg				Tuana	1	
-Za'atar	pack	1	kg				Tuana	1	
-Turmeric	pack	1	kg				Tuana	1	
-Black pepper	pack	1	kg				Tuana	1	
-Chili powder	pack	1	kg				Tuana	1	
-Cardamom	pack	1	kg				Tuana	1	
-Sumac	pack	1	kg				Tuana	1	
-Mustard powder	pack	1	kg				Tuana	1	
+Cumin	pack	1	kg				Tuana	1	1
+Za'atar	pack	1	kg				Tuana	1	1
+Turmeric	pack	1	kg				Tuana	1	1
+Black pepper	pack	1	kg				Tuana	1	1
+Chili powder	pack	1	kg				Tuana	1	1
+Cardamom	pack	1	kg				Tuana	1	1
+Sumac	pack	1	kg				Tuana	1	1
+Mustard powder	pack	1	kg				Tuana	1	1
 Salt	bucket	5	kg				Bidfood	1	
 Sugar white	bag	1	kg				Bidfood	1	
-Sugar brown	bag	1	kg				Bidfood	1	
+Sugar brown	bag	600	g				Bidfood	1	
 Tahini	bucket	18	kg				Today Food Group	1	
 Vinegar	jerrycan	10	l				Bidfood	1	
 Flatbread	bag	1	kg				Java bakery	1	
@@ -118,8 +118,8 @@ Coriander (fresh)	bag	1	kg				Van Gelder	1	0
 Cauliflower	bag	2.5	kg				Bidfood	1	0
 Yoghurt	tub	1	kg				Bidfood	1	0
 Rice pandan	bag	4.5	kg				Bidfood	1	0
-Rose petals	bag	0.5	kg				Tuana	1	0
-Dried dill	pack	0.5	kg				Tuana	1	0
+Rose petals	bag	0.5	kg				Tuana	1	1
+Dried dill	pack	0.5	kg				Tuana	1	1
 Xantana	pack	0.5	kg				Bidfood	1	0
 """.strip()
 

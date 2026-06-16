@@ -1,0 +1,16 @@
+---
+description: Na migratiewijzigingen altijd supabase db push naar linked project uitvoeren
+alwaysApply: true
+---
+
+# Supabase migraties naar remote
+
+Na het **toevoegen of wijzigen** van bestanden in `supabase/migrations/` (of het aanmaken van een nieuwe migratie die nog gepusht moet worden):
+
+1. Ga naar de repo-root (`mima-kitchen`).
+2. Voer uit: **`supabase db push --yes`**  
+   (`--yes` bevestigt prompts zodat dit in de agent-omgeving niet blijft hangen.)
+
+**Uitzonderingen:** alleen overslaan als de gebruiker expliciet zegt dat er niet gepusht moet worden, of als de CLI/login ontbreekt (dan kort melden).
+
+**Edge Functions** zijn los van de database: na wijzigingen in `supabase/functions/` desgewenst `supabase functions deploy <naam>` (geen automatische bundel met `db push`).

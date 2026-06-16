@@ -1,0 +1,41 @@
+---
+description: All user-facing text in the MIMA Kitchen app must be English
+alwaysApply: true
+---
+
+# English-only UI (managers)
+
+Managers use the app in **English only**. No Dutch (or other languages) in user-visible copy.
+
+## Scope
+
+Applies to everything users see in the product:
+
+- `src/app/**` pages (stocktake, ordering, prep list, admin, dashboard, kitchen, HACCP)
+- `src/components/**` (callouts, forms, stepper, nav labels, buttons, placeholders, errors, confirmations)
+- `aria-label`, `title`, `placeholder`, empty states, tooltips
+
+## Not in scope (OK to stay Dutch)
+
+- Code comments and JSDoc (prefer English when touching files)
+- Database column names, API field names (`leverancier`, `datum`, …)
+- Supplier legal names (“Van Gelder”, “Gédé”)
+- Migration SQL, edge-function logs, emails **to suppliers** (unless user asks otherwise)
+- Docs/scripts under `docs/` and `scripts/`
+
+## Rules when editing
+
+1. **Never** add Dutch UI strings, even “temporary” callouts or hints.
+2. When copying patterns from old code, **translate** before committing.
+3. Prefer plain international English: “Save”, “Loading…”, “No results”, not mixed NL/EN.
+4. Use `en-GB` or `en-US` for `toLocaleString` in UI, not `nl-NL`.
+5. Before finishing a UI task, grep `src/` for common Dutch words: `geen`, `niet`, `voor`, `Toon`, `Alleen`, `Opslaan`, `Laden`, `grondstof`, `leverancier`, `bijv.`, `Allergenen`, `Weergave`, `Nieuwe`, `Bestaande`, `ingevuld`, `Kip`, `marinade`.
+
+## Examples
+
+| Avoid | Use |
+|-------|-----|
+| Opslaan… | Saving… |
+| Geen resultaten | No results |
+| Alleen nog niet ingevuld | Only not counted yet |
+| Vul … in | Enter … |
