@@ -7,6 +7,7 @@ import { localCalendarDateString } from "@/lib/date";
 import type { IngredientPackSize } from "@/lib/types";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import { packSizeToBaseAmount } from "@/lib/stocktakeRawPackMath";
+import { isDailyReorderSupplierName } from "@/lib/supplierOrderChannel";
 
 /** 0 = Sunday, 6 = Saturday (JS getDay()) */
 export function getDayOfWeek(date: Date): number {
@@ -111,6 +112,25 @@ export function daysUntilNextDelivery(params: {
     if (diff < min) min = diff;
   }
   return min;
+}
+
+/**
+ * Days until delivery when placing an order today (always ≥ 1).
+ * Orders are never same-day delivery — use this for ordering UI labels.
+ */
+export function daysUntilDeliveryWhenOrderingToday(params: {
+  today: Date;
+  deliveryDays: number[];
+}): number {
+  const { today, deliveryDays } = params;
+  if (deliveryDays.length === 0) return 1;
+  for (let delta = 1; delta <= 7; delta++) {
+    const candidate = addCalendarDays(today, delta);
+    if (deliveryDays.includes(getDayOfWeek(candidate))) {
+      return delta;
+    }
+  }
+  return 1;
 }
 
 /**
@@ -525,6 +545,7 @@ export function suggestOrderBaseQuantities(params: {
   /** Raw IDs that need an extra day of stock for pickling before use. */
   picklingLeadTimeRawIds?: ReadonlySet<string>;
   picklingLeadTimeDays?: number;
+  supplierNameById?: Record<string, string>;
 }): Record<string, number> {
   const {
     today,
@@ -540,6 +561,7 @@ export function suggestOrderBaseQuantities(params: {
     fullCapacityRevenue,
     picklingLeadTimeRawIds,
     picklingLeadTimeDays = 0,
+    supplierNameById,
   } = params;
   const suggested: Record<string, number> = {};
   for (const [rawId, dailyNeed] of Object.entries(dailyRawNeedAtFullCapacity)) {
@@ -548,11 +570,16 @@ export function suggestOrderBaseQuantities(params: {
     const intervalDays = intervalPlanningDays(orderIntervalDaysByRawId[rawId]);
     const supplierId = preferredSupplierByRawId[rawId] ?? null;
     const sched = supplierId ? (schedulesBySupplierJs[supplierId] ?? []) : [];
+    const supplierName = supplierId ? supplierNameById?.[supplierId] : undefined;
+    const dailyReorder =
+      supplierName != null && isDailyReorderSupplierName(supplierName);
     let coverDates =
       sched.length > 0
         ? coverWindowCalendarDates({ today, deliveryDaysJs: sched })
         : fallbackCoverCalendarDates(today, Math.max(intervalDays, 1));
-    if (coverDates.length < intervalDays) {
+    if (dailyReorder) {
+      coverDates = fallbackCoverCalendarDates(today, 1);
+    } else if (coverDates.length < intervalDays) {
       coverDates = fallbackCoverCalendarDates(today, intervalDays);
     }
     const scaledNeed = calcScaledNeedOverOrderWindow({

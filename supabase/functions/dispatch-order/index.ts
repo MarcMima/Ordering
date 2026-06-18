@@ -209,6 +209,41 @@ function orderDeliveryDate(order: Order): string {
   return order.requested_delivery_date ?? order.order_date;
 }
 
+/** Admin DB: 0=Monday … 6=Sunday. JS Date: 0=Sunday … 6=Saturday. */
+function supplierScheduleDayToJsDay(dbDay: number): number {
+  return ((dbDay % 7) + 1) % 7;
+}
+
+function addCalendarDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function jsDayFromIso(isoDate: string): number {
+  return new Date(`${isoDate}T12:00:00Z`).getUTCDay();
+}
+
+/** Earliest delivery on or after the day after order_date that matches the supplier schedule. */
+function resolveNextSupplierDeliveryDateIso(params: {
+  orderDateIso: string;
+  deliveryDaysDb: number[];
+}): string {
+  const deliveryDaysJs = [
+    ...new Set(params.deliveryDaysDb.map((d) => supplierScheduleDayToJsDay(d))),
+  ];
+  if (deliveryDaysJs.length === 0) {
+    return addCalendarDays(params.orderDateIso, 1);
+  }
+  for (let delta = 1; delta <= 21; delta++) {
+    const candidate = addCalendarDays(params.orderDateIso, delta);
+    if (deliveryDaysJs.includes(jsDayFromIso(candidate))) {
+      return candidate;
+    }
+  }
+  return addCalendarDays(params.orderDateIso, 1);
+}
+
 function buildOrderNumber(order: Order): string {
   const loc = (order.location_name ?? "")
     .toUpperCase()
@@ -1739,7 +1774,18 @@ Deno.serve(async (req: Request) => {
     ) {
       typedOrder.requested_delivery_date = requested_delivery_date;
     } else {
-      typedOrder.requested_delivery_date = typedOrder.order_date;
+      const { data: schedRows } = await supabase
+        .from("supplier_delivery_schedules")
+        .select("day_of_week")
+        .eq("location_id", typedOrder.location_id)
+        .eq("supplier_id", typedOrder.supplier_id);
+      const deliveryDaysDb = ((schedRows ?? []) as { day_of_week: number }[]).map(
+        (r) => r.day_of_week
+      );
+      typedOrder.requested_delivery_date = resolveNextSupplierDeliveryDateIso({
+        orderDateIso: typedOrder.order_date,
+        deliveryDaysDb,
+      });
     }
     const rawChannel =
       pickSupplierChannel(typedOrder.supplier?.supplier_order_channels) ??

@@ -69,3 +69,12 @@ export function isOnDemandSupplierName(name: string): boolean {
   const n = norm(name);
   return n === "tuana" || n === "today food group";
 }
+
+/** Suppliers that deliver most days — only cover ~1 day of need when suggesting orders. */
+export function isDailyReorderSupplierName(name: string): boolean {
+  return norm(name) === "java bakery";
+}
+
+export function isBidfoodSupplierName(name: string): boolean {
+  return norm(name) === "bidfood";
+}

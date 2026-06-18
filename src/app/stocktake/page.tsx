@@ -37,7 +37,7 @@ import {
   supplierScheduleDayToJsDay,
 } from "@/lib/calculations";
 import { formatDecimal2 } from "@/lib/format";
-import { isWeeklyStocktakeDueOnDate } from "@/lib/stocktakeWeek";
+import { isWeeklyStocktakeDueOnDate, jsWeekdayFromCalendarDate, JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
 
 type StocktakeDeliveryMeta = {
   schedules: { supplier_id: string; day_of_week: number }[];
@@ -166,11 +166,19 @@ export default function StocktakePage() {
     null
   );
   const [showOnlyMissing, setShowOnlyMissing] = useState(false);
+  /** When false, daily tab only shows raws whose supplier delivers tomorrow (order-day filter). */
+  const [showAllDailyRaws, setShowAllDailyRaws] = useState(false);
 
   const currentLocation = useMemo(
     () => locations.find((l) => l.id === locationId),
     [locations, locationId]
   );
+
+  const isWeeklyKitchenDay = useMemo(() => {
+    const dow = currentLocation?.weekly_stocktake_day_of_week;
+    if (dow == null || dow < 0 || dow > 6) return false;
+    return jsWeekdayFromCalendarDate(date) === dow;
+  }, [currentLocation?.weekly_stocktake_day_of_week, date]);
 
   useEffect(() => {
     if (showOnlyMissing) {
@@ -690,6 +698,7 @@ export default function StocktakePage() {
   const dailyRaws = useMemo(() => {
     const f = allVisibleRaws.filter((ing) => {
       if (isWeeklyStocktakeItem(ing)) return false;
+      if (showAllDailyRaws || isWeeklyKitchenDay) return true;
       if (!stocktakeDeliveryMeta || stocktakeDeliveryMeta.skipFilter) return true;
       return isRawDeliverableTomorrow({
         stocktakeDate: date,
@@ -701,6 +710,8 @@ export default function StocktakePage() {
     return sortRawStocktakeList(f);
   }, [
     allVisibleRaws,
+    showAllDailyRaws,
+    isWeeklyKitchenDay,
     stocktakeDeliveryMeta,
     date,
     preferredSupplierByRawId,
@@ -1035,6 +1046,28 @@ export default function StocktakePage() {
                   Could not load supplier schedules; showing all daily ingredients. Check your connection and try
                   refreshing.
                 </p>
+              )}
+              {rawSubtab === "daily" && !isWeeklyKitchenDay && !showAllDailyRaws && (
+                <div className="mb-4 rounded-xl border border-brand-green/10 bg-brand-sand/40 px-4 py-3">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={showAllDailyRaws}
+                      onChange={(e) => setShowAllDailyRaws(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-brand-green/30"
+                    />
+                    <span className="text-sm">
+                      <span className="font-medium text-ink">Show all daily items</span>
+                      <span className="mt-0.5 block text-xs text-ink-soft">
+                        Daily list is filtered to ingredients you would order today (delivery tomorrow).
+                        {currentLocation?.weekly_stocktake_day_of_week != null
+                          ? ` Weekly items are counted on ${JS_WEEKDAY_LABELS[currentLocation.weekly_stocktake_day_of_week]}.`
+                          : ""}{" "}
+                        Enable to count everything anyway.
+                      </span>
+                    </span>
+                  </label>
+                </div>
               )}
             </section>
             <div className="mb-4 flex gap-2 card p-1">

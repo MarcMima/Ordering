@@ -12,6 +12,29 @@ const MEDI_SALAD_VG_TUB_LOCATION_IDS = new Set([
   "59f20987-be63-4579-b447-2ede73320a1b", // Mima Zuidas
 ]);
 
+const ZUIDAS_LOCATION_IDS = new Set([
+  "59f20987-be63-4579-b447-2ede73320a1b", // Mima Zuidas
+]);
+
+export function isZuidasLocation(
+  locationName: string | null | undefined,
+  locationId?: string | null
+): boolean {
+  if (locationId && ZUIDAS_LOCATION_IDS.has(locationId)) return true;
+  return (locationName ?? "").toLowerCase().includes("zuidas");
+}
+
+const ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
+  chicken: 10,
+};
+
+/** Minimum order packs when the suggestion would otherwise be zero (Zuidas). */
+const ZUIDAS_STANDING_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
+  cauliflower: 2,
+};
+
+const MEDI_SALAD_VG_ORDER_PAIR = 2;
+
 /** Pijp + Zuidas: order VG brunoise tub instead of loose cucumber + tomato for medi salad prep. */
 export function locationUsesVanGelderMediSaladTub(
   locationName: string | null | undefined,
@@ -36,9 +59,33 @@ export const DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
   "romaine lettuce": 0.5,
   aubergine: 0.6,
   "medi salad 3kg": 0.8,
-  cucumber: 0.8,
   "red onion sliced fine": 0.7,
   "red cabbage shredded": 0.6,
+};
+
+/** Mima Amsterdam / West — location-specific calibration (Jun 2026). */
+const WEST_LOCATION_IDS = new Set([
+  "ea231a2a-bc44-4ab1-bf26-9dcabdeb7c2a",
+]);
+
+export function isWestLocation(
+  locationName: string | null | undefined,
+  locationId?: string | null
+): boolean {
+  if (locationId && WEST_LOCATION_IDS.has(locationId)) return true;
+  const n = (locationName ?? "").toLowerCase();
+  return (
+    n.includes("west") ||
+    n.includes("wester") ||
+    n === "mima amsterdam" ||
+    n === "mima amsterdam west"
+  );
+}
+
+const WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
+  chicken: 1.5,
+  "greek yoghurt 10%": 4,
+  "carrot julienne": 2,
 };
 
 const PARSLEY_RAW_NAME = "parsley";
@@ -48,10 +95,7 @@ const GARLIC_PEELED_RAW_NAME = "garlic peeled";
 const GARLIC_PEELED_ORDER_THRESHOLD_G = 250;
 
 /** Only suggest orders when linked prep still needs production (toMake > 0). */
-export const PRODUCTION_GATED_RAW_NAMES = new Set([
-  "green chili",
-  "carrot julienne",
-]);
+export const PRODUCTION_GATED_RAW_NAMES = new Set(["green chili", "rice parboiled"]);
 
 export function applyProductionGatedRawDailyNeed(params: {
   dailyRawNeed: Record<string, number>;
@@ -120,6 +164,7 @@ export function applyProductionGatedBaseSuggested(params: {
 /** Max suggested order in base units (g/ml/pcs) per delivery. */
 export const MAX_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {
   "carrot julienne": 1000,
+  bulgur: 10000,
 };
 
 /** Only suggest an order when unrounded pack count reaches this value (e.g. 10 = order when need > 9). */
@@ -271,6 +316,35 @@ export function applyMediSaladSuggestedPacksCleanup(params: {
       out[mediRawId] = Math.max(1, mediSaladNeedPrep);
       kindOut[mediRawId] = kindOut[mediRawId] ?? "pack";
     }
+    if (mediRawId && (out[mediRawId] ?? 0) > 0) {
+      const n = out[mediRawId]!;
+      out[mediRawId] = Math.max(MEDI_SALAD_VG_ORDER_PAIR, Math.ceil(n / MEDI_SALAD_VG_ORDER_PAIR) * MEDI_SALAD_VG_ORDER_PAIR);
+    }
+  }
+  return { suggestedPacks: out, kindByRaw: kindOut };
+}
+
+/** Zuidas: standing minimum packs (e.g. 2 cauliflower bags) even when prep need is zero. */
+export function applyZuidasStandingOrderPacks(params: {
+  locationId?: string | null;
+  locationName?: string | null;
+  rawIngredients: RawIngredient[];
+  suggestedPacks: Record<string, number>;
+  kindByRaw: Record<string, string>;
+}): { suggestedPacks: Record<string, number>; kindByRaw: Record<string, string> } {
+  if (!isZuidasLocation(params.locationName, params.locationId)) {
+    return { suggestedPacks: params.suggestedPacks, kindByRaw: params.kindByRaw };
+  }
+  const out = { ...params.suggestedPacks };
+  const kindOut = { ...params.kindByRaw };
+  for (const [rawName, minPacks] of Object.entries(ZUIDAS_STANDING_ORDER_PACKS_BY_RAW_NAME)) {
+    const rid = rawIdByName(params.rawIngredients, rawName);
+    if (!rid || minPacks <= 0) continue;
+    const cur = out[rid] ?? 0;
+    if (cur < minPacks) {
+      out[rid] = minPacks;
+      kindOut[rid] = rawName === "cauliflower" ? "stocktake" : (kindOut[rid] ?? "pack");
+    }
   }
   return { suggestedPacks: out, kindByRaw: kindOut };
 }
@@ -279,10 +353,22 @@ export function applyMediSaladSuggestedPacksCleanup(params: {
 export function applyDailyNeedMultipliers(params: {
   dailyRawNeed: Record<string, number>;
   rawIngredients: RawIngredient[];
+  locationId?: string | null;
+  locationName?: string | null;
 }): Record<string, number> {
   const out = { ...params.dailyRawNeed };
+  const west = isWestLocation(params.locationName, params.locationId);
+  const zuidas = isZuidasLocation(params.locationName, params.locationId);
   for (const ing of params.rawIngredients) {
-    const mult = DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+    let mult = DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+    if (west) {
+      const westMult = WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+      if (westMult != null) mult = (mult ?? 1) * westMult;
+    }
+    if (zuidas) {
+      const zuidasMult = ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+      if (zuidasMult != null) mult = (mult ?? 1) * zuidasMult;
+    }
     if (mult == null || mult === 1) continue;
     const cur = out[ing.id];
     if (cur != null && cur > 0) out[ing.id] = cur * mult;

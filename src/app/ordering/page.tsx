@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
@@ -11,7 +11,8 @@ import { createClient } from "@/lib/supabase";
 import type { Supplier, RawIngredient, IngredientPackSize, PrepItem } from "@/lib/types";
 import { buildYieldMetaForPrepItem, type PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import {
-  daysUntilNextDelivery,
+  daysUntilDeliveryWhenOrderingToday,
+  getDayOfWeek,
   isNextCalendarDayDelivery,
   isRawDeliverableTomorrow,
   supplierScheduleDayToJsDay,
@@ -39,6 +40,7 @@ import {
   applyMinOrderPackThresholds,
   applyProductionGatedBaseSuggested,
   applyProductionGatedRawDailyNeed,
+  applyZuidasStandingOrderPacks,
   PRODUCTION_GATED_RAW_NAMES,
   isParsleyRawName,
   locationUsesVanGelderMediSaladTub,
@@ -51,6 +53,7 @@ import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTi
 import { computeRawCoveredByFinishedPrep } from "@/lib/prepStockRawCredit";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
+import { JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
 import { isWeeklyStocktakeDueOnDate, buildOrderingStockByRawId } from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
@@ -139,23 +142,47 @@ function isTodayFoodGroupSupplier(name: string): boolean {
   return normSupplierName(name) === "today food group";
 }
 
-function nextDeliveryLabel(supplierName: string, days: number): string {
+function nextDeliveryLabel(
+  supplierName: string,
+  daysWhenOrderingToday: number,
+  ctx: {
+    isWeeklyKitchenDay: boolean;
+    allowOffScheduleOrdering: boolean;
+    weeklyDayLabel: string | null;
+  }
+): string {
   if (isOnDemandSupplierName(supplierName)) {
+    if (!ctx.allowOffScheduleOrdering && !ctx.isWeeklyKitchenDay && ctx.weeklyDayLabel) {
+      return `Order on ${ctx.weeklyDayLabel} (weekly stocktake day)`;
+    }
     return "No fixed delivery day — order when you need stock";
   }
-  if (days === 0) return "Next delivery: today";
-  if (days === 1) return "Next delivery: tomorrow";
-  return `Next delivery: in ${days} days`;
+  if (daysWhenOrderingToday === 1) return "Next delivery: tomorrow";
+  return `Next delivery: in ${daysWhenOrderingToday} days`;
 }
 
 /** True when you should place/send an order today (delivery is tomorrow). */
 function isSupplierOrderDayToday(
   supplierName: string,
   deliveryDaysJs: number[],
-  orderingDayAnchor: Date
+  orderingDayAnchor: Date,
+  ctx: {
+    allowOffScheduleOrdering: boolean;
+    locationWeeklyStocktakeDow: number | null;
+  }
 ): boolean {
-  if (isOnDemandSupplierName(supplierName)) return true;
-  if (deliveryDaysJs.length === 0) return true;
+  if (ctx.allowOffScheduleOrdering) return true;
+
+  const todayDow = getDayOfWeek(orderingDayAnchor);
+  const weeklyDow = ctx.locationWeeklyStocktakeDow;
+  const isWeeklyKitchenDay =
+    weeklyDow != null && weeklyDow >= 0 && weeklyDow <= 6 && todayDow === weeklyDow;
+
+  // Tuana / Today Food Group (no fixed delivery schedule): weekly stocktake day only.
+  if (isOnDemandSupplierName(supplierName) || deliveryDaysJs.length === 0) {
+    return isWeeklyKitchenDay;
+  }
+
   return isNextCalendarDayDelivery({
     fromDate: orderingDayAnchor,
     deliveryDays: deliveryDaysJs,
@@ -281,7 +308,71 @@ function buildOrderLinesFromSuggestion(
     if (!next[supplierId]) next[supplierId] = [];
     next[supplierId].push(line);
   }
+  for (const supplierId of Object.keys(next)) {
+    next[supplierId] = mergeOrderLines(next[supplierId]);
+  }
   return next;
+}
+
+function orderDraftStorageKey(locationId: string, date: string): string {
+  return `mima-ordering-draft:${locationId}:${date}`;
+}
+
+function saveOrderDraft(locationId: string, draft: Record<string, OrderLine[]>): void {
+  const key = orderDraftStorageKey(locationId, localCalendarDateString());
+  try {
+    const hasLines = Object.values(draft).some((lines) => lines.length > 0);
+    if (!hasLines) {
+      sessionStorage.removeItem(key);
+      return;
+    }
+    sessionStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    // private mode / quota
+  }
+}
+
+function loadOrderDraft(locationId: string): Record<string, OrderLine[]> | null {
+  try {
+    const raw = sessionStorage.getItem(
+      orderDraftStorageKey(locationId, localCalendarDateString())
+    );
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, OrderLine[]>;
+    if (!Object.values(parsed).some((lines) => lines.length > 0)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function orderLineKey(line: OrderLine): string {
+  return `${line.raw_ingredient_id}:${line.pack_size_id ?? "none"}`;
+}
+
+/** Merge duplicate lines (same raw + pack) by summing quantities. */
+function mergeOrderLines(lines: OrderLine[]): OrderLine[] {
+  const byKey = new Map<string, OrderLine>();
+  for (const line of lines) {
+    const key = orderLineKey(line);
+    const prev = byKey.get(key);
+    if (prev) {
+      byKey.set(key, { ...prev, quantity: prev.quantity + line.quantity });
+    } else {
+      byKey.set(key, { ...line });
+    }
+  }
+  return [...byKey.values()];
+}
+
+function mergeOrderLinesBySupplier(
+  bySupplier: Record<string, OrderLine[]>
+): Record<string, OrderLine[]> {
+  const out: Record<string, OrderLine[]> = {};
+  for (const [supplierId, lines] of Object.entries(bySupplier)) {
+    out[supplierId] = mergeOrderLines(lines);
+  }
+  return out;
 }
 
 /** Total need in “human” mass/volume (kg, L) or count (pcs) for the totals column. */
@@ -328,9 +419,15 @@ function orderLineRowView(
   }
 
   const forOrder = packsForOrder(allPacks);
+  const packForLine =
+    line.pack_size_id != null
+      ? allPacks.find((p) => p.id === line.pack_size_id) ?? null
+      : null;
   const bestPack =
     kind === "pack"
-      ? getBestPackSize(forOrder) ?? (allPacks.length > 0 ? getBestPackSize(allPacks) : null)
+      ? packForLine ??
+        getBestPackSize(forOrder) ??
+        (allPacks.length > 0 ? getBestPackSize(allPacks) : null)
       : null;
 
   if (kind === "pack" && bestPack) {
@@ -384,7 +481,7 @@ function orderLineRowView(
 
 export default function OrderingPage() {
   const pathname = usePathname();
-  const { locationId, locationOptions } = useLocation();
+  const { locationId, locationOptions, locations } = useLocation();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [schedules, setSchedules] = useState<DeliverySchedule[]>([]);
   const [rawIngredients, setRawIngredients] = useState<RawIngredient[]>([]);
@@ -419,6 +516,8 @@ export default function OrderingPage() {
   const [expandedPlanningSupplierIds, setExpandedPlanningSupplierIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [planningSectionExpanded, setPlanningSectionExpanded] = useState(false);
+  const [allowOffScheduleOrdering, setAllowOffScheduleOrdering] = useState(false);
   /** Why the suggestion is empty / what was loaded (local date + counts). */
   /** Same rule as Dashboard: every location prep row has a count row for today (local date). */
   const [prepStocktakeComplete, setPrepStocktakeComplete] = useState(false);
@@ -448,8 +547,13 @@ export default function OrderingPage() {
     baseFallbackLineCount: number;
   } | null>(null);
 
+  const orderDraftLockedRef = useRef(false);
+  const orderBySupplierRef = useRef(orderBySupplier);
+  orderBySupplierRef.current = orderBySupplier;
+
   useEffect(() => {
     if (!locationId) {
+      orderDraftLockedRef.current = false;
       setSuppliers([]);
       setSchedules([]);
       setRawIngredients([]);
@@ -464,6 +568,14 @@ export default function OrderingPage() {
       setWorkflowStocktakeComplete(false);
       setLoading(false);
       return;
+    }
+    const draft = loadOrderDraft(locationId);
+    if (draft) {
+      setOrderBySupplier(mergeOrderLinesBySupplier(draft));
+      orderDraftLockedRef.current = true;
+    } else {
+      orderDraftLockedRef.current = false;
+      setOrderBySupplier({});
     }
     setSupplementalPackSizes([]);
     setLoading(true);
@@ -525,7 +637,6 @@ export default function OrderingPage() {
         setSchedules((schRes.data as DeliverySchedule[]) ?? []);
         setRawIngredients(rawList);
         setPackSizes(Array.from(dedupe.values()));
-        setOrderBySupplier({});
         setError(null);
       })
       .catch((e) => {
@@ -633,7 +744,7 @@ export default function OrderingPage() {
           .eq("location_id", locationId)
           .gte("date", stockWindowStart)
           .lte("date", d),
-        supabase.from("suppliers").select("id").eq("location_id", locationId),
+        supabase.from("suppliers").select("id, name").eq("location_id", locationId),
         supabase
           .from("supplier_ingredients")
           .select("supplier_id, raw_ingredient_id, is_preferred")
@@ -778,7 +889,12 @@ export default function OrderingPage() {
       }
       if (mediSaladPrepItemIdFromAll && neededByPrepItemId[mediSaladPrepItemIdFromAll] == null) {
         const mediRow = lpiAll.find((row) => row.prep_item_id === mediSaladPrepItemIdFromAll);
-        neededByPrepItemId[mediSaladPrepItemIdFromAll] = mediRow?.base_quantity ?? 1;
+        // Scale by revenue like the lpi loop above; this need drives the VG tub count
+        // via aggregateDailyRawNeedFromPrep, so an unscaled value over-orders on low-revenue days.
+        neededByPrepItemId[mediSaladPrepItemIdFromAll] = calcNeededQuantity({
+          baseQuantity: mediRow?.base_quantity ?? 1,
+          revenueMultiplier,
+        });
       }
       const locationPrepIds = new Set(lpi.map((row) => row.prep_item_id));
       const recipeFiltered = recipesMappedToLocation.filter(
@@ -810,7 +926,12 @@ export default function OrderingPage() {
         prepYieldByPrepItemId,
         mediSaladPrepItemId,
       });
-      dailyRawNeed = applyDailyNeedMultipliers({ dailyRawNeed, rawIngredients });
+      dailyRawNeed = applyDailyNeedMultipliers({
+        dailyRawNeed,
+        rawIngredients,
+        locationId,
+        locationName,
+      });
       dailyRawNeed = applyProductionGatedRawDailyNeed({
         dailyRawNeed,
         rawIngredients,
@@ -886,6 +1007,9 @@ export default function OrderingPage() {
       const orderIntervalDaysByRawId = Object.fromEntries(
         rawIngredients.map((r) => [r.id, r.order_interval_days ?? null])
       );
+      const supplierNameById = Object.fromEntries(
+        ((supRes.data as { id: string; name: string }[]) ?? []).map((s) => [s.id, s.name])
+      );
       const orderPackByRawId: Record<string, IngredientPackSize | null> = {};
       const picklingLeadTimeRawIds = new Set<string>();
       for (const ing of rawIngredients) {
@@ -926,6 +1050,7 @@ export default function OrderingPage() {
                   fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
                   picklingLeadTimeRawIds,
                   picklingLeadTimeDays: PICKLING_LEAD_TIME_DAYS,
+                  supplierNameById,
                 }),
                 orderPackByRawId,
               }),
@@ -1054,7 +1179,9 @@ export default function OrderingPage() {
         if (bps != null && bps > 0) {
           const stocktakePcs = Math.max(1, Math.ceil(baseAmt / bps));
           if (!passesMinOrderPackThreshold(ing?.name, stocktakePcs)) continue;
-          finalSuggested[rid] = stocktakePcs;
+          const entry = packAndUnitByRawId[rid];
+          const mult = entry?.pack?.order_pack_multiple ?? 1;
+          finalSuggested[rid] = roundUpToMultiple(stocktakePcs, mult);
           kindByRaw[rid] = "stocktake";
         } else {
           finalSuggested[rid] = Math.max(1, Math.ceil(baseAmt));
@@ -1073,9 +1200,16 @@ export default function OrderingPage() {
         rawIngredients,
         mediSaladNeedPrep,
       });
-      let suggestedForUi: Record<string, number> = { ...mediSaladPackCleanup.suggestedPacks };
+      const zuidasPackCleanup = applyZuidasStandingOrderPacks({
+        locationId,
+        locationName,
+        suggestedPacks: mediSaladPackCleanup.suggestedPacks,
+        kindByRaw: mediSaladPackCleanup.kindByRaw,
+        rawIngredients,
+      });
+      let suggestedForUi: Record<string, number> = { ...zuidasPackCleanup.suggestedPacks };
       let kindForUi: Record<string, SuggestionOrderKind> = {
-        ...(mediSaladPackCleanup.kindByRaw as Record<string, SuggestionOrderKind>),
+        ...(zuidasPackCleanup.kindByRaw as Record<string, SuggestionOrderKind>),
       };
       for (const rid of Object.keys(finalSuggested)) {
         if (finalSuggested[rid] > 0 && suggestedAfterMinPacks[rid] == null) {
@@ -1152,12 +1286,30 @@ export default function OrderingPage() {
     };
   }, []);
 
-  /** Re-fetch suggestion + drop stale draft lines when opening Ordering (SPA navigation keeps state otherwise). */
+  /** Restore draft + refresh suggestion when returning to Ordering. */
   useEffect(() => {
     if (pathname !== "/ordering" || !locationId) return;
-    setOrderBySupplier({});
+    const draft = loadOrderDraft(locationId);
+    if (draft) {
+      setOrderBySupplier(mergeOrderLinesBySupplier(draft));
+      orderDraftLockedRef.current = true;
+    }
     setSuggestionRefreshToken((v) => v + 1);
   }, [pathname, locationId]);
+
+  /** Persist draft on every change (also after automatic suggestion). */
+  useEffect(() => {
+    if (!locationId) return;
+    saveOrderDraft(locationId, orderBySupplier);
+  }, [orderBySupplier, locationId]);
+
+  /** Flush draft when leaving the page (navigation unmount). */
+  useEffect(() => {
+    if (!locationId) return;
+    return () => {
+      saveOrderDraft(locationId, orderBySupplierRef.current);
+    };
+  }, [locationId]);
 
   useEffect(() => {
     if (!locationId) {
@@ -1400,8 +1552,41 @@ export default function OrderingPage() {
     [suggestionRefreshToken]
   );
 
-  const daysUntil = (supplierId: string) =>
-    daysUntilNextDelivery({
+  const locationWeeklyStocktakeDow = useMemo(() => {
+    const dow = locations.find((l) => l.id === locationId)?.weekly_stocktake_day_of_week;
+    return dow != null && dow >= 0 && dow <= 6 ? dow : null;
+  }, [locations, locationId]);
+
+  const isWeeklyKitchenDay = useMemo(() => {
+    if (locationWeeklyStocktakeDow == null) return false;
+    return getDayOfWeek(orderingDayAnchor) === locationWeeklyStocktakeDow;
+  }, [locationWeeklyStocktakeDow, orderingDayAnchor]);
+
+  const weeklyDayLabel = useMemo(
+    () =>
+      locationWeeklyStocktakeDow != null ? JS_WEEKDAY_LABELS[locationWeeklyStocktakeDow] : null,
+    [locationWeeklyStocktakeDow]
+  );
+
+  const orderDayContext = useMemo(
+    () => ({
+      allowOffScheduleOrdering,
+      locationWeeklyStocktakeDow,
+    }),
+    [allowOffScheduleOrdering, locationWeeklyStocktakeDow]
+  );
+
+  const deliveryLabelContext = useMemo(
+    () => ({
+      isWeeklyKitchenDay,
+      allowOffScheduleOrdering,
+      weeklyDayLabel,
+    }),
+    [isWeeklyKitchenDay, allowOffScheduleOrdering, weeklyDayLabel]
+  );
+
+  const daysUntilDeliveryIfOrderingToday = (supplierId: string) =>
+    daysUntilDeliveryWhenOrderingToday({
       today: orderingDayAnchor,
       deliveryDays: schedulesBySupplier[supplierId] ?? [],
     });
@@ -1451,7 +1636,12 @@ export default function OrderingPage() {
     const planning: Supplier[] = [];
     for (const sup of visibleSuppliers) {
       const deliveryDaysForSup = schedulesBySupplier[sup.id] ?? [];
-      const orderDay = isSupplierOrderDayToday(sup.name, deliveryDaysForSup, orderingDayAnchor);
+      const orderDay = isSupplierOrderDayToday(
+        sup.name,
+        deliveryDaysForSup,
+        orderingDayAnchor,
+        orderDayContext
+      );
       const lines = orderBySupplier[sup.id] ?? [];
       const suggestedForSup = Object.entries(suggestedOrder).filter(
         ([rawId, qty]) => qty > 0 && suggestionSupplierByRaw[rawId] === sup.id
@@ -1468,12 +1658,15 @@ export default function OrderingPage() {
     orderBySupplier,
     suggestedOrder,
     suggestionSupplierByRaw,
+    orderDayContext,
   ]);
 
   const planningSupplierIdSet = useMemo(
     () => new Set(suppliersByOrderMode.planning.map((s) => s.id)),
     [suppliersByOrderMode.planning]
   );
+
+  const planningSuppliers = suppliersByOrderMode.planning;
 
   const hiddenSupplierIdSet = useMemo(() => {
     const visible = new Set(visibleSuppliers.map((s) => s.id));
@@ -1494,6 +1687,7 @@ export default function OrderingPage() {
       ([rid, q]) => q > 0 && suggestionSupplierByRaw[rid]
     );
     if (!hasAssignable) return;
+    if (orderDraftLockedRef.current) return;
     const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
     const packCleanup = applyMediSaladSuggestedPacksCleanup({
       locationId,
@@ -1513,6 +1707,8 @@ export default function OrderingPage() {
       baseSuggestedByRaw
     );
     setOrderBySupplier(next);
+    orderDraftLockedRef.current = true;
+    if (locationId) saveOrderDraft(locationId, next);
   }, [
     locationId,
     locationOptions,
@@ -1525,9 +1721,10 @@ export default function OrderingPage() {
     baseSuggestedByRaw,
   ]);
 
-  const removeLine = (supplierId: string, index: number) => {
+  const removeLine = (supplierId: string, lineKey: string) => {
+    orderDraftLockedRef.current = true;
     setOrderBySupplier((prev) => {
-      const list = (prev[supplierId] ?? []).filter((_, i) => i !== index);
+      const list = (prev[supplierId] ?? []).filter((l) => orderLineKey(l) !== lineKey);
       if (list.length === 0) {
         const next = { ...prev };
         delete next[supplierId];
@@ -1537,32 +1734,69 @@ export default function OrderingPage() {
     });
   };
 
-  const updateLineQuantity = (supplierId: string, index: number, quantity: number) => {
-    const qty = Math.max(0, Math.round(quantity));
+  const updateLineQuantity = (supplierId: string, lineKey: string, quantity: number) => {
+    orderDraftLockedRef.current = true;
+    const qty = Number.isFinite(quantity) ? Math.max(0, Math.round(quantity)) : 0;
     setOrderBySupplier((prev) => {
       const list = [...(prev[supplierId] ?? [])];
-      if (!list[index]) return prev;
-      if (qty <= 0) {
-        list.splice(index, 1);
-        if (list.length === 0) {
-          const next = { ...prev };
-          delete next[supplierId];
-          return next;
-        }
-        return { ...prev, [supplierId]: list };
-      }
+      const index = list.findIndex((l) => orderLineKey(l) === lineKey);
+      if (index < 0) return prev;
       list[index] = { ...list[index], quantity: qty };
       return { ...prev, [supplierId]: list };
     });
   };
 
+  const snapLineQuantityToColi = (supplierId: string, line: OrderLine) => {
+    const packs = packSizesByIngredient[line.raw_ingredient_id] ?? [];
+    const pack =
+      packs.find((p) => p.id === line.pack_size_id) ?? getBestPackSize(packsForOrder(packs));
+    const mult = pack?.order_pack_multiple ?? 1;
+    if (line.quantity <= 0 || mult <= 1) return;
+    const snapped = roundUpToMultiple(line.quantity, mult);
+    if (snapped !== line.quantity) {
+      updateLineQuantity(supplierId, orderLineKey(line), snapped);
+    }
+  };
+
   const addLineForSupplierRaw = (supplierId: string, rawId: string) => {
+    orderDraftLockedRef.current = true;
     const ing = rawIngredients.find((r) => r.id === rawId);
     if (!ing) return;
     const allPacks = packSizesByIngredient[rawId] ?? [];
     const orderPacks = packsForOrder(allPacks);
-    const best = getBestPackSize(orderPacks) ?? getBestPackSize(allPacks);
     const kind = suggestionOrderKindByRaw[rawId] ?? "pack";
+
+    const pushLine = (pack: IngredientPackSize | null | undefined, quantity: number) => {
+      if (!pack || quantity <= 0) return;
+      const line: OrderLine = {
+        raw_ingredient_id: rawId,
+        raw_ingredient_name: ing.name,
+        pack_size_id: pack.id,
+        pack_size_label: `${pack.size} ${pack.size_unit}`,
+        size: pack.size,
+        size_unit: pack.size_unit,
+        price_cents: pack.price_cents ?? null,
+        quantity,
+      };
+      setOrderBySupplier((prev) => ({
+        ...prev,
+        [supplierId]: mergeOrderLines([...(prev[supplierId] ?? []), line]),
+      }));
+    };
+
+    if (isParsleyRawName(ing.name)) {
+      const box4 =
+        orderPacks.find((p) => p.size === 4 && p.size_unit === "kg") ??
+        orderPacks.find((p) => (p.display_unit_label ?? "").toLowerCase().includes("4")) ??
+        getBestPackSize(orderPacks);
+      if (box4) {
+        pushLine(box4, 1);
+        setNewRawBySupplier((prev) => ({ ...prev, [supplierId]: "" }));
+        return;
+      }
+    }
+
+    const best = getBestPackSize(orderPacks) ?? getBestPackSize(allPacks);
     const line: OrderLine = {
       raw_ingredient_id: rawId,
       raw_ingredient_name: ing.name,
@@ -1579,8 +1813,9 @@ export default function OrderingPage() {
     };
     setOrderBySupplier((prev) => ({
       ...prev,
-      [supplierId]: [...(prev[supplierId] ?? []), line],
+      [supplierId]: mergeOrderLines([...(prev[supplierId] ?? []), line]),
     }));
+    setNewRawBySupplier((prev) => ({ ...prev, [supplierId]: "" }));
   };
 
   async function createOrderForSupplier(
@@ -1691,12 +1926,16 @@ export default function OrderingPage() {
       if (payload?.ok === false) throw new Error(payload.error ?? "Dispatch failed");
 
       const backendMsg = typeof payload?.message === "string" ? payload.message.trim() : "";
+      const hasSkippedLines =
+        /overgeslagen|skipped/i.test(backendMsg) && !dryRun;
       const successMessage =
         dryRun && backendMsg.startsWith("Dry run")
           ? backendMsg
           : dryRun
             ? `Dry run OK${backendMsg ? ` — ${backendMsg}` : ""}`
-            : `Sent OK${backendMsg ? ` — ${backendMsg}` : ""}`;
+            : hasSkippedLines
+              ? `Sent with warnings — ${backendMsg}`
+              : `Sent OK${backendMsg ? ` — ${backendMsg}` : ""}`;
 
       setDispatchStatusBySupplier((prev) => ({
         ...prev,
@@ -1730,6 +1969,14 @@ export default function OrderingPage() {
         await createOrderForSupplier(supplierId, lines, orderDate);
       }
       setSubmitted(true);
+      orderDraftLockedRef.current = false;
+      if (locationId) {
+        try {
+          sessionStorage.removeItem(orderDraftStorageKey(locationId, orderDate));
+        } catch {
+          // ignore
+        }
+      }
       setOrderBySupplier({});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit order");
@@ -1759,7 +2006,7 @@ export default function OrderingPage() {
   };
 
   const renderSupplierCard = (sup: Supplier, mode: "active" | "planning") => {
-    const days = daysUntil(sup.id);
+    const days = daysUntilDeliveryIfOrderingToday(sup.id);
     const deliveryDaysForSup = schedulesBySupplier[sup.id] ?? [];
     const hasWeekdaySchedule = deliveryDaysForSup.length > 0;
     const onDemandSup = isOnDemandSupplierName(sup.name);
@@ -1775,8 +2022,12 @@ export default function OrderingPage() {
       ([rawId, qty]) => qty > 0 && suggestionSupplierByRaw[rawId] === sup.id
     );
     const hasOrderWork = lines.length > 0 || suggestedForSup.length > 0;
-    const linesToShow = lines;
-    const isPlanning = mode === "planning";
+    const linesToShow = [...lines].sort((a, b) =>
+      (a.raw_ingredient_name ?? "").localeCompare(b.raw_ingredient_name ?? "", "en", {
+        sensitivity: "base",
+      })
+    );
+    const isPlanning = mode === "planning" && !allowOffScheduleOrdering;
     const planningExpanded = expandedPlanningSupplierIds.has(sup.id);
     const cardEmphasized =
       !isPlanning && hasOrderWork && (!hasWeekdaySchedule || onDemandSup || tomorrowIsDelivery);
@@ -1803,12 +2054,18 @@ export default function OrderingPage() {
           ? "help-text"
           : "help-text";
     const supplierRawIds = supplierRawIdsBySupplier[sup.id] ?? [];
-    const addableRawIds = supplierRawIds.filter((rid) => {
-      if (linesToShow.some((line) => line.raw_ingredient_id === rid)) return false;
-      const ing = rawIngredients.find((r) => r.id === rid);
-      return ing != null && isRawVisibleOnStocktake(ing);
-    });
-    const selectedNewRaw = newRawBySupplier[sup.id] ?? addableRawIds[0] ?? "";
+    const addableRawIds = supplierRawIds
+      .filter((rid) => {
+        if (linesToShow.some((line) => line.raw_ingredient_id === rid)) return false;
+        const ing = rawIngredients.find((r) => r.id === rid);
+        return ing != null && isRawVisibleOnStocktake(ing);
+      })
+      .sort((a, b) => {
+        const na = rawIngredients.find((r) => r.id === a)?.name ?? "";
+        const nb = rawIngredients.find((r) => r.id === b)?.name ?? "";
+        return na.localeCompare(nb, "en", { sensitivity: "base" });
+      });
+    const selectedNewRaw = newRawBySupplier[sup.id] ?? "";
     const hasManualOptions = addableRawIds.length > 0;
     const hasAnyWork = hasOrderWork || hasManualOptions;
     const showLines = !isPlanning || planningExpanded;
@@ -1829,18 +2086,32 @@ export default function OrderingPage() {
               </span>
             )}
           </div>
-          <span className={deliveryMetaClass}>{nextDeliveryLabel(sup.name, days)}</span>
+          <span className={deliveryMetaClass}>
+            {nextDeliveryLabel(sup.name, days, deliveryLabelContext)}
+          </span>
         </div>
 
-        {isPlanning && (
+        {isPlanning && !allowOffScheduleOrdering && (
           <div className="mb-2 rounded-lg border border-brand-green/10 bg-background/80 px-3 py-2 text-xs text-ink-soft/70">
-            <p className="font-medium text-ink-soft">Not an order day — planning preview only</p>
-            {hasWeekdaySchedule && (
+            <p className="font-medium text-ink-soft">Not an order day — preview only</p>
+            {onDemandSup && weeklyDayLabel ? (
               <p className="mt-1">
-                Deliveries: {formatJsDeliveryDays(deliveryDaysForSup)}. Order the day before delivery — do not send
-                today.
+                {sup.name} is ordered on {weeklyDayLabel} after the weekly stocktake. Turn on
+                &quot;Allow ordering today&quot; below to send anyway.
               </p>
-            )}
+            ) : hasWeekdaySchedule ? (
+              <p className="mt-1">
+                Deliveries: {formatJsDeliveryDays(deliveryDaysForSup)}. Order the day before delivery.
+              </p>
+            ) : weeklyDayLabel ? (
+              <p className="mt-1">Kitchen order day: {weeklyDayLabel} (weekly stocktake).</p>
+            ) : null}
+          </div>
+        )}
+
+        {isPlanning && allowOffScheduleOrdering && (
+          <div className="mb-2 rounded-lg border border-accent-orange/20 bg-accent-orange/5 px-3 py-2 text-xs text-ink-soft">
+            <p className="font-medium text-ink">Off-schedule ordering enabled — you can send today</p>
           </div>
         )}
 
@@ -1867,7 +2138,8 @@ export default function OrderingPage() {
 
         {showLines && (
           <ul className={`space-y-2 ${isPlanning ? "opacity-75" : ""}`}>
-            {linesToShow.map((line, idx) => {
+            {linesToShow.map((line) => {
+              const lineKey = orderLineKey(line);
               const ing = rawIngredients.find((r) => r.id === line.raw_ingredient_id);
               const kind = suggestionOrderKindByRaw[line.raw_ingredient_id] ?? "pack";
               const row = orderLineRowView(
@@ -1876,9 +2148,14 @@ export default function OrderingPage() {
                 ing,
                 packSizesByIngredient[line.raw_ingredient_id] ?? []
               );
+              const linePacks = packSizesByIngredient[line.raw_ingredient_id] ?? [];
+              const linePack =
+                linePacks.find((p) => p.id === line.pack_size_id) ??
+                getBestPackSize(packsForOrder(linePacks));
+              const coliMultiple = Math.max(1, linePack?.order_pack_multiple ?? 1);
               return (
                 <li
-                  key={`${sup.id}-${line.raw_ingredient_id}-${idx}`}
+                  key={`${sup.id}-${lineKey}`}
                   className={
                     isPlanning
                       ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-dashed border-brand-green/10 bg-background/40 px-3 py-2 text-xs text-ink-soft/70 "
@@ -1907,11 +2184,17 @@ export default function OrderingPage() {
                       <input
                         type="number"
                         min={0}
-                        step={1}
-                        value={line.quantity}
-                        onChange={(e) =>
-                          updateLineQuantity(sup.id, idx, Number(e.target.value))
-                        }
+                        step={coliMultiple}
+                        value={line.quantity === 0 ? "" : line.quantity}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === "") {
+                            updateLineQuantity(sup.id, lineKey, 0);
+                            return;
+                          }
+                          updateLineQuantity(sup.id, lineKey, Number(raw));
+                        }}
+                        onBlur={() => snapLineQuantityToColi(sup.id, line)}
                         className="w-14 rounded border border-brand-green/15 bg-surface px-1 py-0.5 text-right text-sm tabular-nums text-ink"
                         aria-label={`Quantity for ${row.product}`}
                       />
@@ -1941,7 +2224,7 @@ export default function OrderingPage() {
                   {!isPlanning && (
                     <button
                       type="button"
-                      onClick={() => removeLine(sup.id, idx)}
+                      onClick={() => removeLine(sup.id, lineKey)}
                       className="shrink-0 alert-error rounded-lg px-2 py-1.5 text-xs"
                     >
                       Remove
@@ -1991,6 +2274,9 @@ export default function OrderingPage() {
                 }
                 className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs text-ink"
               >
+                <option value="" disabled>
+                  Select item…
+                </option>
                 {addableRawIds.map((rid) => {
                   const ing = rawIngredients.find((r) => r.id === rid);
                   return (
@@ -2004,7 +2290,8 @@ export default function OrderingPage() {
             <button
               type="button"
               onClick={() => selectedNewRaw && addLineForSupplierRaw(sup.id, selectedNewRaw)}
-              className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs font-medium text-ink"
+              disabled={!selectedNewRaw}
+              className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs font-medium text-ink disabled:opacity-50"
             >
               Add to order
             </button>
@@ -2012,7 +2299,13 @@ export default function OrderingPage() {
         )}
 
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.message && (
-          <p className="mt-2 text-xs text-brand-green">
+          <p
+            className={`mt-2 text-xs ${
+              /warnings|overgeslagen|skipped/i.test(dispatchStatusBySupplier[sup.id]?.message ?? "")
+                ? "text-accent-terracotta"
+                : "text-brand-green"
+            }`}
+          >
             {dispatchStatusBySupplier[sup.id]?.message}
           </p>
         )}
@@ -2195,22 +2488,60 @@ export default function OrderingPage() {
           <p className="py-8 text-ink-soft/80">No suppliers for this location. Add them in Admin → Suppliers.</p>
         ) : (
           <div className="mt-6 space-y-8">
+            <div className="rounded-xl border border-brand-green/10 bg-brand-sand/40 px-4 py-3">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={allowOffScheduleOrdering}
+                  onChange={(e) => setAllowOffScheduleOrdering(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-brand-green/30"
+                />
+                <span className="text-sm">
+                  <span className="font-medium text-ink">Allow ordering today (off schedule)</span>
+                  <span className="mt-0.5 block text-xs text-ink-soft">
+                    {isWeeklyKitchenDay
+                      ? `Today is ${weeklyDayLabel ?? "the weekly stocktake day"} — suppliers are ready to order.`
+                      : weeklyDayLabel
+                        ? `Normally order on ${weeklyDayLabel} after weekly stocktake, or the day before each supplier's delivery. Enable this to send anyway.`
+                        : "Enable to send supplier orders even when today is not the usual order day."}
+                  </span>
+                </span>
+              </label>
+            </div>
+
             {suppliersByOrderMode.active.map((sup) => renderSupplierCard(sup, "active"))}
 
-            {suppliersByOrderMode.planning.length > 0 && (
-              <div className="space-y-4 border-t border-dashed border-brand-green/15 pt-6">
-                <div className="rounded-xl border border-brand-green/10 bg-brand-sand/50/80 px-4 py-3">
-                  <p className="text-sm font-medium text-ink-soft">
-                    Planning only — do not order today
-                  </p>
-                  <p className="mt-1 text-xs text-ink-soft/70">
-                    {suppliersByOrderMode.planning.map((s) => s.name).join(", ")} has suggestions for reference, but
-                    tomorrow is not a delivery day. Send orders on the day before delivery.
-                  </p>
+            {planningSuppliers.length > 0 && !planningSectionExpanded && (
+              <div className="rounded-xl border border-brand-green/10 bg-brand-sand/50/80 px-4 py-3">
+                <p className="text-sm font-medium text-ink-soft">Not an order day — suppliers hidden</p>
+                <p className="mt-1 text-xs text-ink-soft/70">
+                  {planningSuppliers.map((s) => s.name).join(", ")} has suggestions for reference only.
+                  {weeklyDayLabel ? ` Usual order day: ${weeklyDayLabel}.` : ""} Expand for a preview, or enable
+                  off-schedule ordering above to send today.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPlanningSectionExpanded(true)}
+                  className="mt-3 rounded-md border border-brand-sage/50 bg-surface/60 px-3 py-1.5 text-xs font-medium text-ink-soft"
+                >
+                  Show planning preview
+                </button>
+              </div>
+            )}
+
+            {planningSectionExpanded && planningSuppliers.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-ink-soft">Planning preview — do not send unless off-schedule is enabled</p>
+                  <button
+                    type="button"
+                    onClick={() => setPlanningSectionExpanded(false)}
+                    className="rounded-md border border-brand-sage/50 bg-surface/60 px-2 py-1 text-[11px] font-medium text-ink-soft/80"
+                  >
+                    Hide preview
+                  </button>
                 </div>
-                <div className="space-y-3">
-                  {suppliersByOrderMode.planning.map((sup) => renderSupplierCard(sup, "planning"))}
-                </div>
+                {planningSuppliers.map((sup) => renderSupplierCard(sup, "planning"))}
               </div>
             )}
           </div>
