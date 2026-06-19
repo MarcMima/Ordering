@@ -896,8 +896,10 @@ async function dispatchVanGelder(
     expansionInfo.length > 0 ? ` | Verpakking: ${expansionInfo.join(" | ")}` : "";
 
   if (dryRun) {
-    const warning = skippedReasons.length > 0 ? `Waarschuwing: ${skippedReasons.join(" | ")}` : undefined;
-    const base = warning ? `Dry run — niet verstuurd. ${warning}` : "Dry run — niet verstuurd";
+    const warning = skippedReasons.length > 0 ? skippedReasons.join(" | ") : undefined;
+    const base = warning
+      ? `Dry run OK with warnings — not sent. ${warning}`
+      : "Dry run OK — not sent";
     return {
       success: true,
       channel: "van_gelder_api",
@@ -1212,7 +1214,9 @@ async function dispatchBidfood(
     return {
       success: true,
       channel: "bidfood_api",
-      message: warning ? `Dry run — niet verstuurd. ${warning}` : "Dry run — niet verstuurd",
+      message: warning
+        ? `Dry run OK with warnings — not sent. ${warning}`
+        : "Dry run OK — not sent",
       message_body: JSON.stringify(orderPayload, null, 2),
     };
   }

@@ -68,6 +68,8 @@ import {
 type DeliverySchedule = { supplier_id: string; day_of_week: number };
 type DispatchStatus = {
   loading: boolean;
+  loadingAction?: "dry_run" | "send";
+  dryRun?: boolean;
   message?: string;
   error?: string;
 };
@@ -136,6 +138,31 @@ function sortSuppliersForOrdering(list: Supplier[]): Supplier[] {
 
 function normSupplierName(name: string): string {
   return name.toLowerCase().trim();
+}
+
+/** User-facing dry run result (English UI). */
+function formatDryRunSuccessMessage(payload: {
+  message?: string;
+  channel?: string;
+}): string {
+  const raw = (payload.message ?? "").trim();
+  const detail = raw
+    .replace(/^dry run[^—–-]*[—–-]?\s*/i, "")
+    .replace(/^(ok\s*(with warnings)?\s*[—–-]\s*)?not sent\.?\s*/i, "")
+    .replace(/^niet verstuurd\.?\s*/i, "")
+    .replace(/^waarschuwing:\s*/i, "")
+    .trim();
+
+  const hasWarnings =
+    /overgeslagen|skipped|ontbreekt|missing|warning|mislukt|failed|niet op|not on/i.test(raw) ||
+    Boolean(detail);
+
+  const base = hasWarnings
+    ? "Dry run OK with warnings — nothing sent to supplier."
+    : "Dry run OK — validation passed, nothing sent to supplier.";
+
+  if (!detail) return base;
+  return `${base} ${detail}`;
 }
 
 function isTodayFoodGroupSupplier(name: string): boolean {
@@ -350,19 +377,28 @@ function orderLineKey(line: OrderLine): string {
   return `${line.raw_ingredient_id}:${line.pack_size_id ?? "none"}`;
 }
 
-/** Merge duplicate lines (same raw + pack) by summing quantities. */
+/** Merge duplicate lines (same raw + pack) by summing quantities. Parsley stays split (4 kg + 1 kg). */
 function mergeOrderLines(lines: OrderLine[]): OrderLine[] {
   const byKey = new Map<string, OrderLine>();
+  const mergedKeys: string[] = [];
+  const out: OrderLine[] = [];
+
   for (const line of lines) {
+    if (isParsleyRawName(line.raw_ingredient_name)) {
+      out.push({ ...line });
+      continue;
+    }
     const key = orderLineKey(line);
     const prev = byKey.get(key);
     if (prev) {
       byKey.set(key, { ...prev, quantity: prev.quantity + line.quantity });
     } else {
       byKey.set(key, { ...line });
+      mergedKeys.push(key);
     }
   }
-  return [...byKey.values()];
+
+  return [...out, ...mergedKeys.map((key) => byKey.get(key)!).filter(Boolean)];
 }
 
 function mergeOrderLinesBySupplier(
@@ -1859,7 +1895,13 @@ export default function OrderingPage() {
 
     setDispatchStatusBySupplier((prev) => ({
       ...prev,
-      [supplierId]: { loading: true },
+      [supplierId]: {
+        loading: true,
+        loadingAction: dryRun ? "dry_run" : "send",
+        message: undefined,
+        error: undefined,
+        dryRun: dryRun,
+      },
     }));
 
     try {
@@ -1922,25 +1964,29 @@ export default function OrderingPage() {
         throw new Error(detail);
       }
 
-      const payload = data as { ok?: boolean; message?: string; error?: string } | null;
+      const payload = data as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        channel?: string;
+      } | null;
       if (payload?.ok === false) throw new Error(payload.error ?? "Dispatch failed");
 
       const backendMsg = typeof payload?.message === "string" ? payload.message.trim() : "";
       const hasSkippedLines =
         /overgeslagen|skipped/i.test(backendMsg) && !dryRun;
-      const successMessage =
-        dryRun && backendMsg.startsWith("Dry run")
-          ? backendMsg
-          : dryRun
-            ? `Dry run OK${backendMsg ? ` — ${backendMsg}` : ""}`
-            : hasSkippedLines
-              ? `Sent with warnings — ${backendMsg}`
-              : `Sent OK${backendMsg ? ` — ${backendMsg}` : ""}`;
+      const successMessage = dryRun
+        ? formatDryRunSuccessMessage(payload ?? {})
+        : hasSkippedLines
+          ? `Sent with warnings — ${backendMsg}`
+          : `Sent OK${backendMsg ? ` — ${backendMsg}` : ""}`;
 
       setDispatchStatusBySupplier((prev) => ({
         ...prev,
         [supplierId]: {
           loading: false,
+          loadingAction: undefined,
+          dryRun,
           message: successMessage,
         },
       }));
@@ -1949,7 +1995,13 @@ export default function OrderingPage() {
         ...prev,
         [supplierId]: {
           loading: false,
-          error: e instanceof Error ? e.message : "Dispatch failed",
+          loadingAction: undefined,
+          dryRun,
+          error: dryRun
+            ? `Dry run failed — ${e instanceof Error ? e.message : "Unknown error"}`
+            : e instanceof Error
+              ? e.message
+              : "Dispatch failed",
         },
       }));
     }
@@ -2236,7 +2288,14 @@ export default function OrderingPage() {
           </ul>
         )}
 
-        {!isPlanning && linesToShow.length > 0 && (
+        {!isPlanning && linesToShow.length > 0 && (() => {
+          const dispatchStatus = dispatchStatusBySupplier[sup.id];
+          const dryRunLoading =
+            Boolean(dispatchStatus?.loading) && dispatchStatus?.loadingAction === "dry_run";
+          const sendLoading =
+            Boolean(dispatchStatus?.loading) && dispatchStatus?.loadingAction === "send";
+          const anyLoading = dryRunLoading || sendLoading;
+          return (
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <span className="rounded-md bg-brand-sand/50 px-2 py-1 text-[11px] text-ink-soft">
               Delivery: as soon as possible
@@ -2244,21 +2303,26 @@ export default function OrderingPage() {
             <button
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, true)}
-              disabled={Boolean(dispatchStatusBySupplier[sup.id]?.loading)}
-              className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs font-medium text-ink disabled:opacity-50"
+              disabled={anyLoading}
+              className={`rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-50 ${
+                dryRunLoading
+                  ? "border-brand-green/30 bg-brand-sand/60 text-ink"
+                  : "border-brand-green/15 bg-surface text-ink"
+              }`}
             >
-              {dispatchStatusBySupplier[sup.id]?.loading ? "Running…" : "Dry run supplier"}
+              {dryRunLoading ? "Dry run…" : "Dry run supplier"}
             </button>
             <button
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, false)}
-              disabled={Boolean(dispatchStatusBySupplier[sup.id]?.loading)}
+              disabled={anyLoading}
               className="btn-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50"
             >
-              {dispatchStatusBySupplier[sup.id]?.loading ? "Sending…" : "Send supplier"}
+              {sendLoading ? "Sending…" : "Send supplier"}
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {!isPlanning && addableRawIds.length > 0 && (
           <div className="mt-3 flex flex-wrap items-end gap-2">
@@ -2301,9 +2365,13 @@ export default function OrderingPage() {
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.message && (
           <p
             className={`mt-2 text-xs ${
-              /warnings|overgeslagen|skipped/i.test(dispatchStatusBySupplier[sup.id]?.message ?? "")
-                ? "text-accent-terracotta"
-                : "text-brand-green"
+              dispatchStatusBySupplier[sup.id]?.dryRun
+                ? /warnings/i.test(dispatchStatusBySupplier[sup.id]?.message ?? "")
+                  ? "text-accent-terracotta"
+                  : "text-ink"
+                : /warnings|overgeslagen|skipped/i.test(dispatchStatusBySupplier[sup.id]?.message ?? "")
+                  ? "text-accent-terracotta"
+                  : "text-brand-green"
             }`}
           >
             {dispatchStatusBySupplier[sup.id]?.message}
