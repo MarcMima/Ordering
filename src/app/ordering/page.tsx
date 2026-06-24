@@ -51,6 +51,13 @@ import {
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
 import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTime";
 import { computeRawCoveredByFinishedPrep } from "@/lib/prepStockRawCredit";
+import {
+  applyCombinedPitaStockCredit,
+  calcRegularPitaZaatarToMake,
+  extractPitaStockCounts,
+  isRegularPitaPrepName,
+  isWholewheatPitaPrepName,
+} from "@/lib/pitaPrepStock";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
 import { JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
@@ -1055,10 +1062,21 @@ export default function OrderingPage() {
         orderPackByRawId[ing.id] = getBestPackSize(packs);
         if (isPicklingRawName(ing.name)) picklingLeadTimeRawIds.add(ing.id);
       }
+      const pitaStock = extractPitaStockCounts({
+        prepItemsById: Object.fromEntries(
+          lpi.map((row) => [row.prep_item_id, row.prep_items])
+        ),
+        prepStockByPrepItemId,
+        rawIngredients,
+        rawStockByRawId: currentStock,
+      });
       const baseSuggested = applyProductionGatedBaseSuggested({
         rawIngredients,
         gatedRawIdsWithZeroNeed: productionGatedZeroRawIds,
-        baseSuggested: applyGarlicPeeledOrderGate({
+        baseSuggested: applyCombinedPitaStockCredit({
+          ...pitaStock,
+          rawIngredients,
+          baseSuggested: applyGarlicPeeledOrderGate({
           rawIngredients,
           currentRawStock: currentStock,
           baseSuggested: applyMediSaladBaseSuggestedCleanup({
@@ -1092,6 +1110,7 @@ export default function OrderingPage() {
               }),
             }),
           }),
+        }),
         }),
       });
       const baseRawIds = Object.keys(baseSuggested);

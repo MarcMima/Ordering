@@ -57,11 +57,28 @@ function rawIdByName(rawIngredients: RawIngredient[], name: string): string | nu
 /** Scale daily raw need before cover-window / pack math (kitchen calibration Jun 2026). */
 export const DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
   "romaine lettuce": 0.5,
-  aubergine: 0.6,
+  aubergine: 0.78,
   "medi salad 3kg": 0.8,
   "red onion sliced fine": 0.7,
   "red cabbage shredded": 0.6,
 };
+
+/** Summer drink uplift (still/sparkling water, cola, SOOF). */
+const SUMMER_DRINK_MULTIPLIER = 2;
+
+const DRINK_RAW_NAME_SUBSTRINGS = [
+  "coca cola",
+  "still water",
+  "sparkling water",
+  "soof mint",
+  "soof cardamom",
+  "soof lavender",
+] as const;
+
+function isDrinkRawName(name: string | null | undefined): boolean {
+  const n = normName(name);
+  return DRINK_RAW_NAME_SUBSTRINGS.some((s) => n.includes(s));
+}
 
 /** Mima Amsterdam / West — location-specific calibration (Jun 2026). */
 const WEST_LOCATION_IDS = new Set([
@@ -368,6 +385,9 @@ export function applyDailyNeedMultipliers(params: {
     if (zuidas) {
       const zuidasMult = ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
       if (zuidasMult != null) mult = (mult ?? 1) * zuidasMult;
+    }
+    if (isDrinkRawName(ing.name)) {
+      mult = (mult ?? 1) * SUMMER_DRINK_MULTIPLIER;
     }
     if (mult == null || mult === 1) continue;
     const cur = out[ing.id];

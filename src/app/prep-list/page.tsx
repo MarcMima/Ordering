@@ -14,11 +14,18 @@ import {
   getRevenueMultiplier,
   calcNeededQuantity,
   calcToMake,
-  getPrepPriority,
   type PrepPriority,
 } from "@/lib/calculations";
 import { formatDecimal2, formatEuroFromCents, formatPrepQuantity } from "@/lib/format";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
+import { resolvePrepListPriority } from "@/lib/prepListPriority";
+import {
+  calcRegularPitaZaatarToMake,
+  extractPitaStockCounts,
+  isRegularPitaPrepName,
+  isWholewheatPitaPrepName,
+} from "@/lib/pitaPrepStock";
+import type { RawIngredient } from "@/lib/types";
 
 type LocationPrepItemRow = {
   id: string;
@@ -53,6 +60,8 @@ export default function PrepListPage() {
   const [date, setDate] = useState(() => localCalendarDateString());
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItemRow[]>([]);
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({});
+  const [rawStockCounts, setRawStockCounts] = useState<Record<string, number>>({});
+  const [rawIngredients, setRawIngredients] = useState<RawIngredient[]>([]);
   const [revenueTargetCents, setRevenueTargetCents] = useState<number | null>(null);
   const [locationDetails, setLocationDetails] = useState<Location | null>(null);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
@@ -63,6 +72,8 @@ export default function PrepListPage() {
     if (!locationId) {
       setLocationPrepItems([]);
       setTodayCounts({});
+      setRawStockCounts({});
+      setRawIngredients([]);
       setRevenueTargetCents(null);
       setLocationDetails(null);
       setLoading(false);
@@ -75,7 +86,7 @@ export default function PrepListPage() {
 
     void (async () => {
       const revCents = await ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d);
-      const [lpiRes, countRes, locRes] = await Promise.all([
+      const [lpiRes, countRes, rawStockRes, rawRes, locRes] = await Promise.all([
         supabase
           .from("location_prep_items")
           .select("id, location_id, prep_item_id, base_quantity, display_order, prep_items(*)")
@@ -87,6 +98,12 @@ export default function PrepListPage() {
           .select("prep_item_id, quantity")
           .eq("location_id", locationId)
           .eq("date", d),
+        supabase
+          .from("daily_stock_counts")
+          .select("raw_ingredient_id, quantity")
+          .eq("location_id", locationId)
+          .eq("date", d),
+        supabase.from("raw_ingredients").select("id, name").eq("location_id", locationId),
         supabase
           .from("locations")
           .select("full_capacity_revenue")
@@ -104,10 +121,17 @@ export default function PrepListPage() {
         }));
 
         const counts = (countRes.data as { prep_item_id: string; quantity: number }[]) ?? [];
+        const rawStockList =
+          (rawStockRes.data as { raw_ingredient_id: string; quantity: number }[]) ?? [];
+        const rawList = (rawRes.data as RawIngredient[]) ?? [];
         const loc = locRes.data as Location | null;
 
         setLocationPrepItems(items);
         setTodayCounts(Object.fromEntries(counts.map((c) => [c.prep_item_id, Number(c.quantity)])));
+        setRawStockCounts(
+          Object.fromEntries(rawStockList.map((c) => [c.raw_ingredient_id, Number(c.quantity)]))
+        );
+        setRawIngredients(rawList);
         setRevenueTargetCents(revCents);
         setLocationDetails(loc ?? null);
         setCompleted(getStoredDone(locationId, d));
@@ -116,6 +140,8 @@ export default function PrepListPage() {
         setError(e instanceof Error ? e.message : "Failed to load");
         setLocationPrepItems([]);
         setTodayCounts({});
+        setRawStockCounts({});
+        setRawIngredients([]);
         setRevenueTargetCents(null);
         setLocationDetails(null);
       } finally {
@@ -140,6 +166,36 @@ export default function PrepListPage() {
   };
 
   const { todayRows, tomorrowRows } = useMemo(() => {
+    const prepItemsById = Object.fromEntries(
+      locationPrepItems.map((row) => [row.prep_item_id, row.prep_items])
+    );
+    const neededByPrepId: Record<string, number> = {};
+    for (const row of locationPrepItems) {
+      neededByPrepId[row.prep_item_id] = calcNeededQuantity({
+        baseQuantity: row.base_quantity ?? 1,
+        revenueMultiplier,
+      });
+    }
+    const pitaStock = extractPitaStockCounts({
+      prepItemsById,
+      prepStockByPrepItemId: todayCounts,
+      rawIngredients,
+      rawStockByRawId: rawStockCounts,
+    });
+    let neededRegularBoxes = 0;
+    let neededWholewheatBoxes = 0;
+    for (const row of locationPrepItems) {
+      const name = row.prep_items?.name;
+      const needed = neededByPrepId[row.prep_item_id] ?? 0;
+      if (isRegularPitaPrepName(name)) neededRegularBoxes = needed;
+      if (isWholewheatPitaPrepName(name)) neededWholewheatBoxes = needed;
+    }
+    const pitaZaatarToMake = calcRegularPitaZaatarToMake({
+      neededRegularBoxes,
+      neededWholewheatBoxes,
+      ...pitaStock,
+    });
+
     const list: PrepRow[] = [];
     for (const row of locationPrepItems) {
       const item = row.prep_items;
@@ -147,17 +203,21 @@ export default function PrepListPage() {
       const baseQty = row.base_quantity ?? 1;
       const needed = calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier });
       const currentStock = todayCounts[row.prep_item_id] ?? 0;
-      const toMake = calcToMake({
+      let toMake = calcToMake({
         needed,
         currentStock,
         batchSize: item.batch_size ?? null,
       });
-      let priority = getPrepPriority({
+      if (isRegularPitaPrepName(item.name) && pitaZaatarToMake > 0) {
+        toMake = Math.max(toMake, pitaZaatarToMake);
+      }
+      const priority = resolvePrepListPriority({
+        prepName: item.name,
         currentStock,
         needed,
+        toMake,
         prepTimeHours: item.prep_time_hours ?? null,
       });
-      if (priority === "hidden" && toMake > 0) priority = 3;
       if (priority === "hidden") continue;
       list.push({ row, needed, toMake, priority, currentStock });
     }
@@ -175,7 +235,7 @@ export default function PrepListPage() {
     const todayRows = list.filter((r) => !r.row.prep_items?.requires_overnight);
     const tomorrowRows = list.filter((r) => r.row.prep_items?.requires_overnight);
     return { todayRows, tomorrowRows };
-  }, [locationPrepItems, todayCounts, revenueMultiplier]);
+  }, [locationPrepItems, todayCounts, rawStockCounts, rawIngredients, revenueMultiplier]);
 
   const soakDryChickpeasKg = useMemo(() => {
     return soakDryChickpeasKgFromPrepState({

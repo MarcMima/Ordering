@@ -30,6 +30,7 @@ import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   isPrepVisibleOnStocktake,
   isRawVisibleOnStocktake,
+  isRawVisibleOnStocktakeForLocation,
 } from "@/lib/stocktakeVisibility";
 import type { IngredientPackSize, PrepItem, RawIngredient } from "@/lib/types";
 import {
@@ -275,7 +276,9 @@ export default function StocktakePage() {
           const list = Array.isArray(nested) ? nested : nested != null ? [nested] : [];
           for (const p of list) packs.push(p);
         }
-        const visibleRaws = rawList.filter((ing) => isRawVisibleOnStocktake(ing));
+        const visibleRaws = rawList.filter((ing) =>
+          isRawVisibleOnStocktakeForLocation(ing, locationId)
+        );
         const shownIds = new Set(visibleRaws.map((r) => r.id));
         const packsForList = packs.filter((p) => shownIds.has(p.raw_ingredient_id));
         const rawIds = visibleRaws.map((r) => r.id);
