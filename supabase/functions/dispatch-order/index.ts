@@ -1047,6 +1047,30 @@ function bidfoodBasicAuthValue(username: string, password: string): string {
   return btoa(binary);
 }
 
+function formatBidfoodApiError(
+  status: number,
+  baseUrl: string,
+  customerNumber: string,
+  responseData: unknown,
+  creds: { username: string; password: string }
+): string {
+  const body = JSON.stringify(responseData);
+  const base = `Bidfood API ${status} (${baseUrl}, klant ${customerNumber}): ${body}`;
+  if (status !== 401) return base;
+
+  const usernameHint = creds.username
+    ? `username "${creds.username}" is configured`
+    : "no username resolved";
+  return (
+    `${base} | Auth failed (${usernameHint}). ` +
+    `Re-set Supabase secrets BIDFOOD_USERNAME_${customerNumber} and ` +
+    `BIDFOOD_PASSWORD_B64_${customerNumber} from the Bidfood integration letter ` +
+    `(password as base64; see scripts/bidfood-sandbox-secrets.example.env). ` +
+    `Do not set BIDFOOD_SEND_SYSTEM_NAME — that header causes 401. ` +
+    `Each location needs its own customer number + credentials (Pijp 076970, Amsterdam 074380, Zuidas 080840).`
+  );
+}
+
 function bidfoodSendSystemNameHeader(): boolean {
   const v = (Deno.env.get("BIDFOOD_SEND_SYSTEM_NAME") ?? "").trim().toLowerCase();
   return v === "true" || v === "1" || v === "yes";
@@ -1143,6 +1167,24 @@ async function dispatchBidfood(
     };
   }
 
+  const missingUom = validLines.filter(
+    (l) =>
+      Boolean(l.supplier_ingredient?.supplier_article_code) &&
+      !l.supplier_ingredient?.order_unit &&
+      !l.supplier_ingredient?.ean_code
+  );
+  if (missingUom.length > 0) {
+    validLines = validLines.filter((l) => !missingUom.includes(l));
+    skippedReasons.push(
+      `Bidfood order unit ontbreekt: ${missingUom
+        .map(
+          (l) =>
+            `${l.raw_ingredient.name} (${l.supplier_ingredient?.supplier_article_code ?? "?"})`
+        )
+        .join(", ")}`
+    );
+  }
+
   const orderableLines = validLines.filter(
     (line) =>
       Boolean(line.supplier_ingredient?.supplier_article_code) ||
@@ -1181,10 +1223,7 @@ async function dispatchBidfood(
       const gtin = si.ean_code.length === 13 ? `0${si.ean_code}` : si.ean_code;
       productIdentifier = { gtin };
     } else {
-      productIdentifier = {
-        productId: si.supplier_article_code!,
-        productUom: si.order_unit ?? "ST",
-      };
+      return null;
     }
 
     return {
@@ -1192,7 +1231,8 @@ async function dispatchBidfood(
       orderLineReference: String(idx + 1).padStart(2, "0"),
       quantityOrdered: qty,
     };
-    });
+    })
+    .filter((p): p is NonNullable<typeof p> => p != null);
 
   const orderPayload = {
     orderReference: `MIMA-${order.id.slice(0, 8).toUpperCase()}`,
@@ -1239,7 +1279,13 @@ async function dispatchBidfood(
     return {
       success: false,
       channel: "bidfood_api",
-      error: `Bidfood API ${response.status} (${baseUrl}, klant ${customerNumber}): ${JSON.stringify(responseData)}`,
+      error: formatBidfoodApiError(
+        response.status,
+        baseUrl,
+        customerNumber,
+        responseData,
+        creds
+      ),
     };
   }
 

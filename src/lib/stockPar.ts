@@ -12,12 +12,13 @@ export type StockParRule =
  */
 export const MIN_STOCK_PAR_BY_RAW_NAME: Record<string, StockParRule> = {
   "all purpose flour": { kind: "packs", minPacks: 4 },
-  "baking powder": { kind: "packs", minPacks: 2 },
+  /** 1 can = 1 kg; order only when stock falls below 0.5 can (500 g). */
+  "baking powder": { kind: "base", minAmount: 500 },
   "baking soda": { kind: "packs", minPacks: 3 },
   tahini: { kind: "packs", minPacks: 2, orderPacks: 12 },
   "aubergine puree": { kind: "packs", minPacks: 4 },
   "eggplant puree": { kind: "packs", minPacks: 4 },
-  "lemon juice": { kind: "packs", minPacks: 12 },
+  "lemon juice": { kind: "packs", minPacks: 1 },
   "kalamata olives": { kind: "base", minAmount: 2600 },
   "middle eastern pickles": { kind: "packs", minPacks: 2 },
   "rice pandan": { kind: "base", minAmount: 4500 },
@@ -31,7 +32,7 @@ export const MIN_STOCK_PAR_BY_RAW_NAME: Record<string, StockParRule> = {
   "sparkling water": { kind: "packs", minPacks: 18 },
   "soof mint": { kind: "packs", minPacks: 1 },
   "soof cardamom": { kind: "packs", minPacks: 1 },
-  "soof lavender": { kind: "packs", minPacks: 1 },
+  mint: { kind: "packs", minPacks: 1 },
 };
 
 function minBaseAmountForPar(params: {

@@ -9,3 +9,15 @@ export function localCalendarDateString(d: Date = new Date()): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+/** Shift a YYYY-MM-DD calendar date by `deltaDays` (local timezone). */
+export function shiftCalendarDateString(dateStr: string, deltaDays: number): string {
+  const parts = dateStr.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    return localCalendarDateString();
+  }
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  return localCalendarDateString(dt);
+}

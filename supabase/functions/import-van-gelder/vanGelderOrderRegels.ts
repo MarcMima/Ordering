@@ -13,7 +13,8 @@ export function isRedOnionSlicedFineRawName(name: string | null | undefined): bo
 
 /** App order quantity is already in VG order units (crates), not sub-units inside a crate. */
 export function isVanGelderQtyAlreadyInOrderUnits(rawName: string | null | undefined): boolean {
-  return (rawName ?? "").trim().toLowerCase() === "aubergine";
+  const n = (rawName ?? "").trim().toLowerCase();
+  return n === "aubergine" || n === "chickpeas";
 }
 
 /** `bagQty` = aantal 1 kg-zakken uit de app. */
