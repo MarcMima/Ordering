@@ -25,7 +25,7 @@ import { SortableStocktakeItem } from "@/components/stocktake/SortableStocktakeI
 import { StocktakeRawRow } from "@/components/stocktake/StocktakeRawRow";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
-import { localCalendarDateString } from "@/lib/date";
+import { localCalendarDateString, shiftCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   isPrepVisibleOnStocktake,
@@ -143,7 +143,10 @@ function PrepCountField({
 export default function StocktakePage() {
   const router = useRouter();
   const { locationId, locations } = useLocation();
-  const [date] = useState(() => localCalendarDateString());
+  const [viewDate, setViewDate] = useState(() => localCalendarDateString());
+  const todayDateStr = localCalendarDateString();
+  const isHistoricalView = viewDate < todayDateStr;
+  const date = viewDate;
   const [expectedRevenue, setExpectedRevenue] = useState("");
   const [revenueSaving, setRevenueSaving] = useState(false);
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItem[]>([]);
@@ -831,12 +834,49 @@ export default function StocktakePage() {
 
         {/* Date */}
         <section className="mb-5">
-          <span className="mb-2 block label">
-            Date
-          </span>
-          <p className="flex h-14 min-h-[56px] items-center card px-4 text-base">
-            {date || localCalendarDateString()}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-green/10 bg-surface px-4 py-3">
+            <div>
+              <span className="block text-xs font-medium uppercase tracking-wide text-ink-soft">Date</span>
+              <p className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
+                {new Date(`${viewDate}T12:00:00`).toLocaleDateString("en-GB", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setViewDate((d) => shiftCalendarDateString(d, -1))}
+                className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 touch-manipulation"
+              >
+                Previous day
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewDate(todayDateStr)}
+                disabled={!isHistoricalView}
+                className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 touch-manipulation disabled:opacity-40"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewDate((d) => shiftCalendarDateString(d, 1))}
+                disabled={viewDate >= todayDateStr}
+                className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 touch-manipulation disabled:opacity-40"
+              >
+                Next day
+              </button>
+            </div>
+          </div>
+          {isHistoricalView && (
+            <p className="mt-2 text-xs text-ink-soft">
+              Viewing stock counts for a past date. Counts can still be edited and saved.
+            </p>
+          )}
         </section>
 
         {/* 3. Expected revenue */}

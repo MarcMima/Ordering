@@ -72,6 +72,17 @@ export function combinedPitaStockBoxes(params: {
   );
 }
 
+/** Boxes of frozen raw to finish (prep all raw pita boxes; finished prep lives in freezer separately). */
+export function calcPitaRawBoxesToPrep(params: {
+  rawBoxes: number;
+  batchSize: number | null | undefined;
+}): number {
+  const raw = Math.max(0, pitaRawBoxesFromStockCount(params.rawBoxes));
+  if (raw <= 0) return 0;
+  const batch = params.batchSize != null && params.batchSize > 0 ? params.batchSize : 1;
+  return Math.ceil(raw / batch) * batch;
+}
+
 /** Boxes of frozen raw still needing za'atar / finishing for regular white pita. */
 export function calcRegularPitaZaatarToMake(params: {
   neededRegularBoxes: number;

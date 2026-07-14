@@ -7,9 +7,11 @@ import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
  */
 export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
   "aubergine",
+  "chicken",
   "romaine lettuce",
   "lettuce",
   "lemon juice",
+  "mint",
   "greek yoghurt 10%",
   "yoghurt",
   "greek yogurt 10%",
@@ -17,6 +19,12 @@ export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
   "red cabbage shredded",
   "pomegranate seeds",
   "feta cheese",
+  "mango",
+  "shifka peppers",
+  "kalamata olives",
+  "middle eastern pickles",
+  "parsley",
+  "green chili",
 ]);
 
 function normName(name: string | null | undefined): string {

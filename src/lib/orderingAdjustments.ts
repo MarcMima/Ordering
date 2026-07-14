@@ -24,9 +24,7 @@ export function isZuidasLocation(
   return (locationName ?? "").toLowerCase().includes("zuidas");
 }
 
-const ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
-  chicken: 10,
-};
+const ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {};
 
 /** Minimum order packs when the suggestion would otherwise be zero (Zuidas). */
 const ZUIDAS_STANDING_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
@@ -57,7 +55,7 @@ function rawIdByName(rawIngredients: RawIngredient[], name: string): string | nu
 /** Scale daily raw need before cover-window / pack math (kitchen calibration Jun 2026). */
 export const DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
   "romaine lettuce": 0.5,
-  aubergine: 0.78,
+  aubergine: 1.014,
   "medi salad 3kg": 0.8,
   "red onion sliced fine": 0.7,
   "red cabbage shredded": 0.6,
@@ -72,7 +70,6 @@ const DRINK_RAW_NAME_SUBSTRINGS = [
   "sparkling water",
   "soof mint",
   "soof cardamom",
-  "soof lavender",
 ] as const;
 
 function isDrinkRawName(name: string | null | undefined): boolean {
@@ -100,8 +97,6 @@ export function isWestLocation(
 }
 
 const WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
-  chicken: 1.5,
-  "greek yoghurt 10%": 4,
   "carrot julienne": 2,
 };
 
@@ -114,42 +109,212 @@ const GARLIC_PEELED_ORDER_THRESHOLD_G = 250;
 /** Only suggest orders when linked prep still needs production (toMake > 0). */
 export const PRODUCTION_GATED_RAW_NAMES = new Set(["green chili", "rice parboiled"]);
 
-export function applyProductionGatedRawDailyNeed(params: {
-  dailyRawNeed: Record<string, number>;
-  rawIngredients: RawIngredient[];
+/** Recipe-book "Coriander" in falafel/srug = fresh herb (Van Gelder), not ground spice. */
+const RAW_INGREDIENT_NAME_ALIASES: Record<string, string> = {
+  coriander: "coriander (fresh)",
+};
+
+export function normRawIngredientName(name: string | null | undefined): string {
+  const n = (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+  return RAW_INGREDIENT_NAME_ALIASES[n] ?? n;
+}
+
+/** Prep bought ready-made (not produced from raw in-house) — cover-window math is enough. */
+const PREP_BATCH_SHORTFALL_EXCLUDED_PREP_NAMES = new Set(["marinated chicken"]);
+
+type LocationPrepRowForToMake = {
+  prep_item_id: string;
+  base_quantity?: number | null;
+  prep_items?: { name?: string | null; batch_size?: number | null } | null;
+};
+
+function yieldFactorForPrepItem(
+  prepItemId: string,
+  prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>
+): number {
+  const meta = prepYieldByPrepItemId?.[prepItemId];
+  if (!meta?.ingredientQtyPerRecipeBatch) return 1;
+  const { nominalG, recipeG } = meta;
+  if (
+    nominalG != null &&
+    recipeG != null &&
+    nominalG > 0 &&
+    recipeG > 0 &&
+    Number.isFinite(nominalG) &&
+    Number.isFinite(recipeG)
+  ) {
+    return nominalG / recipeG;
+  }
+  return 1;
+}
+
+/** Prep still to make: finished prep stock + convertible raw stock (via prep_item_ingredients). */
+function computeToMakeByPrepId(params: {
+  locationPrepItems: LocationPrepRowForToMake[];
   recipeFiltered: PrepItemIngredientRow[];
-  locationPrepItems: {
-    prep_item_id: string;
-    base_quantity?: number | null;
-    prep_items?: { batch_size?: number | null } | null;
-  }[];
   prepStockByPrepItemId: Record<string, number>;
+  currentRawStock: Record<string, number>;
   revenueMultiplier: number;
+  prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>;
 }): Record<string, number> {
   const {
-    dailyRawNeed,
-    rawIngredients,
-    recipeFiltered,
     locationPrepItems,
+    recipeFiltered,
     prepStockByPrepItemId,
+    currentRawStock,
     revenueMultiplier,
+    prepYieldByPrepItemId,
   } = params;
+  const recipeByPrepId = new Map<string, PrepItemIngredientRow[]>();
+  for (const row of recipeFiltered) {
+    const list = recipeByPrepId.get(row.prep_item_id) ?? [];
+    list.push(row);
+    recipeByPrepId.set(row.prep_item_id, list);
+  }
+
   const toMakeByPrepId: Record<string, number> = {};
   for (const row of locationPrepItems) {
     const needed = calcNeededQuantity({
       baseQuantity: row.base_quantity ?? 0,
       revenueMultiplier,
     });
-    const toMake = calcToMake({
+    const finishedPrep = prepStockByPrepItemId[row.prep_item_id] ?? 0;
+    const linkedRaws = recipeByPrepId.get(row.prep_item_id) ?? [];
+    let convertiblePrepFromRaw = Infinity;
+    for (const link of linkedRaws) {
+      const factor = yieldFactorForPrepItem(link.prep_item_id, prepYieldByPrepItemId);
+      const rawPerPrep = link.quantity_per_unit * factor;
+      if (rawPerPrep <= 0) continue;
+      const rawStock = currentRawStock[link.raw_ingredient_id] ?? 0;
+      convertiblePrepFromRaw = Math.min(convertiblePrepFromRaw, rawStock / rawPerPrep);
+    }
+    const extraFromRaw = Number.isFinite(convertiblePrepFromRaw) ? convertiblePrepFromRaw : 0;
+    toMakeByPrepId[row.prep_item_id] = calcToMake({
       needed,
-      currentStock: prepStockByPrepItemId[row.prep_item_id] ?? 0,
+      currentStock: finishedPrep + extraFromRaw,
       batchSize: row.prep_items?.batch_size ?? null,
     });
-    toMakeByPrepId[row.prep_item_id] = toMake;
   }
+  return toMakeByPrepId;
+}
+
+/**
+ * Cover-window ordering alone can miss partial-batch shortfalls (e.g. falafel coriander).
+ */
+export function applyPrepBatchIngredientShortfall(params: {
+  baseSuggested: Record<string, number>;
+  recipeFiltered: PrepItemIngredientRow[];
+  locationPrepItems: LocationPrepRowForToMake[];
+  prepStockByPrepItemId: Record<string, number>;
+  currentRawStock: Record<string, number>;
+  revenueMultiplier: number;
+  prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>;
+}): Record<string, number> {
+  const {
+    baseSuggested,
+    recipeFiltered,
+    locationPrepItems,
+    prepStockByPrepItemId,
+    currentRawStock,
+    revenueMultiplier,
+    prepYieldByPrepItemId,
+  } = params;
+  const toMakeByPrepId = computeToMakeByPrepId({
+    locationPrepItems,
+    recipeFiltered,
+    prepStockByPrepItemId,
+    currentRawStock,
+    revenueMultiplier,
+    prepYieldByPrepItemId,
+  });
+
+  const out = { ...baseSuggested };
+  for (const row of recipeFiltered) {
+    const prepName = locationPrepItems.find((lpi) => lpi.prep_item_id === row.prep_item_id)
+      ?.prep_items?.name;
+    if (PREP_BATCH_SHORTFALL_EXCLUDED_PREP_NAMES.has(normName(prepName))) continue;
+    const toMake = toMakeByPrepId[row.prep_item_id] ?? 0;
+    if (toMake <= 0) continue;
+    const factor = yieldFactorForPrepItem(row.prep_item_id, prepYieldByPrepItemId);
+    const needForBatches = toMake * row.quantity_per_unit * factor;
+    const stock = currentRawStock[row.raw_ingredient_id] ?? 0;
+    if (stock < needForBatches) {
+      out[row.raw_ingredient_id] = Math.max(
+        out[row.raw_ingredient_id] ?? 0,
+        needForBatches - stock
+      );
+    }
+  }
+  return out;
+}
+
+const WEST_SUPPRESSED_ORDER_RAW_NAMES = new Set(["rice parboiled"]);
+
+/** Recipe need exists but no supplier API channel — do not warn on ordering page. */
+const SUPPLIER_ORDER_EXCLUDED_RAW_NAMES = new Set(["xantana", "shifka peppers"]);
+
+export function isSupplierOrderExcludedRawName(name: string | null | undefined): boolean {
+  return SUPPLIER_ORDER_EXCLUDED_RAW_NAMES.has(normRawIngredientName(name));
+}
+
+/** West: no parboiled on supplier orders (kitchen buys separately / not on weekly list). */
+export function applyWestSuppressedRawOrders(params: {
+  locationId?: string | null;
+  locationName?: string | null;
+  rawIngredients: RawIngredient[];
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  if (!isWestLocation(params.locationName, params.locationId)) return params.baseSuggested;
+  const out = { ...params.baseSuggested };
+  for (const ing of params.rawIngredients) {
+    if (!WEST_SUPPRESSED_ORDER_RAW_NAMES.has(normName(ing.name))) continue;
+    delete out[ing.id];
+  }
+  return out;
+}
+
+export function applyProductionGatedRawDailyNeed(params: {
+  locationId?: string | null;
+  locationName?: string | null;
+  dailyRawNeed: Record<string, number>;
+  rawIngredients: RawIngredient[];
+  recipeFiltered: PrepItemIngredientRow[];
+  locationPrepItems: LocationPrepRowForToMake[];
+  prepStockByPrepItemId: Record<string, number>;
+  currentRawStock: Record<string, number>;
+  revenueMultiplier: number;
+  prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>;
+}): Record<string, number> {
+  const {
+    locationId,
+    locationName,
+    dailyRawNeed,
+    rawIngredients,
+    recipeFiltered,
+    locationPrepItems,
+    prepStockByPrepItemId,
+    currentRawStock,
+    revenueMultiplier,
+    prepYieldByPrepItemId,
+  } = params;
+  const toMakeByPrepId = computeToMakeByPrepId({
+    locationPrepItems,
+    recipeFiltered,
+    prepStockByPrepItemId,
+    currentRawStock,
+    revenueMultiplier,
+    prepYieldByPrepItemId,
+  });
 
   const out = { ...dailyRawNeed };
   for (const ing of rawIngredients) {
+    if (
+      isWestLocation(locationName, locationId) &&
+      WEST_SUPPRESSED_ORDER_RAW_NAMES.has(normName(ing.name))
+    ) {
+      out[ing.id] = 0;
+      continue;
+    }
     if (!PRODUCTION_GATED_RAW_NAMES.has(normName(ing.name))) continue;
     const linkedPrepIds = [
       ...new Set(
@@ -183,6 +348,9 @@ export const MAX_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {
   "carrot julienne": 1000,
   bulgur: 10000,
 };
+
+/** When an order line exists, bump to at least this amount (base units). */
+export const MIN_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {};
 
 /** Only suggest an order when unrounded pack count reaches this value (e.g. 10 = order when need > 9). */
 export const MIN_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
@@ -413,12 +581,12 @@ export function applyGarlicPeeledOrderGate(params: {
   return params.baseSuggested;
 }
 
-/** Parsley: 4 kg boxes as base unit; above that, add 1 kg packs for the remainder. */
+/** Parsley: minimum 4 kg box; above 4 kg add 1 kg bags for the remainder. */
 export function parsleyOrderSplit(baseGrams: number): { box4kg: number; bag1kg: number } {
   if (baseGrams <= 0) return { box4kg: 0, bag1kg: 0 };
-  let boxes = Math.floor(baseGrams / PARSLEY_BOX_G);
+  const boxes = Math.floor(baseGrams / PARSLEY_BOX_G);
+  if (boxes === 0) return { box4kg: 1, bag1kg: 0 };
   const remainder = baseGrams - boxes * PARSLEY_BOX_G;
-  if (boxes === 0) boxes = 1;
   const bag1kg = remainder > 0 ? Math.ceil(remainder / PARSLEY_ADDON_G) : 0;
   return { box4kg: boxes, bag1kg };
 }
@@ -438,6 +606,92 @@ export function applyMaxOrderBaseCaps(params: {
     if (cap == null) continue;
     const cur = out[ing.id];
     if (cur != null && cur > cap) out[ing.id] = cap;
+  }
+  return out;
+}
+
+/** Floor order size when a line is already suggested (see MIN_ORDER_BASE_BY_RAW_NAME). */
+export function applyMinOrderBaseFloors(params: {
+  rawIngredients: RawIngredient[];
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  const { rawIngredients, baseSuggested } = params;
+  const out = { ...baseSuggested };
+  for (const ing of rawIngredients) {
+    const floor = MIN_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
+    if (floor == null) continue;
+    const cur = out[ing.id];
+    if (cur != null && cur > 0) out[ing.id] = Math.max(cur, floor);
+  }
+  return out;
+}
+
+const MINT_PREP_NAME = "mint";
+const MINT_RAW_BAG_G = 1000;
+
+const BAKING_POWDER_RAW_NAME = "baking powder";
+const BAKING_POWDER_ORDER_THRESHOLD_G = 500;
+const BAKING_POWDER_CAN_G = 1000;
+
+/** Order one can when stock falls below half a can; skip cover-window bulk orders. */
+export function applyBakingPowderOrderGate(params: {
+  rawIngredients: RawIngredient[];
+  currentRawStock: Record<string, number>;
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  const bakingId = rawIdByName(params.rawIngredients, BAKING_POWDER_RAW_NAME);
+  if (!bakingId) return params.baseSuggested;
+  const stock = params.currentRawStock[bakingId] ?? 0;
+  const out = { ...params.baseSuggested };
+  if (stock >= BAKING_POWDER_ORDER_THRESHOLD_G) {
+    delete out[bakingId];
+    return out;
+  }
+  out[bakingId] = Math.max(0, BAKING_POWDER_CAN_G - stock);
+  return out;
+}
+
+/** One VG mint bag (1 kg) when finished mint prep is below today's need. */
+export function applyMintBagWhenPrepShort(params: {
+  rawIngredients: RawIngredient[];
+  locationPrepItems: {
+    prep_item_id: string;
+    base_quantity?: number | null;
+    prep_items?: { name?: string | null } | null;
+  }[];
+  prepStockByPrepItemId: Record<string, number>;
+  currentRawStock: Record<string, number>;
+  revenueMultiplier: number;
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  const {
+    rawIngredients,
+    locationPrepItems,
+    prepStockByPrepItemId,
+    currentRawStock,
+    revenueMultiplier,
+    baseSuggested,
+  } = params;
+  const mintRawId = rawIdByName(rawIngredients, "Mint");
+  if (!mintRawId) return baseSuggested;
+
+  const mintRow = locationPrepItems.find(
+    (row) => normName(row.prep_items?.name) === MINT_PREP_NAME
+  );
+  if (!mintRow) return baseSuggested;
+
+  const needed = calcNeededQuantity({
+    baseQuantity: mintRow.base_quantity ?? 1,
+    revenueMultiplier,
+  });
+  const prepStock = prepStockByPrepItemId[mintRow.prep_item_id] ?? 0;
+  if (needed <= prepStock) return baseSuggested;
+
+  const out = { ...baseSuggested };
+  const rawStock = currentRawStock[mintRawId] ?? 0;
+  const orderBase = Math.max(0, MINT_RAW_BAG_G - rawStock);
+  if (orderBase > 0) {
+    out[mintRawId] = Math.max(out[mintRawId] ?? 0, orderBase);
   }
   return out;
 }

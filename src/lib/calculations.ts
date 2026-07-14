@@ -613,6 +613,23 @@ export function roundUpToMultiple(n: number, m: number): number {
 }
 
 /**
+ * Apply supplier colli / MOQ to an order quantity.
+ * - `quantityIsColliUnits`: count is already trays/boxes/cases — only round up to whole units.
+ * - Otherwise `orderPackMultiple` is items per colli (e.g. 12 bags per case): convert with ceil(count / m).
+ */
+export function applyOrderPackMultipleRounding(
+  count: number,
+  orderPackMultiple: number,
+  opts?: { quantityIsColliUnits?: boolean }
+): number {
+  if (!Number.isFinite(count) || count <= 0) return count;
+  const m = Math.max(1, Math.floor(Number(orderPackMultiple)));
+  if (m <= 1) return Math.max(1, Math.ceil(count));
+  if (opts?.quantityIsColliUnits) return Math.max(1, Math.ceil(count));
+  return Math.max(1, Math.ceil(count / m));
+}
+
+/**
  * Convert base-unit amounts (same unit as recipes / stock) to numbers of order packs (ceil).
  * Uses {@link packSizeToBaseAmount} so pack `size` + `size_unit` match the raw's unit (e.g. g need vs kg pack).
  */

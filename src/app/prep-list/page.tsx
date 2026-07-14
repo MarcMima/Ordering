@@ -21,6 +21,7 @@ import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { resolvePrepListPriority } from "@/lib/prepListPriority";
 import {
   calcRegularPitaZaatarToMake,
+  calcPitaRawBoxesToPrep,
   extractPitaStockCounts,
   isRegularPitaPrepName,
   isWholewheatPitaPrepName,
@@ -201,15 +202,31 @@ export default function PrepListPage() {
       const item = row.prep_items;
       if (!item) continue;
       const baseQty = row.base_quantity ?? 1;
-      const needed = calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier });
+      let needed = calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier });
       const currentStock = todayCounts[row.prep_item_id] ?? 0;
       let toMake = calcToMake({
         needed,
         currentStock,
         batchSize: item.batch_size ?? null,
       });
-      if (isRegularPitaPrepName(item.name) && pitaZaatarToMake > 0) {
-        toMake = Math.max(toMake, pitaZaatarToMake);
+      if (isRegularPitaPrepName(item.name)) {
+        if (pitaZaatarToMake > 0) {
+          toMake = Math.max(toMake, pitaZaatarToMake);
+        }
+        const rawToPrep = calcPitaRawBoxesToPrep({
+          rawBoxes: pitaStock.regularRawBoxes,
+          batchSize: item.batch_size,
+        });
+        if (rawToPrep > 0) toMake = Math.max(toMake, rawToPrep);
+        needed = Math.max(needed, pitaStock.regularRawBoxes);
+      }
+      if (isWholewheatPitaPrepName(item.name)) {
+        const rawToPrep = calcPitaRawBoxesToPrep({
+          rawBoxes: pitaStock.wholewheatRawBoxes,
+          batchSize: item.batch_size,
+        });
+        if (rawToPrep > 0) toMake = Math.max(toMake, rawToPrep);
+        needed = Math.max(needed, pitaStock.wholewheatRawBoxes);
       }
       const priority = resolvePrepListPriority({
         prepName: item.name,
