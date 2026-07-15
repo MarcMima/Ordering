@@ -2,11 +2,20 @@ import { NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { Client } from "@notionhq/client";
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  type MeetingType,
+  type Period,
+  detectMeetingType,
+  isValidSummary,
+  amsterdamPeriodWindow,
+  buildSystemPrompt,
+} from "./meetingTypes";
 
 // Plaud-meeting -> Notion-taken webhook.
-// Aangeroepen door Zapier zodra Plaud een MMMM-samenvatting oplevert.
-// Geeft NOOIT een 5xx terug: fouten worden in de Plaud Sync Log geadministreerd
-// en met status 200 teruggemeld, zodat Zapier niet eindeloos retryt.
+// Ondersteunt drie meeting-types (MMMM/MMM/QMM), onderscheiden op de opnametitel
+// (Weekly/Monthly/Quarterly). Elk type heeft een eigen meeting-DB, eigen Tasks-relatie
+// en eigen Horizon. Geeft NOOIT een 5xx terug: fouten worden in de Plaud Sync Log
+// geadministreerd en met status 200 teruggemeld, zodat Zapier niet eindeloos retryt.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,16 +24,13 @@ export const maxDuration = 300;
 // ---- Constanten -----------------------------------------------------------
 const NOTION_VERSION = "2022-06-28";
 const TASKS_DB_ID = "35e21d9d7c6a800f8921db421d9eee94";
-const MMMM_DB_ID = "35e21d9d-7c6a-808d-ab9e-de35fbe85b92";
 const SYNC_LOG_DB_ID = "38821d9d-7c6a-819c-87fb-c10b6a969483";
+// MMMM-db-id apart nodig voor de Sync Log "Meeting"-relatie (die wijst enkel hierheen).
+const MMMM_KEY = "MMMM";
+
 // LET OP: er bestaan twee "People"-databases. De Tasks "Owner"-relatie linkt naar
 // DEZE database (d3d2...). Owners moeten hier vandaan komen, anders negeert Notion
-// de relation-write stil (de page-id hoort niet bij de gelinkte DB). Geverifieerd:
-// writes met onderstaande page-ids blijven staan (read-back bevestigd).
-const PEOPLE_DB_ID = "d3d21d9d-7c6a-82df-b0d8-014512d331ec";
-
-// Claude levert de korte voornaam uit de "– Owner: X" markering. Map naar de
-// page-id in PEOPLE_DB_ID (records heten "Marc Wesseling" / "Michiel" / "Abdul Hadi").
+// de relation-write stil (de page-id hoort niet bij de gelinkte DB).
 const PEOPLE: Record<string, string> = {
   Marc: "93621d9d-7c6a-83ab-9064-016824a2bc18",
   Michiel: "7fd21d9d-7c6a-83f8-9c7a-01cfd9f95c47",
@@ -71,50 +77,54 @@ function sha256_32(input: string): string {
   return createHash("sha256").update(input).digest("hex").slice(0, 32);
 }
 
-// Normaliseer apostrof-varianten/casing voor de structuur-detectie.
-function normalizeForSection(s: string): string {
-  return s.toUpperCase().replace(/[‘’ʼ`]/g, "'");
-}
-
-function isMmmmSummary(summary: string): boolean {
-  const S = normalizeForSection(summary);
-  return S.includes("NEW TO-DO'S THIS WEEK") && S.includes("DOMAIN UPDATES");
-}
-
-// Bepaal het weekvenster (maandag..zondag, Europe/Amsterdam) dat create_time bevat.
-// Geeft date-only grenzen "YYYY-MM-DD" terug — robuust tegen DST-offsetwissels.
-function amsterdamWeekWindow(createTimeIso: string): { start: string; end: string } {
-  const d = new Date(createTimeIso);
-  const amsDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Amsterdam",
-  }).format(d); // "YYYY-MM-DD"
-  const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Amsterdam",
-    weekday: "short",
-  }).format(d); // "Mon".."Sun"
-  const idx: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
-  const offset = idx[weekday] ?? 0;
-  // Anker op 12:00Z zodat dag-rekenwerk niet over een DST-grens schuift.
-  const base = new Date(`${amsDate}T12:00:00Z`);
-  const monday = new Date(base);
-  monday.setUTCDate(base.getUTCDate() - offset);
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-  const ymd = (x: Date) => x.toISOString().slice(0, 10);
-  return { start: ymd(monday), end: ymd(sunday) };
-}
-
 function plainText(rich: Array<{ plain_text?: string }> | undefined): string {
   return (rich ?? []).map((t) => t.plain_text ?? "").join("");
 }
 
 function stripFences(text: string): string {
   let t = text.trim();
-  // Verwijder een eventuele ```json ... ``` of ``` ... ``` wrapper.
   const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/i;
   const m = t.match(fence);
   if (m) t = m[1].trim();
   return t;
+}
+
+// ---- Resend: e-mailmelding bij onbekende titel ----------------------------
+// Faalt stil (log-only) zodat de webhook altijd netjes 200 kan teruggeven.
+async function sendUnknownTitleAlert(title: string, createTime: string): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    console.error("[plaud-webhook] RESEND_API_KEY ontbreekt; onbekende-titel-mail niet verstuurd");
+    return;
+  }
+  const from = process.env.FROM_EMAIL ?? "bestelling@mimafood.nl";
+  const text = [
+    "Een Plaud-opname is niet verwerkt omdat de titel geen meeting-type bevat.",
+    "",
+    `Titel: ${title || "(leeg)"}`,
+    `Create time: ${createTime}`,
+    "Reden: geen Weekly/Monthly/Quarterly herkend in de titel.",
+    "",
+    'Er is geen taak aangemaakt. De opname staat als "Failed" in de Plaud Sync Log.',
+  ].join("\n");
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        from,
+        to: ["marc@mimafood.nl"],
+        subject: "⚠️ Plaud-opname niet verwerkt — titel mist meeting-type",
+        text,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      console.error(`[plaud-webhook] Resend alert faalde: ${res.status} ${err}`);
+    }
+  } catch (e: any) {
+    console.error(`[plaud-webhook] Resend alert error: ${e?.message ?? e}`);
+  }
 }
 
 // ---- Notion: Sync Log helpers --------------------------------------------
@@ -140,6 +150,8 @@ async function createSyncLog(
     createTime: string;
     meetingPageId: string | null;
     status: SyncStatus;
+    // Meeting-relatie alleen zetten voor MMMM (relatie wijst enkel naar de MMMM-db).
+    linkMeeting: boolean;
   }
 ): Promise<string> {
   const properties: Record<string, any> = {
@@ -148,7 +160,7 @@ async function createSyncLog(
     "Create time": { date: { start: args.createTime } },
     Status: { select: { name: args.status } },
   };
-  if (args.meetingPageId) {
+  if (args.linkMeeting && args.meetingPageId) {
     properties["Meeting"] = { relation: [{ id: args.meetingPageId }] };
   }
   const page = await notion.pages.create({
@@ -171,14 +183,16 @@ async function updateSyncLog(
   await notion.pages.update({ page_id: pageId, properties });
 }
 
-// ---- Notion: meeting matching --------------------------------------------
-async function findMeetingForWeek(
+// ---- Notion: meeting matching (per periode) -------------------------------
+async function findMeetingInPeriod(
   notion: Client,
+  meetingDbId: string,
+  period: Period,
   createTimeIso: string
 ): Promise<string | null> {
-  const { start, end } = amsterdamWeekWindow(createTimeIso);
+  const { start, end } = amsterdamPeriodWindow(createTimeIso, period);
   const res = await notion.databases.query({
-    database_id: MMMM_DB_ID,
+    database_id: meetingDbId,
     filter: {
       and: [
         { property: "Date", date: { on_or_after: start } },
@@ -207,27 +221,9 @@ async function findMeetingForWeek(
 }
 
 // ---- Claude-extractie -----------------------------------------------------
-const SYSTEM_PROMPT = `You convert the action items of a weekly team meeting (the "MMMM") into structured records.
-
-STRICT 1-TO-1 MAPPING — THIS IS THE CORE RULE:
-The section titled "NEW TO-DO'S THIS WEEK" in the SUMMARY contains one bullet line (starting with "•") per task. You MUST emit EXACTLY ONE output object for EACH such bullet line, in the same order. Do not skip any bullet. Do not summarise, group, or combine bullets. Do not decide which bullets are "worth" keeping — the task set IS the set of bullets, period. If there are N bullet lines, you return N objects (minus only literal duplicates, see below).
-
-The ONLY permitted reduction: if two bullet lines are a WORD-FOR-WORD identical copy of each other (same action, same object, AND same owner — a literal duplicate Plaud emitted twice), output one object for them. If ANYTHING differs — different owner, different object, different wording, different scope, location or context — they are SEPARATE tasks and BOTH must be emitted. When in doubt, keep both. A duplicate the reviewer dismisses is acceptable; a lost task is not.
-
-SCOPE: Use ONLY the bullets under the "NEW TO-DO'S THIS WEEK" heading. That section ENDS at the next heading — typically "DECISIONS MADE THIS WEEK" or "DOMAIN UPDATES". Bullets under "DECISIONS MADE THIS WEEK" are past decisions, NOT action items — do NOT turn them into tasks. Likewise ignore "DOMAIN UPDATES", anything else in the summary, and the transcript. Use the TRANSCRIPT only as context to enrich each to-do bullet (domain, priority, deadline). Invent nothing.
-
-YOUR JOB is to ENRICH each bullet, not to filter it. For every bullet, return an object with:
-- "task": the cleaned-up task text (concise, imperative) — the same action as the bullet, just tidied.
-- "original_bullet": the literal bullet line it came from, verbatim (including the "• " and the "– Owner: X" tail), for traceability.
-- "owner": one of "Marc" | "Michiel" | "Hadi" | null. Read it from the "– Owner: X" marker on the bullet. If absent/unclear, use null.
-- "domain": choose EXACTLY ONE of: Locations, Product development, Catering, Marketing, Systems, Finance, HR, Operations. Pick the best fit based on the task's content.
-- "priority": one of "P1 (High)" | "P2 (Medium)" | "P3 (Low)". DEFAULT to "P2 (Medium)". Use "P1 (High)" ONLY when there is a hard/near deadline or explicit urgency. Use "P3 (Low)" only when explicitly optional/low/"someday".
-- "deadline": an ISO date "YYYY-MM-DD" or null. Derive from explicit dates, or from relative language such as "by end of tomorrow", computed relative to the MEETING DATE provided.
-
-OUTPUT: Respond with ONLY a JSON array of these objects. No prose, no explanation, no markdown code fences.`;
-
 async function extractTasks(
   anthropic: Anthropic,
+  type: MeetingType,
   args: { summary: string; transcript: string; meetingDate: string }
 ): Promise<ExtractedTask[]> {
   const userContent = [
@@ -242,9 +238,9 @@ async function extractTasks(
 
   const msg = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 16000, // ruim genoeg voor ~57 taken; output mag nooit afkappen
+    max_tokens: 16000, // ruim genoeg; output mag nooit afkappen
     temperature: 0,
-    system: SYSTEM_PROMPT,
+    system: buildSystemPrompt(type),
     messages: [{ role: "user", content: userContent }],
   });
 
@@ -265,6 +261,7 @@ async function extractTasks(
 // ---- Tasks aanmaken (dedup laag 2) ---------------------------------------
 async function existingSyncIdsForMeeting(
   notion: Client,
+  type: MeetingType,
   meetingPageId: string
 ): Promise<Set<string>> {
   const ids = new Set<string>();
@@ -272,7 +269,7 @@ async function existingSyncIdsForMeeting(
   do {
     const res: any = await notion.databases.query({
       database_id: TASKS_DB_ID,
-      filter: { property: "Created in meeting", relation: { contains: meetingPageId } },
+      filter: { property: type.taskRelation, relation: { contains: meetingPageId } },
       start_cursor: cursor,
       page_size: 100,
     });
@@ -291,6 +288,7 @@ function normalizeTaskText(task: string): string {
 
 function buildTaskProperties(
   t: ExtractedTask,
+  type: MeetingType,
   meetingPageId: string,
   syncId: string,
   includeOwner: boolean
@@ -304,7 +302,9 @@ function buildTaskProperties(
   const properties: Record<string, any> = {
     Task: { title: [{ text: { content: t.task.slice(0, 1900) } }] },
     Status: { select: { name: "Drafts for review" } },
-    "Created in meeting": { relation: [{ id: meetingPageId }] },
+    // Meeting-relatie + Horizon per meeting-type.
+    [type.taskRelation]: { relation: [{ id: meetingPageId }] },
+    Horizon: { select: { name: type.horizon } },
     Priority: { select: { name: priority } },
     Notes: { rich_text: [{ text: { content: (t.original_bullet ?? "").slice(0, 1900) } }] },
     "Sync ID": { rich_text: [{ text: { content: syncId } }] },
@@ -321,9 +321,10 @@ function buildTaskProperties(
 async function createTasks(
   notion: Client,
   tasks: ExtractedTask[],
+  type: MeetingType,
   meetingPageId: string
 ): Promise<number> {
-  const seen = await existingSyncIdsForMeeting(notion, meetingPageId);
+  const seen = await existingSyncIdsForMeeting(notion, type, meetingPageId);
   let created = 0;
 
   for (const t of tasks) {
@@ -335,15 +336,15 @@ async function createTasks(
       try {
         await notion.pages.create({
           parent: { database_id: TASKS_DB_ID },
-          properties: buildTaskProperties(t, meetingPageId, syncId, true),
+          properties: buildTaskProperties(t, type, meetingPageId, syncId, true),
         });
       } catch (err: any) {
-        // Owner-relatie kan stil falen (target-db niet gedeeld). Retry zonder Owner
-        // zodat één property de hele taak niet sloopt.
+        // Owner-relatie kan stil falen; retry zonder Owner zodat één property
+        // niet de hele taak sloopt.
         if (err?.code === "validation_error" && t.owner) {
           await notion.pages.create({
             parent: { database_id: TASKS_DB_ID },
-            properties: buildTaskProperties(t, meetingPageId, syncId, false),
+            properties: buildTaskProperties(t, type, meetingPageId, syncId, false),
           });
         } else {
           throw err;
@@ -355,7 +356,6 @@ async function createTasks(
       console.error(
         `[plaud-webhook] task create failed (code=${err?.code ?? "?"}): ${err?.message ?? err}`
       );
-      // doorgaan met de rest
     }
   }
   return created;
@@ -374,14 +374,10 @@ export async function POST(req: Request) {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (!notionToken || !anthropicKey) {
     console.error("[plaud-webhook] missing NOTION_TOKEN or ANTHROPIC_API_KEY");
-    // 200 zodat Zapier niet blijft retryen op een deploy-misconfig.
     return NextResponse.json({ ok: false, error: "server not configured" }, { status: 200 });
   }
 
   const notion = new Client({ auth: notionToken, notionVersion: NOTION_VERSION });
-  // Vertrouw op de ingebouwde retries van de SDK (exp. backoff + jitter, respecteert
-  // retry-after). Retryt op 408/409/429 en alle 5xx (incl. 529 overloaded); NIET op
-  // 4xx zoals 400/401. Geen eigen retry-laag eroverheen -> geen dubbel retryen.
   const anthropic = new Anthropic({ apiKey: anthropicKey, maxRetries: 5 });
 
   let syncLogId: string | null = null;
@@ -394,28 +390,54 @@ export async function POST(req: Request) {
     const transcript = body.transcript ?? "";
     const summary = body.summary ?? "";
 
-    if (!createTime || !summary) {
-      return NextResponse.json(
-        { ignored: true, reason: "missing create_time or summary" },
-        { status: 200 }
-      );
+    if (!createTime) {
+      return NextResponse.json({ ignored: true, reason: "missing create_time" }, { status: 200 });
     }
 
-    // 2. STRUCTUUR-FILTER
-    if (!isMmmmSummary(summary)) {
-      return NextResponse.json(
-        { ignored: true, reason: "not an MMMM summary" },
-        { status: 200 }
-      );
-    }
-
-    // recordingKey (gebruikt in stap 4 en de fail-safe van stap 8)
+    // recordingKey (gebruikt door dedup laag 1 en de fail-safes)
     recordingKey = sha256_32(`${createTime}|${title}`);
 
-    // 3. MEETING-MATCHING
-    const meetingPageId = await findMeetingForWeek(notion, createTime);
+    // 2. TYPE-DETECTIE uit de titel (Weekly/Monthly/Quarterly, precedence Q>M>W).
+    const type = detectMeetingType(title);
+    if (!type) {
+      // Onbekende titel: negeren (nooit default-MMMM). Sync Log "Failed" + e-mailmelding.
+      // Alleen bij de EERSTE keer (geen bestaande entry) om mail-spam bij retries te voorkomen.
+      const existing = await findSyncLog(notion, recordingKey);
+      if (!existing) {
+        await createSyncLog(notion, {
+          recordingKey,
+          title,
+          createTime,
+          meetingPageId: null,
+          status: "Failed",
+          linkMeeting: false,
+        });
+        await sendUnknownTitleAlert(title, createTime);
+      }
+      console.error(`[plaud-webhook] unknown meeting type for title: ${JSON.stringify(title)}`);
+      return NextResponse.json(
+        { ignored: true, reason: "unknown meeting type" },
+        { status: 200 }
+      );
+    }
 
-    // 8 (fail-safe): geen meeting voor die week
+    // 3. STRUCTUUR-FILTER — alleen op "DOMAIN UPDATES" (identiek in alle types).
+    if (!summary || !isValidSummary(summary)) {
+      return NextResponse.json(
+        { ignored: true, reason: `not a ${type.key} summary (no DOMAIN UPDATES section)` },
+        { status: 200 }
+      );
+    }
+
+    // 4. MEETING-MATCHING binnen de juiste periode + meeting-DB.
+    const meetingPageId = await findMeetingInPeriod(
+      notion,
+      type.meetingDbId,
+      type.period,
+      createTime
+    );
+
+    // Fail-safe: geen meeting voor die periode.
     if (!meetingPageId) {
       const existing = await findSyncLog(notion, recordingKey);
       if (existing) {
@@ -427,23 +449,21 @@ export async function POST(req: Request) {
           createTime,
           meetingPageId: null,
           status: "Failed",
+          linkMeeting: false,
         });
       }
-      console.error(`[plaud-webhook] no MMMM record for week of ${createTime}`);
+      console.error(`[plaud-webhook] no ${type.key} record for period of ${createTime}`);
       return NextResponse.json(
-        { ok: false, reason: "no MMMM record for that week" },
+        { ok: false, reason: `no ${type.key} record for that period` },
         { status: 200 }
       );
     }
 
-    // 4. DEDUP LAAG 1 (opname-niveau)
+    // 5. DEDUP LAAG 1 (opname-niveau)
     const existing = await findSyncLog(notion, recordingKey);
     const status = syncLogStatus(existing);
     if (existing && status === "Done") {
-      return NextResponse.json(
-        { skipped: true, reason: "already processed" },
-        { status: 200 }
-      );
+      return NextResponse.json({ skipped: true, reason: "already processed" }, { status: 200 });
     }
     if (existing && (status === "Processing" || status === "Failed")) {
       return NextResponse.json(
@@ -451,23 +471,25 @@ export async function POST(req: Request) {
         { status: 200 }
       );
     }
-    // Nieuw: maak een Sync Log-record aan met Status "Processing".
+
+    // Nieuw: Sync Log-record "Processing" (Meeting-relatie alleen voor MMMM).
     syncLogId = await createSyncLog(notion, {
       recordingKey,
       title,
       createTime,
       meetingPageId,
       status: "Processing",
+      linkMeeting: type.key === MMMM_KEY,
     });
 
-    // 5. CLAUDE-EXTRACTIE
+    // 6. CLAUDE-EXTRACTIE (prompt per type)
     const meetingDate = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Europe/Amsterdam",
     }).format(new Date(createTime));
-    const tasks = await extractTasks(anthropic, { summary, transcript, meetingDate });
+    const tasks = await extractTasks(anthropic, type, { summary, transcript, meetingDate });
 
-    // 6 + 7. OWNER-MAPPING + TAKEN AANMAKEN (incl. dedup laag 2)
-    const created = await createTasks(notion, tasks, meetingPageId);
+    // 7. TAKEN AANMAKEN (relatie + Horizon per type, incl. dedup laag 2)
+    const created = await createTasks(notion, tasks, type, meetingPageId);
 
     // 8. AFRONDEN (succes)
     await updateSyncLog(notion, syncLogId, {
@@ -476,14 +498,12 @@ export async function POST(req: Request) {
       processedAt: new Date().toISOString(),
     });
 
-    // "extracted" = aantal taken dat Claude opleverde (na eigen merge, vóór dedup laag 2);
-    // "created" = daadwerkelijk aangemaakt na dedup laag 2. Handig voor observability.
     return NextResponse.json(
-      { ok: true, created, extracted: tasks.length, meeting: meetingPageId },
+      { ok: true, type: type.key, created, extracted: tasks.length, meeting: meetingPageId },
       { status: 200 }
     );
   } catch (err: any) {
-    // 8. FAIL-SAFE: onverwachte fout
+    // FAIL-SAFE: onverwachte fout
     console.error(`[plaud-webhook] unexpected error: ${err?.message ?? err}`);
     try {
       if (syncLogId) {
