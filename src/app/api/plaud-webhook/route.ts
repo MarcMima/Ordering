@@ -112,6 +112,8 @@ async function sendUnknownTitleAlert(title: string, createTime: string): Promise
     "Tip: hernoem de opname in Plaud met Weekly/Monthly/Quarterly en re-fire de Zap.",
   ].join("\n");
   try {
+    // TEMP DEBUG — remove after FROM_EMAIL verification
+    console.log(`[plaud-webhook] TEMP DEBUG from='${from}' FROM_EMAIL_set=${Boolean(process.env.FROM_EMAIL)}`);
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -122,6 +124,9 @@ async function sendUnknownTitleAlert(title: string, createTime: string): Promise
         text,
       }),
     });
+    // TEMP DEBUG — remove after FROM_EMAIL verification
+    const dbgBody = await res.clone().text().catch(() => "");
+    console.log(`[plaud-webhook] TEMP DEBUG resend status=${res.status} body=${dbgBody.slice(0, 300)}`);
     if (!res.ok) {
       const err = await res.text().catch(() => "");
       console.error(`[plaud-webhook] Resend alert faalde: ${res.status} ${err}`);
