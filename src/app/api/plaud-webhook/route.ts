@@ -99,13 +99,17 @@ async function sendUnknownTitleAlert(title: string, createTime: string): Promise
   }
   const from = process.env.FROM_EMAIL ?? "bestelling@mimafood.nl";
   const text = [
-    "Een Plaud-opname is niet verwerkt omdat de titel geen meeting-type bevat.",
+    "Een management-meeting-opname is NIET gerouteerd.",
+    "De samenvatting bevat 'DOMAIN UPDATES' (dus het is een echte meeting), maar er is",
+    "geen meeting-type herkend — niet in de titel én niet in de transcript-opening.",
     "",
     `Titel: ${title || "(leeg)"}`,
     `Create time: ${createTime}`,
-    "Reden: geen Weekly/Monthly/Quarterly herkend in de titel.",
+    "Reden: geen Weekly/Monthly/Quarterly (of de frase 'Mima Monday Morning Meeting' /",
+    "'Mima Monthly Meeting' / 'Quarterly Mima Meeting') gevonden.",
     "",
     'Er is geen taak aangemaakt. De opname staat als "Failed" in de Plaud Sync Log.',
+    "Tip: hernoem de opname in Plaud met Weekly/Monthly/Quarterly en re-fire de Zap.",
   ].join("\n");
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -114,7 +118,7 @@ async function sendUnknownTitleAlert(title: string, createTime: string): Promise
       body: JSON.stringify({
         from,
         to: ["marc@mimafood.nl"],
-        subject: "⚠️ Plaud-opname niet verwerkt — titel mist meeting-type",
+        subject: "⚠️ Plaud management-meeting niet gerouteerd — geen meeting-type herkend",
         text,
       }),
     });
@@ -390,6 +394,16 @@ export async function POST(req: Request) {
     const transcript = body.transcript ?? "";
     const summary = body.summary ?? "";
 
+    // 2. STRUCTUUR-FILTER EERST — alleen op "DOMAIN UPDATES" (identiek in alle types).
+    // Alle niet-management opnames (catch-all AutoFlow: leveranciersgesprekken, memo's)
+    // vallen hier stil weg: HTTP 200, GEEN Sync Log, GEEN Resend-alert.
+    if (!summary || !isValidSummary(summary)) {
+      return NextResponse.json(
+        { ignored: true, reason: "not a management meeting" },
+        { status: 200 }
+      );
+    }
+
     if (!createTime) {
       return NextResponse.json({ ignored: true, reason: "missing create_time" }, { status: 200 });
     }
@@ -397,11 +411,13 @@ export async function POST(req: Request) {
     // recordingKey (gebruikt door dedup laag 1 en de fail-safes)
     recordingKey = sha256_32(`${createTime}|${title}`);
 
-    // 2. TYPE-DETECTIE uit de titel (Weekly/Monthly/Quarterly, precedence Q>M>W).
-    const type = detectMeetingType(title);
+    // 3. TYPE-DETECTIE: titel (los woord) -> transcript-opening (volledige AutoFlow-frase),
+    // precedence Q>M>W. Zie meetingTypes.detectMeetingType.
+    const type = detectMeetingType(title, transcript);
     if (!type) {
-      // Onbekende titel: negeren (nooit default-MMMM). Sync Log "Failed" + e-mailmelding.
-      // Alleen bij de EERSTE keer (geen bestaande entry) om mail-spam bij retries te voorkomen.
+      // ECHT foutgeval: de summary bevat DOMAIN UPDATES (dus een echte meeting) maar
+      // routeert niet. Sync Log "Failed" + Resend-alert — alleen bij de EERSTE keer
+      // (geen bestaande entry) om mail-spam bij retries te voorkomen.
       const existing = await findSyncLog(notion, recordingKey);
       if (!existing) {
         await createSyncLog(notion, {
@@ -414,17 +430,11 @@ export async function POST(req: Request) {
         });
         await sendUnknownTitleAlert(title, createTime);
       }
-      console.error(`[plaud-webhook] unknown meeting type for title: ${JSON.stringify(title)}`);
+      console.error(
+        `[plaud-webhook] management meeting failed to route (no type in title/transcript): ${JSON.stringify(title)}`
+      );
       return NextResponse.json(
         { ignored: true, reason: "unknown meeting type" },
-        { status: 200 }
-      );
-    }
-
-    // 3. STRUCTUUR-FILTER — alleen op "DOMAIN UPDATES" (identiek in alle types).
-    if (!summary || !isValidSummary(summary)) {
-      return NextResponse.json(
-        { ignored: true, reason: `not a ${type.key} summary (no DOMAIN UPDATES section)` },
         { status: 200 }
       );
     }

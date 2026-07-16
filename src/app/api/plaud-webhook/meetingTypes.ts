@@ -5,7 +5,8 @@ export type Period = "week" | "month" | "quarter";
 
 export type MeetingType = {
   key: "MMMM" | "MMM" | "QMM";
-  keyword: RegExp; // woordgrens, case-insensitief
+  keyword: RegExp; // titel-laag: los woord, woordgrens, case-insensitief
+  transcriptPhrase: RegExp; // transcript-laag: VOLLEDIGE AutoFlow-frase (geen los woord)
   meetingDbId: string;
   taskRelation: string; // relatie-property op de Tasks-DB
   horizon: "Operational" | "Tactical" | "Strategic";
@@ -13,21 +14,36 @@ export type MeetingType = {
   cadence: string; // "weekly" | "monthly" | "quarterly" (voor de Claude-prompt)
 };
 
+// AutoFlow triggert alleen als de meeting-frase hardop klinkt in de opening (<=60s).
+// 60s spraak ~= 900-1000 tekens; met marge kijken we in de eerste 1500 tekens.
+export const TRANSCRIPT_WINDOW = 1500;
+
 // Geverifieerd via de Notion API (titel + Date-property bevestigd).
 export const MMMM_DB_ID = "35e21d9d-7c6a-808d-ab9e-de35fbe85b92";
 export const MMM_DB_ID = "39c21d9d-7c6a-80ae-8178-f531269a51a7";
 export const QMM_DB_ID = "39c21d9d-7c6a-80e3-8707-f6bb6f9dc5b1";
 
-// Precedence: Quarterly > Monthly > Weekly — eerste match wint bij dubbelzinnige titel.
+// Precedence: Quarterly > Monthly > Weekly — eerste match wint bij dubbelzinnige input.
+// Titel-laag: los woord (de AI-titel bevat geen frases). Transcript-laag: de VOLLEDIGE
+// AutoFlow-frase (\s+ tussen woorden vangt spatie/interpunctie-variatie uit de transcriptie),
+// zodat incidenteel "monthly"/"quarterly" in een MMMM-gesprek niet fout routeert.
 export const MEETING_TYPES: MeetingType[] = [
-  { key: "QMM", keyword: /\bquarterly\b/i, meetingDbId: QMM_DB_ID, taskRelation: "Created in QMM", horizon: "Strategic", period: "quarter", cadence: "quarterly" },
-  { key: "MMM", keyword: /\bmonthly\b/i, meetingDbId: MMM_DB_ID, taskRelation: "Created in MMM", horizon: "Tactical", period: "month", cadence: "monthly" },
-  { key: "MMMM", keyword: /\bweekly\b/i, meetingDbId: MMMM_DB_ID, taskRelation: "Created in meeting", horizon: "Operational", period: "week", cadence: "weekly" },
+  { key: "QMM", keyword: /\bquarterly\b/i, transcriptPhrase: /quarterly\s+mima\s+meeting/i, meetingDbId: QMM_DB_ID, taskRelation: "Created in QMM", horizon: "Strategic", period: "quarter", cadence: "quarterly" },
+  { key: "MMM", keyword: /\bmonthly\b/i, transcriptPhrase: /mima\s+monthly\s+meeting/i, meetingDbId: MMM_DB_ID, taskRelation: "Created in MMM", horizon: "Tactical", period: "month", cadence: "monthly" },
+  { key: "MMMM", keyword: /\bweekly\b/i, transcriptPhrase: /mima\s+monday\s+morning\s+meeting/i, meetingDbId: MMMM_DB_ID, taskRelation: "Created in meeting", horizon: "Operational", period: "week", cadence: "weekly" },
 ];
 
-// Detecteer het meeting-type uit de opnametitel (woordgrens, case-insensitief).
-// Geen sleutelwoord -> null (de handler negeert de opname; nooit default-MMMM).
-export function detectMeetingType(title: string): MeetingType | null {
+// Twee-laags detectie (precedence Q>M>W in beide lagen):
+//  1) VOLLEDIGE AutoFlow-frase in de eerste TRANSCRIPT_WINDOW tekens — leidend, want
+//     deterministisch en vals-positief-vrij (AutoFlow vuurde alleen omdat de frase is
+//     uitgesproken). Voorkomt dat een dubbelzinnige titel (bv. "Weekly Meeting: Monthly
+//     Numbers") fout routeert.
+//  2) anders: titel bevat weekly/monthly/quarterly (los woord) — fallback voor opnames
+//     die zonder AutoFlow zijn verwerkt en dus geen gegarandeerde frase hebben.
+//  3) anders null (de handler behandelt dit als foutgeval: Sync Log Failed + alert)
+export function detectMeetingType(title: string, transcript = ""): MeetingType | null {
+  const head = (transcript ?? "").slice(0, TRANSCRIPT_WINDOW);
+  for (const mt of MEETING_TYPES) if (mt.transcriptPhrase.test(head)) return mt;
   const t = title ?? "";
   for (const mt of MEETING_TYPES) if (mt.keyword.test(t)) return mt;
   return null;
