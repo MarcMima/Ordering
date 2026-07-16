@@ -91,15 +91,11 @@ function stripFences(text: string): string {
 
 // ---- Resend: e-mailmelding bij onbekende titel ----------------------------
 // Faalt stil (log-only) zodat de webhook altijd netjes 200 kan teruggeven.
-// TEMP DEBUG — returnt debug-info (from + Resend status/id) i.p.v. void, voor FROM_EMAIL-verificatie.
-async function sendUnknownTitleAlert(
-  title: string,
-  createTime: string
-): Promise<Record<string, unknown>> {
+async function sendUnknownTitleAlert(title: string, createTime: string): Promise<void> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     console.error("[plaud-webhook] RESEND_API_KEY ontbreekt; onbekende-titel-mail niet verstuurd");
-    return { sent: false, note: "RESEND_API_KEY ontbreekt" };
+    return;
   }
   const from = process.env.FROM_EMAIL ?? "bestelling@mimafood.nl";
   const text = [
@@ -116,8 +112,6 @@ async function sendUnknownTitleAlert(
     "Tip: hernoem de opname in Plaud met Weekly/Monthly/Quarterly en re-fire de Zap.",
   ].join("\n");
   try {
-    // TEMP DEBUG — remove after FROM_EMAIL verification
-    console.log(`[plaud-webhook] TEMP DEBUG from='${from}' FROM_EMAIL_set=${Boolean(process.env.FROM_EMAIL)}`);
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
@@ -128,22 +122,12 @@ async function sendUnknownTitleAlert(
         text,
       }),
     });
-    const body = await res.text().catch(() => "");
-    let id: string | null = null;
-    try {
-      id = (JSON.parse(body) as { id?: string })?.id ?? null;
-    } catch {}
-    // TEMP DEBUG — remove after FROM_EMAIL verification
-    console.log(`[plaud-webhook] TEMP DEBUG resend status=${res.status} body=${body.slice(0, 300)}`);
     if (!res.ok) {
-      console.error(`[plaud-webhook] Resend alert faalde: ${res.status} ${body}`);
+      const err = await res.text().catch(() => "");
+      console.error(`[plaud-webhook] Resend alert faalde: ${res.status} ${err}`);
     }
-    // TEMP DEBUG — returnt debug-info voor de respons
-    return { sent: res.ok, from, fromEmailSet: Boolean(process.env.FROM_EMAIL), status: res.status, id };
   } catch (e: any) {
     console.error(`[plaud-webhook] Resend alert error: ${e?.message ?? e}`);
-    // TEMP DEBUG — returnt debug-info voor de respons
-    return { sent: false, from, fromEmailSet: Boolean(process.env.FROM_EMAIL), error: String(e?.message ?? e) };
   }
 }
 
@@ -435,7 +419,6 @@ export async function POST(req: Request) {
       // routeert niet. Sync Log "Failed" + Resend-alert — alleen bij de EERSTE keer
       // (geen bestaande entry) om mail-spam bij retries te voorkomen.
       const existing = await findSyncLog(notion, recordingKey);
-      let alertDebug: unknown = null; // TEMP DEBUG — remove after FROM_EMAIL verification
       if (!existing) {
         await createSyncLog(notion, {
           recordingKey,
@@ -445,14 +428,13 @@ export async function POST(req: Request) {
           status: "Failed",
           linkMeeting: false,
         });
-        alertDebug = await sendUnknownTitleAlert(title, createTime); // TEMP DEBUG — capture debug-info
+        await sendUnknownTitleAlert(title, createTime);
       }
       console.error(
         `[plaud-webhook] management meeting failed to route (no type in title/transcript): ${JSON.stringify(title)}`
       );
       return NextResponse.json(
-        // TEMP DEBUG — _debug tijdelijk in de respons voor FROM_EMAIL-verificatie
-        { ignored: true, reason: "unknown meeting type", _debug: alertDebug },
+        { ignored: true, reason: "unknown meeting type" },
         { status: 200 }
       );
     }
