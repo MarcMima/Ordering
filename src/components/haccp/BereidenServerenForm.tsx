@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpBereidenMetingRow, HaccpBereidenRow } from "@/lib/haccp/types";
@@ -587,9 +587,21 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
         ),
       },
     ];
-    out.sort((a, b) => Number(a.complete) - Number(b.complete));
     return out;
   }, [row, completion]);
+
+  // Freeze block order on first load so sections don't jump while typing.
+  const initialOrderRef = useRef<string[] | null>(null);
+  const sortedBlocks = useMemo(() => {
+    if (initialOrderRef.current === null) {
+      // First render: sort by initial completion, then freeze this order.
+      const sorted = [...blocks].sort((a, b) => Number(a.complete) - Number(b.complete));
+      initialOrderRef.current = sorted.map((b) => b.key);
+      return sorted;
+    }
+    const order = initialOrderRef.current;
+    return [...blocks].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  }, [blocks]);
 
   return (
     <div className="space-y-10">
@@ -598,7 +610,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
         weekly equipment temperatures. Norms: warm ≥ 60 °C, cold ≤ 7 °C where stated.
       </p>
 
-      {blocks.map((b) => (
+      {sortedBlocks.map((b) => (
         <div key={b.key}>{b.node}</div>
       ))}
 
@@ -626,11 +638,9 @@ function SectionShell({
   complete: boolean;
   children: ReactNode;
 }) {
+  // Start collapsed only if complete on initial render. Never auto-collapse
+  // during the session so sections don't jump/close while typing.
   const [expanded, setExpanded] = useState(!complete);
-
-  useEffect(() => {
-    if (complete) setExpanded(false);
-  }, [complete]);
 
   return (
     <section className="space-y-3 card">
