@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HaccpFormGate } from "@/components/HaccpFormGate";
 import { TopNav } from "@/components/TopNav";
@@ -16,6 +16,7 @@ import { getISOWeekAndYear, parseWeekYearParam } from "@/lib/haccp/week";
 function Inner() {
   const searchParams = useSearchParams();
   const { locations, locationId } = useLocation();
+  const storeId = useMemo(() => getHaccpStoreId(locations, locationId), [locations, locationId]);
   const parsed = parseWeekYearParam(searchParams.get("week"));
   const fb = getISOWeekAndYear(new Date());
   const week = parsed?.week ?? fb.week;
@@ -24,7 +25,6 @@ function Inner() {
   const [err, setErr] = useState<string | null>(null);
 
   const refetchWeek = useCallback(() => {
-    const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
     void (async () => {
       const { data, error } = await supabase
@@ -38,7 +38,7 @@ function Inner() {
       else setErr(null);
       setRow(data as HaccpTemperaturenRow | null);
     })();
-  }, [week, year, locations, locationId]);
+  }, [week, year, storeId]);
 
   useEffect(() => {
     refetchWeek();

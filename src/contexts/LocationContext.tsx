@@ -135,7 +135,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         return;
       }
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+      // Only reload locations on actual sign-in. TOKEN_REFRESHED and
+      // INITIAL_SESSION don't change the location list but DO create a new
+      // array identity, which resets HACCP form state via useEffect deps.
+      if (event === "SIGNED_IN") {
         void loadLocations();
       }
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BereidenServerenForm } from "@/components/haccp/BereidenServerenForm";
 import { HaccpFormGate } from "@/components/HaccpFormGate";
@@ -15,6 +15,7 @@ import { getISOWeekAndYear, parseWeekYearParam } from "@/lib/haccp/week";
 
 function Inner() {
   const { locations, locationId } = useLocation();
+  const storeId = useMemo(() => getHaccpStoreId(locations, locationId), [locations, locationId]);
   const searchParams = useSearchParams();
   const parsed = parseWeekYearParam(searchParams.get("week"));
   const fb = getISOWeekAndYear(new Date());
@@ -24,7 +25,6 @@ function Inner() {
   const [err, setErr] = useState<string | null>(null);
 
   const refetchWeek = useCallback(() => {
-    const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
     void (async () => {
       const { data, error } = await supabase
@@ -38,7 +38,7 @@ function Inner() {
       else setErr(null);
       setRow((data as HaccpBereidenRow | null) ?? null);
     })();
-  }, [week, year, locations, locationId]);
+  }, [week, year, storeId]);
 
   useEffect(() => {
     refetchWeek();

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
 import { useLocation } from "@/contexts/LocationContext";
@@ -35,6 +35,7 @@ type Card = {
 
 function HaccpOverviewContent() {
   const { locations, locationId } = useLocation();
+  const storeId = useMemo(() => getHaccpStoreId(locations, locationId), [locations, locationId]);
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const parsed = parseWeekYearParam(weekParam);
@@ -50,7 +51,6 @@ function HaccpOverviewContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
 
     void (async () => {
@@ -207,7 +207,7 @@ function HaccpOverviewContent() {
         setCards([]);
       }
     })();
-  }, [week, year, wy, locations, locationId]);
+  }, [week, year, wy, storeId]);
 
   return (
     <div className="min-h-screen bg-background font-sans">
