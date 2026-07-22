@@ -274,17 +274,9 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
       updated_at: new Date().toISOString(),
     };
 
-    const { data: existing } = await supabase
+    const { error: err } = await supabase
       .from("haccp_bereiden")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("week_number", weekNumber)
-      .eq("year", year)
-      .maybeSingle();
-
-    const err = existing?.id
-      ? (await supabase.from("haccp_bereiden").update(payload).eq("id", existing.id)).error
-      : (await supabase.from("haccp_bereiden").insert(payload)).error;
+      .upsert(payload, { onConflict: "store_id,week_number,year" });
 
     setSaving(false);
     if (err) setMessage(err.message);

@@ -151,32 +151,9 @@ export function TemperaturenForm({
       updated_at: new Date().toISOString(),
     };
 
-    const { data: existing, error: selErr } = await supabase
+    const { error } = await supabase
       .from("haccp_temperaturen")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("week_number", weekNumber)
-      .eq("year", year)
-      .maybeSingle();
-
-    if (selErr) {
-      setSaving(false);
-      setMessage(selErr.message);
-      return;
-    }
-
-    if (existing?.id) {
-      const { error } = await supabase.from("haccp_temperaturen").update(payload).eq("id", existing.id);
-      setSaving(false);
-      if (error) setMessage(error.message);
-      else {
-        setMessage("Saved.");
-        onSaved?.();
-      }
-      return;
-    }
-
-    const { error } = await supabase.from("haccp_temperaturen").insert(payload);
+      .upsert(payload, { onConflict: "store_id,week_number,year" });
     setSaving(false);
     if (error) setMessage(error.message);
     else {
