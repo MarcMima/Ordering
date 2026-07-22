@@ -13,7 +13,6 @@ import { createClient } from "@/lib/supabase";
 import type { Location } from "@/lib/types";
 
 const STORAGE_KEY = "mima-current-location-id";
-const DEFAULT_TEST_LOCATION_NAME = "Mima TEST";
 
 type LocationContextValue = {
   locationId: string;
@@ -39,12 +38,13 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     const validStored = stored && list.some((l) => l.id === stored);
     if (validStored && stored) {
       setLocationIdState(stored);
-    } else if (list.length > 0) {
-      const preferred =
-        list.find((l) => l.name.toLowerCase() === DEFAULT_TEST_LOCATION_NAME.toLowerCase()) ??
-        list[0];
-      setLocationIdState(preferred.id);
-      if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, preferred.id);
+    } else if (list.length === 1) {
+      // Auto-select only when there is exactly one location
+      setLocationIdState(list[0].id);
+      if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, list[0].id);
+    } else if (list.length > 1) {
+      // Force explicit location choice — do not auto-pick any location
+      setLocationIdState("");
     } else {
       setLocationIdState("");
       if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
