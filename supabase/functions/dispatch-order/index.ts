@@ -69,6 +69,7 @@ import {
   isParsleyRawName,
   parsleyVanGelderEanForPack,
   isRedOnionSlicedFineRawName,
+  redOnionBagQtyFromOrderLine,
   RED_ONION_VG_LOOSE_EAN,
   vanGelderDispatchQtyForLine,
   type VanGelderOrderRegel,
@@ -204,14 +205,15 @@ function expandVanGelderLineToRegels(
   const bagQty = Math.max(1, Math.ceil(Number(line.quantity) || 0));
 
   if (isRedOnionSlicedFineRawName(line.raw_ingredient.name)) {
+    const onionBags = redOnionBagQtyFromOrderLine(line);
     const looseOk = isVanGelderEanOrderable(RED_ONION_VG_LOOSE_EAN, activePriceEans, statusIndex);
-    const loose = bagQty % 12;
+    const loose = onionBags % 12;
     if (loose > 0 && !looseOk) {
       infoNotes.push(
         `${line.raw_ingredient.name}: losse zak niet bestelbaar; ${loose} zak(ken) als extra krat`
       );
     }
-    return expandRedOnionBagQty(bagQty, looseOk);
+    return expandRedOnionBagQty(onionBags, looseOk);
   }
 
   if (isParsleyRawName(line.raw_ingredient.name)) {

@@ -94,27 +94,6 @@ export function supplierScheduleDayToJsDay(dbDay: number): number {
 }
 
 /**
- * Days until next delivery given delivery days (0=Sun … 6=Sat, JS).
- * Returns 0 if today is a delivery day (same calendar day as a delivery).
- */
-export function daysUntilNextDelivery(params: {
-  today: Date;
-  deliveryDays: number[];
-}): number {
-  const { today, deliveryDays } = params;
-  if (deliveryDays.length === 0) return 7;
-  const todayD = getDayOfWeek(today);
-  let min = 8;
-  for (const d of deliveryDays) {
-    let diff = d - todayD;
-    if (diff < 0) diff += 7;
-    if (diff === 0) return 0;
-    if (diff < min) min = diff;
-  }
-  return min;
-}
-
-/**
  * Days until delivery when placing an order today (always ≥ 1).
  * Orders are never same-day delivery — use this for ordering UI labels.
  */
@@ -137,9 +116,8 @@ export function daysUntilDeliveryWhenOrderingToday(params: {
  * True when **tomorrow** (calendar day after `stocktakeDate`) is a scheduled delivery day
  * for this raw's preferred supplier.
  *
- * Do not use {@link daysUntilNextDelivery} === 1 here: that returns **0** when *today* is
- * already a delivery day, which wrongly hid all Daily items whenever stocktake ran on a
- * leverdag (Mon–Sat for suppliers like Van Gelder).
+ * Checks the calendar day after `stocktakeDate`, not today itself, to avoid wrongly hiding
+ * Daily items whenever stocktake runs on a leverdag (Mon–Sat for suppliers like Van Gelder).
  */
 export function isRawDeliverableTomorrow(params: {
   stocktakeDate: string;
@@ -237,20 +215,6 @@ export function daysCoverUntilFollowingDelivery(params: {
 }
 
 /**
- * Suggested order quantity: (needed_per_day × days_until_delivery) - current_stock.
- * Minimum 0.
- */
-export function calcOrderQty(params: {
-  neededPerDay: number;
-  daysUntilDelivery: number;
-  currentStock: number;
-}): number {
-  const { neededPerDay, daysUntilDelivery, currentStock } = params;
-  const totalNeeded = neededPerDay * Math.max(1, daysUntilDelivery);
-  return Math.max(0, Math.ceil(totalNeeded - currentStock));
-}
-
-/**
  * Most cost-efficient pack size: lowest price per unit (price_cents / size).
  * Returns the pack size id or null if none have price.
  */
@@ -279,53 +243,27 @@ export function getBestPackSize<T extends { id: string; size: number; price_cent
 }
 
 /**
- * Calculates the quantity needed of an ingredient based on current stock,
- * target/required level, and optional usage rate.
+ * Deterministic order-pack selection: prefers pack_purpose='order', then 'both',
+ * then any. Tie-breaks on lowest id (stable across price changes).
+ * Never uses price — prevents colli from flipping when prices change.
  */
-export function calculateNeeded(params: {
-  currentStock: number;
-  targetLevel: number;
-  usageRate?: number;
-}): number {
-  const { currentStock, targetLevel, usageRate = 0 } = params;
-  const needed = targetLevel - currentStock - usageRate;
-  return Math.max(0, needed);
-}
-
-/**
- * Computes a priority score for prep/ordering (higher = more urgent).
- */
-export function calculatePriority(params: {
-  currentLevel: number;
-  targetLevel: number;
-  weight?: number;
-  daysUntilDue?: number;
-}): number {
-  const { currentLevel, targetLevel, weight = 1, daysUntilDue = 7 } = params;
-  const shortfall = Math.max(0, targetLevel - currentLevel);
-  const urgency = shortfall > 0 ? 1 + 1 / Math.max(1, daysUntilDue) : 0;
-  return shortfall * weight * urgency;
-}
-
-/**
- * Total net content when stock is counted in units (bottles, containers).
- * Returns null if content_amount not set.
- */
-export function totalContentInBaseUnit(params: {
-  countUnits: number;
-  contentAmount: number | null | undefined;
-  contentUnit: string | null | undefined;
-}): number | null {
-  const { countUnits, contentAmount, contentUnit } = params;
-  if (contentAmount == null || contentAmount <= 0) return null;
-  const u = (contentUnit || "").toLowerCase().trim();
-  // Normalize to grams for g/kg; ml kept as-is caller may treat separately
-  if (u === "g" || u === "gram" || u === "grams") return countUnits * contentAmount;
-  if (u === "kg") return countUnits * contentAmount * 1000;
-  if (u === "ml") return countUnits * contentAmount;
-  if (u === "l") return countUnits * contentAmount * 1000;
-  // Unknown unit: treat as multiplier only
-  return countUnits * contentAmount;
+export function getOrderPackDeterministic<
+  T extends { id: string; size: number; pack_purpose?: string | null }
+>(packSizes: T[]): T | null {
+  const valid = packSizes.filter((p) => p.size > 0);
+  if (valid.length === 0) return null;
+  const purposeRank = (p: T) => {
+    const pp = (p.pack_purpose ?? "").toLowerCase();
+    if (pp === "order") return 0;
+    if (pp === "both") return 1;
+    return 2;
+  };
+  return valid.sort((a, b) => {
+    const ra = purposeRank(a);
+    const rb = purposeRank(b);
+    if (ra !== rb) return ra - rb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  })[0];
 }
 
 export type PrepItemIngredientRow = {
@@ -387,26 +325,6 @@ export function calcSuggestedOrderFromPrep(params: {
 
 /** Default evening slice: ~2/3 of one day need for the window after ~17:00 until midnight (applied once per order). */
 export const DEFAULT_ORDERING_EVENING_DAY_FRACTION = 2 / 3;
-
-/**
- * Order quantity: one-off evening need + full days × daily need, then − stock.
- * `total = dailyNeed × (eveningFraction + coverFullDays)` — evening counts once, not per day.
- * @deprecated Prefer {@link calcScaledNeedOverOrderWindow} with per-day revenue targets.
- */
-export function calcOrderQtyWithEveningOnce(params: {
-  dailyNeed: number;
-  /** Full days to cover from first to second upcoming delivery window (minimum 1). */
-  coverFullDays: number;
-  /** e.g. 0.66 → 66% of one day need for the single evening after order. */
-  eveningFraction?: number | null;
-  currentStock: number;
-}): number {
-  let f = params.eveningFraction;
-  if (f == null || !Number.isFinite(f) || f < 0) f = DEFAULT_ORDERING_EVENING_DAY_FRACTION;
-  const D = Math.max(1, params.coverFullDays);
-  const totalNeeded = params.dailyNeed * (f + D);
-  return Math.max(0, Math.ceil(totalNeeded - params.currentStock));
-}
 
 /** Calendar dates to cover: from first upcoming delivery through the day before the next delivery. */
 export function coverWindowCalendarDates(params: {

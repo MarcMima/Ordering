@@ -53,6 +53,40 @@ export default function KitchenMenuItemPage() {
   const formatComponentNutrition = (n: NutritionTotals) =>
     `Energy ${formatOne(n.kcal)} kcal · Protein ${formatOne(n.protein_g)} g · Carbohydrates ${formatOne( n.carbs_g, )} g · Fat ${formatOne(n.fat_g)} g`;
 
+  const updateNutrition = async (supabase: ReturnType<typeof createClient>, menuItemId: string, baseOptionId: string | null) => {
+    try {
+      const a = await computeMenuNutritionAndAllergens(supabase, menuItemId, baseOptionId);
+      setNutritionLines(formatNutritionLine(a.nutrition));
+      setNutritionIncomplete(a.nutritionIncomplete);
+      setNutritionSource(a.nutritionSource);
+      setDeclaredSourceLabel(a.declaredSource ?? null);
+      setAllergens(a.allergens);
+      setAnalysisNotes(a.notes);
+      setComponentNutritionById(
+        new Map(
+          a.componentNutrition.map((x) => [
+            x.componentId,
+            { nutrition: x.nutrition, nutritionIncomplete: x.nutritionIncomplete },
+          ]),
+        ),
+      );
+      setAnalysisErr(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setAnalysisErr(
+        msg.includes("raw_ingredient_allergens") || msg.includes("allergen_types")
+          ? "Allergens: migration 075 has not been applied yet (supabase db push)."
+          : msg,
+      );
+      setNutritionLines([]);
+      setNutritionSource(null);
+      setDeclaredSourceLabel(null);
+      setAllergens([]);
+      setAnalysisNotes([]);
+      setComponentNutritionById(new Map());
+    }
+  };
+
   useEffect(() => {
     if (!id) return;
     const supabase = createClient();
@@ -77,7 +111,7 @@ export default function KitchenMenuItemPage() {
       const { data: comps, error: e2 } = await supabase
         .from("menu_item_components")
         .select(
-          ` id, quantity_grams, portion_label, option_group, is_optional, prep_item_id, raw_ingredient_id, bowl_base_option_id, prep_items ( name ), raw_ingredients ( name ), bowl_base_options ( display_name ) `,
+          ` id, quantity_grams, portion_label, option_group, is_optional, default_selected, prep_item_id, raw_ingredient_id, bowl_base_option_id, prep_items ( name ), raw_ingredients ( name ), bowl_base_options ( display_name ) `,
         )
         .eq("menu_item_id", id)
         .order("display_order", { ascending: true });
@@ -114,37 +148,7 @@ export default function KitchenMenuItemPage() {
         null;
       setSelectedBaseOptionId(defaultBase);
 
-      try {
-        const a = await computeMenuNutritionAndAllergens(supabase, id, defaultBase);
-        setNutritionLines(formatNutritionLine(a.nutrition));
-        setNutritionIncomplete(a.nutritionIncomplete);
-        setNutritionSource(a.nutritionSource);
-        setDeclaredSourceLabel(a.declaredSource ?? null);
-        setAllergens(a.allergens);
-        setAnalysisNotes(a.notes);
-        setComponentNutritionById(
-          new Map(
-            a.componentNutrition.map((x) => [
-              x.componentId,
-              { nutrition: x.nutrition, nutritionIncomplete: x.nutritionIncomplete },
-            ]),
-          ),
-        );
-        setAnalysisErr(null);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setAnalysisErr(
-          msg.includes("raw_ingredient_allergens") || msg.includes("allergen_types")
-            ? "Allergens: migration 075 has not been applied yet (supabase db push)."
-            : msg,
-        );
-        setNutritionLines([]);
-        setNutritionSource(null);
-        setDeclaredSourceLabel(null);
-        setAllergens([]);
-        setAnalysisNotes([]);
-        setComponentNutritionById(new Map());
-      }
+      await updateNutrition(supabase, id, defaultBase);
 
       setLoading(false);
     })();
@@ -154,30 +158,7 @@ export default function KitchenMenuItemPage() {
     if (!id) return;
     if (!selectedBaseOptionId) return;
     const supabase = createClient();
-    void (async () => {
-      try {
-        const a = await computeMenuNutritionAndAllergens(supabase, id, selectedBaseOptionId);
-        setNutritionLines(formatNutritionLine(a.nutrition));
-        setNutritionIncomplete(a.nutritionIncomplete);
-        setNutritionSource(a.nutritionSource);
-        setDeclaredSourceLabel(a.declaredSource ?? null);
-        setAllergens(a.allergens);
-        setAnalysisNotes(a.notes);
-        setComponentNutritionById(
-          new Map(
-            a.componentNutrition.map((x) => [
-              x.componentId,
-              { nutrition: x.nutrition, nutritionIncomplete: x.nutritionIncomplete },
-            ]),
-          ),
-        );
-        setAnalysisErr(null);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setAnalysisErr(msg);
-        setComponentNutritionById(new Map());
-      }
-    })();
+    void updateNutrition(supabase, id, selectedBaseOptionId);
   }, [id, selectedBaseOptionId]);
 
   const bowlBaseOptions = rows.filter((r) => r.option_group === "base" && r.bowl_base_option_id);

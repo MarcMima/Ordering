@@ -1,6 +1,6 @@
 import type { PrepItemIngredientRow } from "@/lib/calculations";
 import { calcNeededQuantity, calcToMake } from "@/lib/calculations";
-import type { IngredientPackSize, RawIngredient } from "@/lib/types";
+import type { IngredientPackSize, RawIngredient, RawIngredientLocationOrdering } from "@/lib/types";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import { packSizeToBaseAmount } from "@/lib/stocktakeRawPackMath";
 
@@ -68,7 +68,7 @@ export function locationUsesVanGelderMediSaladTub(
 }
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 function rawIdByName(rawIngredients: RawIngredient[], name: string): string | null {
@@ -82,7 +82,6 @@ export const DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
   aubergine: 1.014,
   "red cabbage shredded": 0.6,
   chickpeas: 0.85,
-  chicken: 0.5,
   "coriander (fresh)": 0.85,
   "pomegranate seeds": 0.85,
   "onion peeled": 0.85,
@@ -436,16 +435,18 @@ export const MAX_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {
 /** When an order line exists, bump to at least this amount (base units). */
 export const MIN_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {};
 
-/** Only suggest an order when unrounded pack count reaches this value (e.g. 10 = order when need > 9). */
+/** Only suggest an order when unrounded pack count reaches this value (1 crate = 8 heads). */
 export const MIN_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
-  "romaine lettuce": 10,
+  "romaine lettuce": 1,
 };
 
 export function passesMinOrderPackThreshold(
   rawName: string | null | undefined,
-  packCount: number
+  packCount: number,
+  dbMinPacks?: number | null
 ): boolean {
-  const min = MIN_ORDER_PACKS_BY_RAW_NAME[normName(rawName)];
+  // Prefer DB column; fall back to hardcoded map.
+  const min = dbMinPacks != null ? dbMinPacks : MIN_ORDER_PACKS_BY_RAW_NAME[normName(rawName)];
   if (min == null) return packCount > 0;
   return packCount >= min;
 }
@@ -600,12 +601,33 @@ export function applyZuidasStandingOrderPacks(params: {
   rawIngredients: RawIngredient[];
   suggestedPacks: Record<string, number>;
   kindByRaw: Record<string, string>;
+  /** Per-location overrides from raw_ingredient_location_ordering. */
+  locationOrderingByRawId?: Record<string, RawIngredientLocationOrdering>;
 }): { suggestedPacks: Record<string, number>; kindByRaw: Record<string, string> } {
   const out = { ...params.suggestedPacks };
   const kindOut = { ...params.kindByRaw };
-  const standingByRawName = isZuidasLocation(params.locationName, params.locationId)
+  const isZuidas = isZuidasLocation(params.locationName, params.locationId);
+  const isPijp = isPijpLocation(params.locationName, params.locationId);
+
+  if (params.locationOrderingByRawId && Object.keys(params.locationOrderingByRawId).length > 0) {
+    // DB path: use standing_order_packs from location ordering overrides.
+    for (const ing of params.rawIngredients) {
+      const locOverride = params.locationOrderingByRawId[ing.id];
+      const minPacks = locOverride?.standing_order_packs;
+      if (minPacks == null || minPacks <= 0) continue;
+      const cur = out[ing.id] ?? 0;
+      if (cur < minPacks) {
+        out[ing.id] = minPacks;
+        kindOut[ing.id] = normName(ing.name) === "aubergine" ? "stocktake" : (kindOut[ing.id] ?? "pack");
+      }
+    }
+    return { suggestedPacks: out, kindByRaw: kindOut };
+  }
+
+  // Hardcoded fallback.
+  const standingByRawName = isZuidas
     ? ZUIDAS_STANDING_ORDER_PACKS_BY_RAW_NAME
-    : isPijpLocation(params.locationName, params.locationId)
+    : isPijp
       ? PIJP_STANDING_ORDER_PACKS_BY_RAW_NAME
       : null;
   if (!standingByRawName) {
@@ -617,11 +639,23 @@ export function applyZuidasStandingOrderPacks(params: {
     const cur = out[rid] ?? 0;
     if (cur < minPacks) {
       out[rid] = minPacks;
-      kindOut[rid] =
-        rawName === "cauliflower" || rawName === "aubergine" ? "stocktake" : (kindOut[rid] ?? "pack");
+      kindOut[rid] = rawName === "aubergine" ? "stocktake" : (kindOut[rid] ?? "pack");
     }
   }
   return { suggestedPacks: out, kindByRaw: kindOut };
+}
+
+/** Log override keys that don't match any ingredient at this location (stale/mistyped entries). */
+function logUnmatchedOverrideKeys(
+  overrideMap: Record<string, unknown>,
+  ingredientNames: Set<string>,
+  label: string
+) {
+  for (const key of Object.keys(overrideMap)) {
+    if (!ingredientNames.has(key)) {
+      console.warn(`[ordering] override "${label}" key "${key}" matches no ingredient`);
+    }
+  }
 }
 
 /** Apply per-ingredient daily-need multipliers (after prep aggregation, before ordering math). */
@@ -630,24 +664,39 @@ export function applyDailyNeedMultipliers(params: {
   rawIngredients: RawIngredient[];
   locationId?: string | null;
   locationName?: string | null;
+  /** Per-location overrides loaded from raw_ingredient_location_ordering. */
+  locationOrderingByRawId?: Record<string, RawIngredientLocationOrdering>;
 }): Record<string, number> {
   const out = { ...params.dailyRawNeed };
+  const allNormedNames = new Set(params.rawIngredients.map((r) => normName(r.name)));
+  logUnmatchedOverrideKeys(DAILY_NEED_MULTIPLIER_BY_RAW_NAME, allNormedNames, "DAILY_NEED_MULTIPLIER");
   const west = isWestLocation(params.locationName, params.locationId);
   const zuidas = isZuidasLocation(params.locationName, params.locationId);
   const pijp = isPijpLocation(params.locationName, params.locationId);
   for (const ing of params.rawIngredients) {
-    let mult = DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-    if (west) {
-      const westMult = WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-      if (westMult != null) mult = (mult ?? 1) * westMult;
-    }
-    if (zuidas) {
-      const zuidasMult = ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-      if (zuidasMult != null) mult = (mult ?? 1) * zuidasMult;
-    }
-    if (pijp) {
-      const pijpMult = PIJP_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-      if (pijpMult != null) mult = (mult ?? 1) * pijpMult;
+    // Prefer DB column; fall back to hardcoded global multiplier.
+    let mult: number | null | undefined =
+      ing.ordering_daily_need_multiplier != null
+        ? ing.ordering_daily_need_multiplier
+        : DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+
+    // Location-specific multiplier: DB override takes precedence over hardcoded location maps.
+    const locOverride = params.locationOrderingByRawId?.[ing.id];
+    if (locOverride?.daily_need_multiplier != null) {
+      mult = (mult ?? 1) * locOverride.daily_need_multiplier;
+    } else {
+      if (west) {
+        const westMult = WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+        if (westMult != null) mult = (mult ?? 1) * westMult;
+      }
+      if (zuidas) {
+        const zuidasMult = ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+        if (zuidasMult != null) mult = (mult ?? 1) * zuidasMult;
+      }
+      if (pijp) {
+        const pijpMult = PIJP_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+        if (pijpMult != null) mult = (mult ?? 1) * pijpMult;
+      }
     }
     if (isDrinkRawName(ing.name)) {
       mult = (mult ?? 1) * SUMMER_DRINK_MULTIPLIER;
@@ -674,6 +723,54 @@ export function applyGarlicPeeledOrderGate(params: {
     return out;
   }
   return params.baseSuggested;
+}
+
+const AUBERGINE_SABICH_PREP_NAME = "aubergine / sabich";
+const AUBERGINE_RAW_NAME = "aubergine";
+/** Keep at least this many finished Sabich GN containers before ordering fresh aubergine. */
+const AUBERGINE_SABICH_MIN_CONTAINERS = 3;
+/** Fresh aubergine grams per Sabich container (prep_item_ingredients). */
+const AUBERGINE_G_PER_SABICH_CONTAINER = 2600;
+
+/**
+ * Fresh VG aubergine for Sabich only: finished Sabich containers suppress/order.
+ * (Baba ganoush uses Bidfood aubergine puree — separate pipeline.)
+ */
+export function applyAubergineSabichMinContainers(params: {
+  rawIngredients: RawIngredient[];
+  locationPrepItems: {
+    prep_item_id: string;
+    prep_items?: { name?: string | null } | null;
+  }[];
+  prepStockByPrepItemId: Record<string, number>;
+  currentRawStock: Record<string, number>;
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  const aubergineId = rawIdByName(params.rawIngredients, AUBERGINE_RAW_NAME);
+  if (!aubergineId) return params.baseSuggested;
+
+  const sabichRow = params.locationPrepItems.find(
+    (row) => normName(row.prep_items?.name) === AUBERGINE_SABICH_PREP_NAME
+  );
+  if (!sabichRow) return params.baseSuggested;
+
+  const prepStock = params.prepStockByPrepItemId[sabichRow.prep_item_id] ?? 0;
+  const out = { ...params.baseSuggested };
+
+  if (prepStock >= AUBERGINE_SABICH_MIN_CONTAINERS) {
+    delete out[aubergineId];
+    return out;
+  }
+
+  const rawStock = params.currentRawStock[aubergineId] ?? 0;
+  const shortfallG =
+    (AUBERGINE_SABICH_MIN_CONTAINERS - prepStock) * AUBERGINE_G_PER_SABICH_CONTAINER - rawStock;
+  if (shortfallG > 0) {
+    out[aubergineId] = Math.max(out[aubergineId] ?? 0, shortfallG);
+  } else {
+    delete out[aubergineId];
+  }
+  return out;
 }
 
 /** Parsley: 4 kg box when need ≤ 4 kg; above that, boxes + 1 kg bags for the remainder. */
@@ -706,7 +803,10 @@ export function applyMaxOrderBaseCaps(params: {
   const { rawIngredients, baseSuggested } = params;
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
-    const cap = MAX_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
+    // Prefer DB column; fall back to hardcoded map.
+    const cap = ing.ordering_max_order_base != null
+      ? ing.ordering_max_order_base
+      : MAX_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
     if (cap == null) continue;
     const cur = out[ing.id];
     if (cur != null && cur > cap) out[ing.id] = cap;
@@ -722,7 +822,10 @@ export function applyMinOrderBaseFloors(params: {
   const { rawIngredients, baseSuggested } = params;
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
-    const floor = MIN_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
+    // Prefer DB column; fall back to hardcoded map.
+    const floor = ing.ordering_min_order_base != null
+      ? ing.ordering_min_order_base
+      : MIN_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
     if (floor == null) continue;
     const cur = out[ing.id];
     if (cur != null && cur > 0) out[ing.id] = Math.max(cur, floor);
@@ -878,7 +981,7 @@ export function applyMinOrderPackThresholds(params: {
   const { rawIngredients, suggestedPacks } = params;
   const out = { ...suggestedPacks };
   for (const ing of rawIngredients) {
-    if (!passesMinOrderPackThreshold(ing.name, out[ing.id] ?? 0)) {
+    if (!passesMinOrderPackThreshold(ing.name, out[ing.id] ?? 0, ing.ordering_min_order_packs)) {
       delete out[ing.id];
     }
   }

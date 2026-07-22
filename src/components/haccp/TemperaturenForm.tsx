@@ -5,6 +5,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import {
   getHaccpStoreId,
+  parseWeeklyReadings,
   type HaccpStoreEquipmentRow,
   type HaccpTemperaturenRow,
   type HaccpWeeklyReading,
@@ -16,11 +17,6 @@ import {
   type TempFieldStatus,
 } from "@/lib/haccp/temperatureFieldStyle";
 import { WEEKDAY_LABELS_EN } from "@/lib/haccp/week";
-
-function parseReadings(raw: unknown): HaccpWeeklyReading[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x) => x && typeof x === "object" && "equipment_id" in x) as HaccpWeeklyReading[];
-}
 
 function emptyReading(): Omit<HaccpWeeklyReading, "equipment_id"> {
   return {
@@ -108,7 +104,7 @@ export function TemperaturenForm({
       const list = (data ?? []) as HaccpStoreEquipmentRow[];
       setEquipment(list);
       setEquipmentErr(null);
-      const existing = parseReadings(initial?.weekly_readings);
+      const existing = parseWeeklyReadings(initial?.weekly_readings);
       setReadings(mergeReadings(list, existing));
     })();
   }, [storeId, weekNumber, year, initial]);
@@ -151,32 +147,9 @@ export function TemperaturenForm({
       updated_at: new Date().toISOString(),
     };
 
-    const { data: existing, error: selErr } = await supabase
+    const { error } = await supabase
       .from("haccp_temperaturen")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("week_number", weekNumber)
-      .eq("year", year)
-      .maybeSingle();
-
-    if (selErr) {
-      setSaving(false);
-      setMessage(selErr.message);
-      return;
-    }
-
-    if (existing?.id) {
-      const { error } = await supabase.from("haccp_temperaturen").update(payload).eq("id", existing.id);
-      setSaving(false);
-      if (error) setMessage(error.message);
-      else {
-        setMessage("Saved.");
-        onSaved?.();
-      }
-      return;
-    }
-
-    const { error } = await supabase.from("haccp_temperaturen").insert(payload);
+      .upsert(payload, { onConflict: "store_id,week_number,year" });
     setSaving(false);
     if (error) setMessage(error.message);
     else {

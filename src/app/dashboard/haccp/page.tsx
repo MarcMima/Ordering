@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpWeeklyReading } from "@/lib/haccp/types";
-import { getHaccpStoreId } from "@/lib/haccp/types";
+import { getHaccpStoreId, parseWeeklyReadings } from "@/lib/haccp/types";
 import { APP_FORM_KEYS, type AppFormKey } from "@/lib/appFormKeys";
 import {
   isThermometerQuietPeriod,
@@ -17,11 +17,6 @@ import {
 import { isBereidenWeekComplete } from "@/lib/haccp/bereidenComplete";
 import { formatWeekYearParam, getISOWeekAndYear, parseWeekYearParam, shiftWeekYear } from "@/lib/haccp/week";
 import type { HaccpBereidenRow } from "@/lib/haccp/types";
-
-function parseWeeklyReadings(raw: unknown): HaccpWeeklyReading[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x) => x && typeof x === "object" && "equipment_id" in x) as HaccpWeeklyReading[];
-}
 
 type Card = {
   href: string;
@@ -35,6 +30,7 @@ type Card = {
 
 function HaccpOverviewContent() {
   const { locations, locationId } = useLocation();
+  const storeId = useMemo(() => getHaccpStoreId(locations, locationId), [locations, locationId]);
   const searchParams = useSearchParams();
   const weekParam = searchParams.get("week");
   const parsed = parseWeekYearParam(weekParam);
@@ -50,7 +46,6 @@ function HaccpOverviewContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storeId = getHaccpStoreId(locations, locationId);
     const supabase = createClient();
 
     void (async () => {
@@ -207,7 +202,7 @@ function HaccpOverviewContent() {
         setCards([]);
       }
     })();
-  }, [week, year, wy, locations, locationId]);
+  }, [week, year, wy, storeId]);
 
   return (
     <div className="min-h-screen bg-background font-sans">

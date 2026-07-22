@@ -1,7 +1,7 @@
 import type { PrepItem, RawIngredient } from "@/lib/types";
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export function isPrepVisibleOnStocktake(prep: PrepItem | null | undefined): boolean {

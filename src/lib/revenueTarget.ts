@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { localCalendarDateString } from "@/lib/date";
 
 /**
  * Returns the revenue target for `date` (in cents). If there is no row for that day,
@@ -37,12 +38,15 @@ export async function ensureEffectiveDailyRevenueTargetCents(
   if (typeof prior.target_amount_cents !== "number") return null;
 
   const cents = prior.target_amount_cents;
-  const { error: upErr } = await supabase.from("daily_revenue_targets").upsert(
-    { location_id: locationId, date, target_amount_cents: cents },
-    { onConflict: "location_id,date" }
-  );
-  if (upErr) {
-    console.error("ensureEffectiveDailyRevenueTargetCents upsert:", upErr.message);
+  // Only persist the carry-forward for today or future dates — never backfill past dates.
+  if (date >= localCalendarDateString()) {
+    const { error: upErr } = await supabase.from("daily_revenue_targets").upsert(
+      { location_id: locationId, date, target_amount_cents: cents },
+      { onConflict: "location_id,date" }
+    );
+    if (upErr) {
+      console.error("ensureEffectiveDailyRevenueTargetCents upsert:", upErr.message);
+    }
   }
   return cents;
 }

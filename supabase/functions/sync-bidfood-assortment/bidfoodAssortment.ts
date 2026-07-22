@@ -184,6 +184,25 @@ export async function runBidfoodAssortmentSync(params: {
 
   if (mapErr) throw new Error(mapErr.message);
 
+  const allMappings = (mappings as MappingRow[]) ?? [];
+
+  // Safety check: if >50% of mappings would be "not in file", the assortment
+  // file is likely incomplete or mis-parsed. Abort to prevent mass deactivation.
+  if (allMappings.length > 5) {
+    let matchCount = 0;
+    for (const m of allMappings) {
+      const code = padArt(m.supplier_article_code);
+      const uom = normUom(m.order_unit);
+      if (code && findAssortmentRow(byKey, code, uom)) matchCount++;
+    }
+    const matchRate = matchCount / allMappings.length;
+    if (matchRate < 0.5) {
+      throw new Error(
+        `Aborting: only ${matchCount}/${allMappings.length} (${Math.round(matchRate * 100)}%) mappings match the assortment file. File may be incomplete.`
+      );
+    }
+  }
+
   const lines: SyncLineResult[] = [];
   const errors: string[] = [];
   let mappingsUpdated = 0;
@@ -191,7 +210,7 @@ export async function runBidfoodAssortmentSync(params: {
   let inactive = 0;
   let notInFile = 0;
 
-  for (const m of (mappings as MappingRow[]) ?? []) {
+  for (const m of allMappings) {
     const ing = m.raw_ingredient?.name ?? m.raw_ingredient_id;
     const loc = m.supplier?.name ?? "location";
     const oldCode = padArt(m.supplier_article_code);
@@ -200,7 +219,7 @@ export async function runBidfoodAssortmentSync(params: {
 
     let row = findAssortmentRow(byKey, oldCode, oldUom);
     let effectiveCode = oldCode;
-    let effectiveUom = oldUom;
+    const effectiveUom = oldUom;
     let action: SyncLineResult["action"] = "ok";
     let detail = "Active in assortment";
     let replacementApplied = false;
@@ -274,21 +293,26 @@ export async function runBidfoodAssortmentSync(params: {
 
     const ean = normalizeEan(row.eanVe || row.eanSe);
     const articleName = `${row.description} ${row.contentDescription}`.trim();
-    const patch = {
+    // Only update sync-managed (bf_*) and article-code fields.
+    // Do NOT overwrite user-managed fields (order_unit, ean_code, notes).
+    const patch: Record<string, unknown> = {
       supplier_article_code: effectiveCode,
       supplier_sku: `${effectiveCode}${effectiveUom}`,
-      order_unit: effectiveUom,
-      supplier_article_name: articleName || m.supplier_article_name,
-      ean_code: ean,
       bf_last_checked_at: new Date().toISOString(),
       bf_is_active: true,
       bf_last_status: replacementApplied
         ? `Replaced; now ${row.voorraadDesc || "orderable"}`
         : row.voorraadDesc || "Orderable",
       bf_replacement_article_code: replacementApplied ? oldCode : null,
-      notes: `Bidfood sync ${new Date().toISOString().slice(0, 10)} | ${row.voorraadDesc}`,
       updated_at: new Date().toISOString(),
     };
+    // Only set article name if it was previously empty
+    if (!m.supplier_article_name && articleName) {
+      patch.supplier_article_name = articleName;
+    }
+    // Only set EAN/order_unit if not yet set on the mapping
+    if (!m.ean_code && ean) patch.ean_code = ean;
+    if (!m.order_unit && effectiveUom) patch.order_unit = effectiveUom;
 
     if (!dryRun) {
       const { error: upErr } = await supabase

@@ -1,6 +1,6 @@
 import type { HaccpBereidenMetingRow, HaccpBereidenRow } from "@/lib/haccp/types";
 
-function jsonHasData(raw: unknown): boolean {
+export function jsonHasData(raw: unknown): boolean {
   if (!Array.isArray(raw)) return false;
   return raw.some((r: HaccpBereidenMetingRow) => {
     if (!r || typeof r !== "object") return false;

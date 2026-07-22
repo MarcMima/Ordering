@@ -83,9 +83,14 @@ export async function updateSession(request: NextRequest) {
 
     if (user && !isLogin) {
       const { data: authz, error: authzError } = await supabase.rpc("current_user_authz").single<AuthzRow>();
-      // Avoid silent "no-op" navigation loops when authz RPC has transient issues.
-      // In that case, let the request continue and let page-level checks render feedback.
+      // On authz RPC error: fail closed for admin routes, but allow
+      // operational routes (stocktake, ordering, etc.) to prevent lockout.
       if (authzError) {
+        if (pathname.startsWith("/admin")) {
+          const url = request.nextUrl.clone();
+          url.pathname = "/";
+          return NextResponse.redirect(url);
+        }
         return supabaseResponse;
       }
       const permissions = authz?.permission_keys ?? [];

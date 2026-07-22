@@ -147,6 +147,28 @@ export default function StocktakePage() {
   const todayDateStr = localCalendarDateString();
   const isHistoricalView = viewDate < todayDateStr;
   const date = viewDate;
+
+  // Update date when calendar day changes (tablet left open overnight)
+  useEffect(() => {
+    const check = () => {
+      const now = localCalendarDateString();
+      setViewDate((prev) => {
+        // Only auto-advance if the user was viewing "today" — don't override
+        // a manually chosen historical date.
+        if (prev < now) return now;
+        return prev;
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
   const [expectedRevenue, setExpectedRevenue] = useState("");
   const [revenueSaving, setRevenueSaving] = useState(false);
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItem[]>([]);
@@ -157,6 +179,8 @@ export default function StocktakePage() {
   const [packSizes, setPackSizes] = useState<IngredientPackSize[]>([]);
   const [rawCounts, setRawCounts] = useState<Record<string, number>>({});
   const [rawCountSaving, setRawCountSaving] = useState<Record<string, boolean>>({});
+  /** IDs of items where the last save failed — shown as red highlight in the UI. */
+  const [failedSaveIds, setFailedSaveIds] = useState<Set<string>>(new Set());
   const [rawSubtab, setRawSubtab] = useState<"daily" | "weekly">("daily");
   const [prepReorderMode, setPrepReorderMode] = useState(false);
   const [prepOrderSaving, setPrepOrderSaving] = useState(false);
@@ -380,7 +404,10 @@ export default function StocktakePage() {
           if (error) setError(error.message);
           setRevenueSaving(false);
         },
-        () => setRevenueSaving(false)
+        () => {
+          setError("Network error saving revenue target");
+          setRevenueSaving(false);
+        }
       );
   }, [locationId, date, expectedRevenue]);
 
@@ -391,9 +418,10 @@ export default function StocktakePage() {
   }, [expectedRevenue, saveRevenue]);
 
   const saveCount = useCallback(
-    (prepItemId: string, quantity: number) => {
+    (prepItemId: string, quantity: number, prevQuantity?: number) => {
       if (!locationId || !date) return;
       setCountSaving((s) => ({ ...s, [prepItemId]: true }));
+      setFailedSaveIds((s) => { const n = new Set(s); n.delete(prepItemId); return n; });
       const supabase = createClient();
       void supabase
         .from("daily_prep_counts")
@@ -408,10 +436,19 @@ export default function StocktakePage() {
         )
         .then(
           ({ error }) => {
-            if (error) setError(error.message);
+            if (error) {
+              setError(error.message);
+              setFailedSaveIds((s) => new Set(s).add(prepItemId));
+              if (prevQuantity != null) setCounts((c) => ({ ...c, [prepItemId]: prevQuantity }));
+            }
             setCountSaving((s) => ({ ...s, [prepItemId]: false }));
           },
-          () => setCountSaving((s) => ({ ...s, [prepItemId]: false }))
+          () => {
+            setError("Network error saving prep count");
+            setFailedSaveIds((s) => new Set(s).add(prepItemId));
+            if (prevQuantity != null) setCounts((c) => ({ ...c, [prepItemId]: prevQuantity }));
+            setCountSaving((s) => ({ ...s, [prepItemId]: false }));
+          }
         );
     },
     [locationId, date]
@@ -420,12 +457,14 @@ export default function StocktakePage() {
   const clearPrepCount = useCallback(
     (prepItemId: string) => {
       if (!locationId || !date) return;
+      const prev = counts[prepItemId];
       setCounts((c) => {
         const next = { ...c };
         delete next[prepItemId];
         return next;
       });
       setCountSaving((s) => ({ ...s, [prepItemId]: true }));
+      setFailedSaveIds((s) => { const n = new Set(s); n.delete(prepItemId); return n; });
       const supabase = createClient();
       void supabase
         .from("daily_prep_counts")
@@ -435,27 +474,38 @@ export default function StocktakePage() {
         .eq("prep_item_id", prepItemId)
         .then(
           ({ error }) => {
-            if (error) setError(error.message);
+            if (error) {
+              setError(error.message);
+              setFailedSaveIds((s) => new Set(s).add(prepItemId));
+              if (prev != null) setCounts((c) => ({ ...c, [prepItemId]: prev }));
+            }
             setCountSaving((s) => ({ ...s, [prepItemId]: false }));
           },
-          () => setCountSaving((s) => ({ ...s, [prepItemId]: false }))
+          () => {
+            setError("Network error clearing prep count");
+            setFailedSaveIds((s) => new Set(s).add(prepItemId));
+            if (prev != null) setCounts((c) => ({ ...c, [prepItemId]: prev }));
+            setCountSaving((s) => ({ ...s, [prepItemId]: false }));
+          }
         );
     },
-    [locationId, date]
+    [locationId, date, counts]
   );
 
   const commitPrepCount = useCallback(
     (prepItemId: string, n: number) => {
+      const prev = counts[prepItemId];
       setCounts((c) => ({ ...c, [prepItemId]: n }));
-      saveCount(prepItemId, n);
+      saveCount(prepItemId, n, prev);
     },
-    [saveCount]
+    [saveCount, counts]
   );
 
   const saveRawCount = useCallback(
-    (rawIngredientId: string, quantity: number) => {
+    (rawIngredientId: string, quantity: number, prevQuantity?: number) => {
       if (!locationId || !date) return;
       setRawCountSaving((s) => ({ ...s, [rawIngredientId]: true }));
+      setFailedSaveIds((s) => { const n = new Set(s); n.delete(rawIngredientId); return n; });
       const supabase = createClient();
       void supabase
         .from("daily_stock_counts")
@@ -470,10 +520,19 @@ export default function StocktakePage() {
         )
         .then(
           ({ error }) => {
-            if (error) setError(error.message);
+            if (error) {
+              setError(error.message);
+              setFailedSaveIds((s) => new Set(s).add(rawIngredientId));
+              if (prevQuantity != null) setRawCounts((c) => ({ ...c, [rawIngredientId]: prevQuantity }));
+            }
             setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }));
           },
-          () => setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }))
+          () => {
+            setError("Network error saving stock count");
+            setFailedSaveIds((s) => new Set(s).add(rawIngredientId));
+            if (prevQuantity != null) setRawCounts((c) => ({ ...c, [rawIngredientId]: prevQuantity }));
+            setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }));
+          }
         );
     },
     [locationId, date]
@@ -482,12 +541,14 @@ export default function StocktakePage() {
   const clearRawCount = useCallback(
     (rawIngredientId: string) => {
       if (!locationId || !date) return;
+      const prev = rawCounts[rawIngredientId];
       setRawCounts((c) => {
         const next = { ...c };
         delete next[rawIngredientId];
         return next;
       });
       setRawCountSaving((s) => ({ ...s, [rawIngredientId]: true }));
+      setFailedSaveIds((s) => { const n = new Set(s); n.delete(rawIngredientId); return n; });
       const supabase = createClient();
       void supabase
         .from("daily_stock_counts")
@@ -497,13 +558,22 @@ export default function StocktakePage() {
         .eq("raw_ingredient_id", rawIngredientId)
         .then(
           ({ error }) => {
-            if (error) setError(error.message);
+            if (error) {
+              setError(error.message);
+              setFailedSaveIds((s) => new Set(s).add(rawIngredientId));
+              if (prev != null) setRawCounts((c) => ({ ...c, [rawIngredientId]: prev }));
+            }
             setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }));
           },
-          () => setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }))
+          () => {
+            setError("Network error clearing stock count");
+            setFailedSaveIds((s) => new Set(s).add(rawIngredientId));
+            if (prev != null) setRawCounts((c) => ({ ...c, [rawIngredientId]: prev }));
+            setRawCountSaving((s) => ({ ...s, [rawIngredientId]: false }));
+          }
         );
     },
-    [locationId, date]
+    [locationId, date, rawCounts]
   );
 
   const handleRawCountChange = useCallback(
@@ -515,10 +585,11 @@ export default function StocktakePage() {
       }
       const num = parseFloat(raw);
       const final = !Number.isFinite(num) || num < 0 ? 0 : num;
+      const prev = rawCounts[rawIngredientId];
       setRawCounts((c) => ({ ...c, [rawIngredientId]: final }));
-      saveRawCount(rawIngredientId, final);
+      saveRawCount(rawIngredientId, final, prev);
     },
-    [saveRawCount, clearRawCount]
+    [saveRawCount, clearRawCount, rawCounts]
   );
 
   const sensors = useSensors(
@@ -1203,6 +1274,7 @@ export default function StocktakePage() {
                           saveRawCount={saveRawCount}
                           clearRawCount={clearRawCount}
                           handleRawCountChange={handleRawCountChange}
+                          saveFailed={failedSaveIds.has(ing.id)}
                         />
                       ))}
                     </ul>
@@ -1222,6 +1294,7 @@ export default function StocktakePage() {
                       saveRawCount={saveRawCount}
                       clearRawCount={clearRawCount}
                       handleRawCountChange={handleRawCountChange}
+                      saveFailed={failedSaveIds.has(ing.id)}
                     />
                   ))}
                 </ul>

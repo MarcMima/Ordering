@@ -9,6 +9,7 @@ import {
   getGramStockBoxPack,
   packsForStocktake,
   rawUnitLower,
+  stocktakeMasterUnitHint,
 } from "@/lib/stocktakeRawPackMath";
 import { SortableStocktakeItem } from "./SortableStocktakeItem";
 
@@ -30,9 +31,10 @@ export type StocktakeRawRowProps = {
   rawCounts: Record<string, number>;
   rawCountSaving: Record<string, boolean>;
   setRawCounts: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  saveRawCount: (rawIngredientId: string, quantity: number) => void;
+  saveRawCount: (rawIngredientId: string, quantity: number, prev?: number) => void;
   clearRawCount: (rawIngredientId: string) => void;
   handleRawCountChange: (rawIngredientId: string, value: string) => void;
+  saveFailed?: boolean;
 };
 
 export const StocktakeRawRow = memo(function StocktakeRawRow({
@@ -45,6 +47,7 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
   saveRawCount,
   clearRawCount,
   handleRawCountChange,
+  saveFailed,
 }: StocktakeRawRowProps) {
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -73,14 +76,7 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
         ? ""
         : formatDecimal2(baseStock / boxForGram.baseAmount);
   } else if (countWithMaster && masterBase != null) {
-    const stockLabel = ing.stocktake_unit_label?.trim() ?? "unit";
-    const amt = ing.stocktake_content_amount;
-    const unit = ing.stocktake_content_unit ?? "";
-    const labelLc = stockLabel.toLowerCase();
-    unitHint =
-      labelLc === "piece" || labelLc === "pieces"
-        ? `Pieces (~${amt != null ? formatDecimal2(Number(amt)) : "—"} ${unit} each)`
-        : `${stockLabel}: ${amt != null ? formatDecimal2(Number(amt)) : "—"} ${unit}`;
+    unitHint = stocktakeMasterUnitHint(ing) ?? "unit";
     value =
       rawCounts[ing.id] === undefined ? "" : formatDecimal2(baseStock / masterBase);
   } else if (countWithDefPack && defPack) {
@@ -186,12 +182,18 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
     </div>
   );
 
+  const cardCls = saveFailed ? rawCardClass + "ring-2 ring-red-500 " : rawCardClass;
+  const failedBanner = saveFailed ? (
+    <p className="text-red-600 text-xs font-medium mt-1">Not saved — tap to retry</p>
+  ) : null;
+
   if (sortable) {
     return (
-      <SortableStocktakeItem id={ing.id} dragLabel={ing.name} className={rawCardClass}>
+      <SortableStocktakeItem id={ing.id} dragLabel={ing.name} className={cardCls}>
         {inner}
+        {failedBanner}
       </SortableStocktakeItem>
     );
   }
-  return <li className={rawCardClass}>{inner}</li>;
+  return <li className={cardCls}>{inner}{failedBanner}</li>;
 });

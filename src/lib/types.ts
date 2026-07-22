@@ -55,6 +55,34 @@ export interface RawIngredient {
   stocktake_content_unit?: string | null;
   /** Sort position on stocktake (daily vs weekly lists ordered separately). Lower = earlier. */
   stocktake_display_order?: number | null;
+  /** Order in multiples of this many packs (default 1). Single source of truth for colli step. */
+  order_pack_multiple?: number | null;
+  /** Global daily-need multiplier before cover-window math. Null = 1. */
+  ordering_daily_need_multiplier?: number | null;
+  /** Min pack count before a suggestion line is emitted. Null = >0. */
+  ordering_min_order_packs?: number | null;
+  /** Max order in base units per delivery. Null = no cap. */
+  ordering_max_order_base?: number | null;
+  /** Min order in base units when a line already exists. Null = no floor. */
+  ordering_min_order_base?: number | null;
+  /** Stock-par kind: 'base' or 'packs'. Null = no par rule. */
+  stock_par_kind?: "base" | "packs" | null;
+  /** For kind=base: target on-hand amount (base units). */
+  stock_par_min_amount?: number | null;
+  /** For kind=packs: minimum pack count on hand (may be fractional, e.g. 0.5). */
+  stock_par_min_packs?: number | null;
+  /** For kind=packs: order this many packs when par is triggered (MOQ). Null = shortfall only. */
+  stock_par_order_packs?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RawIngredientLocationOrdering {
+  id: string;
+  raw_ingredient_id: string;
+  location_id: string;
+  daily_need_multiplier?: number | null;
+  standing_order_packs?: number | null;
   created_at?: string;
   updated_at?: string;
 }

@@ -202,6 +202,18 @@ export default function AdminPage() {
             >
               Ingredient prices
             </Link>
+            <Link
+              href="/admin/colli"
+              className="block label hover:text-ink"
+            >
+              Order colli
+            </Link>
+            <Link
+              href="/admin/ordering-overrides"
+              className="block label hover:text-ink"
+            >
+              Ordering overrides
+            </Link>
             {canManageUsers && !isAuthDisabled() && (
               <Link
                 href="/admin/users"

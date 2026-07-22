@@ -73,7 +73,8 @@ export function isOnDemandSupplierName(name: string): boolean {
 /** Suppliers that deliver most days — only cover ~1 day of need when suggesting orders. */
 export function isDailyReorderSupplierName(name: string): boolean {
   const n = norm(name);
-  return n === "java bakery" || n.includes("van gelder") || n === "bidfood";
+  // Bidfood is Mon/Thu/Sat — use real delivery-gap cover, not 1-day.
+  return n === "java bakery" || n.includes("van gelder");
 }
 
 export function isBidfoodSupplierName(name: string): boolean {

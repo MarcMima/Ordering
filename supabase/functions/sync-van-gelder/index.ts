@@ -46,15 +46,18 @@ Deno.serve(async (req) => {
       mode?: "full" | "hourly";
       staleAfterHours?: number;
       maxEans?: number;
+      maxCodes?: number;
     };
     const dryRun = body.dryRun !== false;
     const onlySupplierName = (body.onlySupplierName ?? "Van Gelder").trim().toLowerCase();
     const onlyEan = normalizeVanGelderEan(body.onlyEan ?? "");
     const mode = body.mode === "hourly" ? "hourly" : "full";
     const staleAfterHours = Math.max(1, Math.floor(Number(body.staleAfterHours ?? 3)));
+    // Accept both maxEans and legacy maxCodes (cron jobs use maxCodes)
+    const rawMaxEans = body.maxEans ?? body.maxCodes;
     const maxEans =
-      body.maxEans != null && Number.isFinite(Number(body.maxEans))
-        ? Math.max(1, Math.floor(Number(body.maxEans)))
+      rawMaxEans != null && Number.isFinite(Number(rawMaxEans))
+        ? Math.max(1, Math.floor(Number(rawMaxEans)))
         : null;
 
     const supabase = createClient(
@@ -82,6 +85,15 @@ Deno.serve(async (req) => {
       fetchVanGelderActivePriceEans(),
       buildVanGelderEanProductStatusIndex(VG_STATUS_ARTICLE_IDS),
     ]);
+
+    // Abort if price list is empty — likely an API error; continuing would
+    // mark the entire catalog as not-on-price-list / non-orderable.
+    if (activePriceEans.size === 0) {
+      return json(
+        { error: "Empty VG price list — aborting to prevent mass deactivation", aborted: true },
+        500
+      );
+    }
 
     const nowMs = Date.now();
     const staleMs = staleAfterHours * 60 * 60 * 1000;
@@ -135,7 +147,6 @@ Deno.serve(async (req) => {
       vg_is_active: boolean;
       vg_last_status: string;
       vg_last_checked_at: string;
-      notes?: string;
     }> = [];
 
     let dispatchOkCount = 0;
@@ -169,11 +180,6 @@ Deno.serve(async (req) => {
           vg_is_active: dispatchOk,
           vg_last_status: statusLabel,
           vg_last_checked_at: nowIso,
-          ...(!dispatchOk
-            ? {
-                notes: `VG sync ${nowIso}: EAN ${ean} prijslijst=${onList ? "ja" : "nee"} status=${statusLabel}`,
-              }
-            : {}),
         });
       }
     }

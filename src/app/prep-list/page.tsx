@@ -58,7 +58,7 @@ function setStoredDone(locationId: string, date: string, done: Record<string, bo
 
 export default function PrepListPage() {
   const { locationId, locationOptions } = useLocation();
-  const [date, setDate] = useState(() => localCalendarDateString());
+  const [date] = useState(() => localCalendarDateString());
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItemRow[]>([]);
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({});
   const [rawStockCounts, setRawStockCounts] = useState<Record<string, number>>({});
@@ -114,6 +114,9 @@ export default function PrepListPage() {
       try {
         if (lpiRes.error) throw new Error(lpiRes.error.message);
         if (countRes.error) throw new Error(countRes.error.message);
+        if (rawStockRes.error) throw new Error(rawStockRes.error.message);
+        if (rawRes.error) throw new Error(rawRes.error.message);
+        if (locRes.error) throw new Error(locRes.error.message);
 
         const raw = (lpiRes.data as (Omit<LocationPrepItemRow, "prep_items"> & { prep_items: PrepItem | PrepItem[] | null })[]) ?? [];
         const items: LocationPrepItemRow[] = raw.map((row) => ({

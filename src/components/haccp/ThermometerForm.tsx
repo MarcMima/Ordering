@@ -5,6 +5,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import { getHaccpStoreId } from "@/lib/haccp/types";
 import { gteMinStatus, lteMaxStatus, temperatureInputClass } from "@/lib/haccp/temperatureFieldStyle";
+import { localCalendarDateString } from "@/lib/date";
 
 function calcAfwijking(kokend: number, smeltend: number): number {
   return Math.max(Math.abs(kokend - 100), Math.abs(smeltend - 0));
@@ -13,7 +14,7 @@ function calcAfwijking(kokend: number, smeltend: number): number {
 export function ThermometerForm() {
   const { locations, locationId } = useLocation();
   const storeId = getHaccpStoreId(locations, locationId);
-  const [datum, setDatum] = useState(() => new Date().toISOString().slice(0, 10));
+  const [datum, setDatum] = useState(() => localCalendarDateString());
   const [tempKokend, setTempKokend] = useState("");
   const [tempSmeltend, setTempSmeltend] = useState("");
   const [maatregel, setMaatregel] = useState("");

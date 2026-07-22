@@ -32,7 +32,26 @@ export function parsleyVanGelderEanForPack(
 /** App order quantity is already in VG order units (crates), not sub-units inside a crate. */
 export function isVanGelderQtyAlreadyInOrderUnits(rawName: string | null | undefined): boolean {
   const n = (rawName ?? "").trim().toLowerCase();
-  return n === "aubergine" || n === "chickpeas";
+  return n === "aubergine" || n === "chickpeas" || n === "romaine lettuce";
+}
+
+/**
+ * Convert app line quantity to 1 kg bag count.
+ * Pack is now a 3 kg colli (`case (3 × 1 kg)`): qty 1 → 3 bags.
+ * Legacy 1 kg bag lines (size 1 kg) stay 1:1.
+ */
+export function redOnionBagQtyFromOrderLine(line: {
+  quantity: number;
+  pack_size?: { size?: number | null; size_unit?: string | null } | null;
+}): number {
+  const qty = Math.max(0, Math.ceil(Number(line.quantity) || 0));
+  if (qty <= 0) return 0;
+  const sz = Number(line.pack_size?.size);
+  const u = (line.pack_size?.size_unit ?? "").toLowerCase().trim();
+  if (Number.isFinite(sz) && sz > 0 && (u === "kg" || u === "kilogram")) {
+    return Math.max(1, Math.ceil(qty * sz));
+  }
+  return qty;
 }
 
 /** `bagQty` = aantal 1 kg-zakken uit de app. */

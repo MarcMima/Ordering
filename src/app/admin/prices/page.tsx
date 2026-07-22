@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
 import { createClient } from "@/lib/supabase";
+import { localCalendarDateString } from "@/lib/date";
 
 type RawIngredient = {
   id: string;
@@ -92,7 +93,7 @@ function AddPriceForm({
   const [packSizeGrams, setPackSizeGrams] = useState("");
   const [packSizeLabel, setPackSizeLabel] = useState("");
   const [priceEuros, setPriceEuros] = useState("");
-  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split("T")[0]);
+  const [effectiveDate, setEffectiveDate] = useState(localCalendarDateString());
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

@@ -1,7 +1,7 @@
 import { getPrepPriority, type PrepPriority } from "@/lib/calculations";
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 /** GN toppings: flag when only one container left but service still needs prep. */

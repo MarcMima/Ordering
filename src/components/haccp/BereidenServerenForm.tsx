@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpBereidenMetingRow, HaccpBereidenRow } from "@/lib/haccp/types";
 import { getHaccpStoreId } from "@/lib/haccp/types";
+import { jsonHasData } from "@/lib/haccp/bereidenComplete";
 import {
   gteMinStatus,
   lteMaxStatus,
@@ -70,18 +71,6 @@ function parseNum(s: string): number | null {
   if (t === "") return null;
   const n = Number(t.replace(",", "."));
   return Number.isFinite(n) ? n : null;
-}
-
-function jsonHasData(raw: unknown): boolean {
-  if (!Array.isArray(raw)) return false;
-  return raw.some((r: HaccpBereidenMetingRow) => {
-    if (!r || typeof r !== "object") return false;
-    if (r.temp != null && Number.isFinite(Number(r.temp))) return true;
-    if (r.paraaf?.trim()) return true;
-    if (r.product?.trim()) return true;
-    if (r.datum?.trim()) return true;
-    return false;
-  });
 }
 
 function defaultRow(storeId: number, week: number, year: number): HaccpBereidenRow {
@@ -274,17 +263,9 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
       updated_at: new Date().toISOString(),
     };
 
-    const { data: existing } = await supabase
+    const { error: err } = await supabase
       .from("haccp_bereiden")
-      .select("id")
-      .eq("store_id", storeId)
-      .eq("week_number", weekNumber)
-      .eq("year", year)
-      .maybeSingle();
-
-    const err = existing?.id
-      ? (await supabase.from("haccp_bereiden").update(payload).eq("id", existing.id)).error
-      : (await supabase.from("haccp_bereiden").insert(payload)).error;
+      .upsert(payload, { onConflict: "store_id,week_number,year" });
 
     setSaving(false);
     if (err) setMessage(err.message);
@@ -587,9 +568,21 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
         ),
       },
     ];
-    out.sort((a, b) => Number(a.complete) - Number(b.complete));
     return out;
   }, [row, completion]);
+
+  // Freeze block order on first load so sections don't jump while typing.
+  const initialOrderRef = useRef<string[] | null>(null);
+  const sortedBlocks = useMemo(() => {
+    if (initialOrderRef.current === null) {
+      // First render: sort by initial completion, then freeze this order.
+      const sorted = [...blocks].sort((a, b) => Number(a.complete) - Number(b.complete));
+      initialOrderRef.current = sorted.map((b) => b.key);
+      return sorted;
+    }
+    const order = initialOrderRef.current;
+    return [...blocks].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  }, [blocks]);
 
   return (
     <div className="space-y-10">
@@ -598,7 +591,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
         weekly equipment temperatures. Norms: warm ≥ 60 °C, cold ≤ 7 °C where stated.
       </p>
 
-      {blocks.map((b) => (
+      {sortedBlocks.map((b) => (
         <div key={b.key}>{b.node}</div>
       ))}
 
@@ -626,11 +619,9 @@ function SectionShell({
   complete: boolean;
   children: ReactNode;
 }) {
+  // Start collapsed only if complete on initial render. Never auto-collapse
+  // during the session so sections don't jump/close while typing.
   const [expanded, setExpanded] = useState(!complete);
-
-  useEffect(() => {
-    if (complete) setExpanded(false);
-  }, [complete]);
 
   return (
     <section className="space-y-3 card">
