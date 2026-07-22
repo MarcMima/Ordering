@@ -58,7 +58,7 @@ function setStoredDone(locationId: string, date: string, done: Record<string, bo
 
 export default function PrepListPage() {
   const { locationId, locationOptions } = useLocation();
-  const [date, setDate] = useState(() => localCalendarDateString());
+  const [date] = useState(() => localCalendarDateString());
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItemRow[]>([]);
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({});
   const [rawStockCounts, setRawStockCounts] = useState<Record<string, number>>({});

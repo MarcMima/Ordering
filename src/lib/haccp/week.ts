@@ -27,8 +27,6 @@ export function shiftWeekYear(week: number, year: number, deltaWeeks: number): {
   return { week: getISOWeek(d), year: getISOWeekYear(d) };
 }
 
-export const WEEKDAY_LABELS_NL = ["Ma", "Di", "Wo", "Do", "Vr", "Za", "Zo"] as const;
-
 /** ISO weekday: index 0 = Monday (1) … Sunday (7) */
 export const WEEKDAY_LABELS_EN = [
   "Monday",

@@ -5,6 +5,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpBereidenMetingRow, HaccpBereidenRow } from "@/lib/haccp/types";
 import { getHaccpStoreId } from "@/lib/haccp/types";
+import { jsonHasData } from "@/lib/haccp/bereidenComplete";
 import {
   gteMinStatus,
   lteMaxStatus,
@@ -70,18 +71,6 @@ function parseNum(s: string): number | null {
   if (t === "") return null;
   const n = Number(t.replace(",", "."));
   return Number.isFinite(n) ? n : null;
-}
-
-function jsonHasData(raw: unknown): boolean {
-  if (!Array.isArray(raw)) return false;
-  return raw.some((r: HaccpBereidenMetingRow) => {
-    if (!r || typeof r !== "object") return false;
-    if (r.temp != null && Number.isFinite(Number(r.temp))) return true;
-    if (r.paraaf?.trim()) return true;
-    if (r.product?.trim()) return true;
-    if (r.datum?.trim()) return true;
-    return false;
-  });
 }
 
 function defaultRow(storeId: number, week: number, year: number): HaccpBereidenRow {

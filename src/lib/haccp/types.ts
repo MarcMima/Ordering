@@ -23,41 +23,23 @@ export type HaccpWeeklyReading = {
   signature: string | null;
 };
 
+export function parseWeeklyReadings(raw: unknown): HaccpWeeklyReading[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x) => x && typeof x === "object" && "equipment_id" in x) as HaccpWeeklyReading[];
+}
+
 export type HaccpTemperaturenRow = {
   id?: string;
   store_id: number;
   week_number: number;
   year: number;
-  koelcel_1: (number | null)[];
-  koelcel_2: (number | null)[];
-  vriezer_1: (number | null)[];
-  vriezer_2: (number | null)[];
-  vriezer_ijs: (number | null)[];
-  koelwerkbank_1: (number | null)[];
-  koelwerkbank_2: (number | null)[];
-  koelwerkbank_3: (number | null)[];
-  saladiere_1: (number | null)[];
-  saladiere_2: (number | null)[];
-  vaatwasser_wastemperatuur: number | null;
-  vaatwasser_naspoeltemp: number | null;
   opmerkingen: string | null;
   paraaf: string | null;
-  tht_fifo_ok: (boolean | null)[];
-  afgedekt_ok: (boolean | null)[];
-  schoonmaak_ok: (boolean | null)[];
   weekly_check_dow?: number | null;
   weekly_readings?: HaccpWeeklyReading[] | unknown;
   created_at?: string;
   updated_at?: string;
 };
-
-export function isTemperatureWithinNorm(
-  kind: "lte" | "gte",
-  norm: number,
-  temp: number
-): boolean {
-  return kind === "lte" ? temp <= norm : temp >= norm;
-}
 
 export function getHaccpStoreId(locations: Location[], locationId: string): number {
   if (locationId) {
@@ -70,9 +52,6 @@ export function getHaccpStoreId(locations: Location[], locationId: string): numb
   const env = Number(process.env.NEXT_PUBLIC_STORE_ID ?? "1");
   return Number.isFinite(env) ? env : 1;
 }
-
-/** @deprecated Use getHaccpStoreId(locations, locationId) when LocationProvider is available */
-export const HACCP_STORE_ID = (): number => getHaccpStoreId([], "");
 
 export type HaccpIngangscontroleRow = {
   id: string;
