@@ -6,7 +6,7 @@ export const FLATBREAD_GRAMS_PER_PIECE = 70;
 export const FLATBREAD_PIECES_PER_BAG = 5;
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export function isFrozenFlatbreadRawName(name: string | null | undefined): boolean {

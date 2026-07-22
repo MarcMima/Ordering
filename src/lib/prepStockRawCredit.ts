@@ -9,7 +9,6 @@ import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
  * {@link computePickledPrepRawCredit} (separate from this whitelist).
  */
 export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
-  "chicken",
   "romaine lettuce",
   "lettuce",
   "lemon juice",
@@ -31,7 +30,7 @@ export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
  * These raws only get credit from a finished prep with the **same name**
  * (e.g. Parsley prep GN → parsley raw). Falafel stock must not slash parsley orders.
  */
-const PREP_STOCK_CREDIT_SAME_NAME_ONLY = new Set(["parsley", "mint"]);
+const PREP_STOCK_CREDIT_SAME_NAME_ONLY = new Set(["parsley", "mint", "green chili"]);
 
 /** Finished prep → pickling raw (GN count × kg per container). */
 const PICKLED_PREP_RAW_CREDIT_RULES: { prepName: string; rawName: string; gramsPerPrepUnit: number }[] =
@@ -40,13 +39,17 @@ const PICKLED_PREP_RAW_CREDIT_RULES: { prepName: string; rawName: string; gramsP
     { prepName: "pickled cabbage", rawName: "red cabbage shredded", gramsPerPrepUnit: 3000 },
   ];
 
-/** Finished prep → raw when names differ (e.g. Srug uses green chili). */
+/**
+ * Finished prep → raw when names differ.
+ * Fresh aubergine (VG) only credits from Sabich — not Baba (that uses Bidfood puree).
+ */
 const CROSS_PREP_RAW_CREDIT: { prepName: string; rawName: string }[] = [
   { prepName: "srug", rawName: "green chili" },
+  { prepName: "aubergine / sabich", rawName: "aubergine" },
 ];
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export function isRawOnPrepStockCreditWhitelist(rawName: string | null | undefined): boolean {

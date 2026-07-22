@@ -68,7 +68,7 @@ export function locationUsesVanGelderMediSaladTub(
 }
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 function rawIdByName(rawIngredients: RawIngredient[], name: string): string | null {
@@ -82,7 +82,6 @@ export const DAILY_NEED_MULTIPLIER_BY_RAW_NAME: Record<string, number> = {
   aubergine: 1.014,
   "red cabbage shredded": 0.6,
   chickpeas: 0.85,
-  chicken: 0.5,
   "coriander (fresh)": 0.85,
   "pomegranate seeds": 0.85,
   "onion peeled": 0.85,
@@ -436,9 +435,9 @@ export const MAX_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {
 /** When an order line exists, bump to at least this amount (base units). */
 export const MIN_ORDER_BASE_BY_RAW_NAME: Record<string, number> = {};
 
-/** Only suggest an order when unrounded pack count reaches this value (e.g. 10 = order when need > 9). */
+/** Only suggest an order when unrounded pack count reaches this value (1 crate = 8 heads). */
 export const MIN_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
-  "romaine lettuce": 10,
+  "romaine lettuce": 1,
 };
 
 export function passesMinOrderPackThreshold(
@@ -617,11 +616,24 @@ export function applyZuidasStandingOrderPacks(params: {
     const cur = out[rid] ?? 0;
     if (cur < minPacks) {
       out[rid] = minPacks;
-      kindOut[rid] =
-        rawName === "cauliflower" || rawName === "aubergine" ? "stocktake" : (kindOut[rid] ?? "pack");
+      // Cauliflower standing order must use the 10 kg box pack (not stocktake bag 2.5 kg).
+      kindOut[rid] = rawName === "aubergine" ? "stocktake" : (kindOut[rid] ?? "pack");
     }
   }
   return { suggestedPacks: out, kindByRaw: kindOut };
+}
+
+/** Log override keys that don't match any ingredient at this location (stale/mistyped entries). */
+function logUnmatchedOverrideKeys(
+  overrideMap: Record<string, unknown>,
+  ingredientNames: Set<string>,
+  label: string
+) {
+  for (const key of Object.keys(overrideMap)) {
+    if (!ingredientNames.has(key)) {
+      console.warn(`[ordering] override "${label}" key "${key}" matches no ingredient`);
+    }
+  }
 }
 
 /** Apply per-ingredient daily-need multipliers (after prep aggregation, before ordering math). */
@@ -632,6 +644,8 @@ export function applyDailyNeedMultipliers(params: {
   locationName?: string | null;
 }): Record<string, number> {
   const out = { ...params.dailyRawNeed };
+  const allNormedNames = new Set(params.rawIngredients.map((r) => normName(r.name)));
+  logUnmatchedOverrideKeys(DAILY_NEED_MULTIPLIER_BY_RAW_NAME, allNormedNames, "DAILY_NEED_MULTIPLIER");
   const west = isWestLocation(params.locationName, params.locationId);
   const zuidas = isZuidasLocation(params.locationName, params.locationId);
   const pijp = isPijpLocation(params.locationName, params.locationId);
@@ -674,6 +688,54 @@ export function applyGarlicPeeledOrderGate(params: {
     return out;
   }
   return params.baseSuggested;
+}
+
+const AUBERGINE_SABICH_PREP_NAME = "aubergine / sabich";
+const AUBERGINE_RAW_NAME = "aubergine";
+/** Keep at least this many finished Sabich GN containers before ordering fresh aubergine. */
+const AUBERGINE_SABICH_MIN_CONTAINERS = 3;
+/** Fresh aubergine grams per Sabich container (prep_item_ingredients). */
+const AUBERGINE_G_PER_SABICH_CONTAINER = 2600;
+
+/**
+ * Fresh VG aubergine for Sabich only: finished Sabich containers suppress/order.
+ * (Baba ganoush uses Bidfood aubergine puree — separate pipeline.)
+ */
+export function applyAubergineSabichMinContainers(params: {
+  rawIngredients: RawIngredient[];
+  locationPrepItems: {
+    prep_item_id: string;
+    prep_items?: { name?: string | null } | null;
+  }[];
+  prepStockByPrepItemId: Record<string, number>;
+  currentRawStock: Record<string, number>;
+  baseSuggested: Record<string, number>;
+}): Record<string, number> {
+  const aubergineId = rawIdByName(params.rawIngredients, AUBERGINE_RAW_NAME);
+  if (!aubergineId) return params.baseSuggested;
+
+  const sabichRow = params.locationPrepItems.find(
+    (row) => normName(row.prep_items?.name) === AUBERGINE_SABICH_PREP_NAME
+  );
+  if (!sabichRow) return params.baseSuggested;
+
+  const prepStock = params.prepStockByPrepItemId[sabichRow.prep_item_id] ?? 0;
+  const out = { ...params.baseSuggested };
+
+  if (prepStock >= AUBERGINE_SABICH_MIN_CONTAINERS) {
+    delete out[aubergineId];
+    return out;
+  }
+
+  const rawStock = params.currentRawStock[aubergineId] ?? 0;
+  const shortfallG =
+    (AUBERGINE_SABICH_MIN_CONTAINERS - prepStock) * AUBERGINE_G_PER_SABICH_CONTAINER - rawStock;
+  if (shortfallG > 0) {
+    out[aubergineId] = Math.max(out[aubergineId] ?? 0, shortfallG);
+  } else {
+    delete out[aubergineId];
+  }
+  return out;
 }
 
 /** Parsley: 4 kg box when need ≤ 4 kg; above that, boxes + 1 kg bags for the remainder. */

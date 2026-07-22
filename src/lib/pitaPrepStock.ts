@@ -7,7 +7,7 @@ export const PITA_BREAD_RAW_NAME = "pita bread 15 cm";
 export const WHOLEWHEAT_PITA_RAW_NAME = "whole wheat pita bread 15 cm";
 
 function normName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().trim();
+  return (name ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export function isRegularPitaPrepName(name: string | null | undefined): boolean {
@@ -26,8 +26,20 @@ export function isWholewheatPitaRawName(name: string | null | undefined): boolea
   return normName(name) === WHOLEWHEAT_PITA_RAW_NAME;
 }
 
-export function pitaRawBoxesFromStockCount(stockCount: number): number {
+/** Prep stocktake counts are entered in boxes. */
+export function pitaPrepBoxesFromStockCount(stockCount: number): number {
   return Math.max(0, Number(stockCount) || 0);
+}
+
+/** Raw stocktake counts are stored in base pieces (50 pcs per box). */
+export function pitaRawBoxesFromBaseStock(basePieces: number): number {
+  const pieces = Math.max(0, Number(basePieces) || 0);
+  return pieces / PITA_PIECES_PER_BOX;
+}
+
+/** @deprecated Use {@link pitaPrepBoxesFromStockCount} or {@link pitaRawBoxesFromBaseStock}. */
+export function pitaRawBoxesFromStockCount(stockCount: number): number {
+  return pitaPrepBoxesFromStockCount(stockCount);
 }
 
 export function extractPitaStockCounts(params: {
@@ -45,15 +57,15 @@ export function extractPitaStockCounts(params: {
   let wholewheatPrepBoxes = 0;
   for (const [prepItemId, qty] of Object.entries(params.prepStockByPrepItemId)) {
     const name = params.prepItemsById[prepItemId]?.name;
-    if (isRegularPitaPrepName(name)) regularPrepBoxes += qty;
-    if (isWholewheatPitaPrepName(name)) wholewheatPrepBoxes += qty;
+    if (isRegularPitaPrepName(name)) regularPrepBoxes += pitaPrepBoxesFromStockCount(qty);
+    if (isWholewheatPitaPrepName(name)) wholewheatPrepBoxes += pitaPrepBoxesFromStockCount(qty);
   }
   let regularRawBoxes = 0;
   let wholewheatRawBoxes = 0;
   for (const ing of params.rawIngredients) {
     const qty = params.rawStockByRawId[ing.id] ?? 0;
-    if (isPitaBreadRawName(ing.name)) regularRawBoxes = qty;
-    if (isWholewheatPitaRawName(ing.name)) wholewheatRawBoxes = qty;
+    if (isPitaBreadRawName(ing.name)) regularRawBoxes = pitaRawBoxesFromBaseStock(qty);
+    if (isWholewheatPitaRawName(ing.name)) wholewheatRawBoxes = pitaRawBoxesFromBaseStock(qty);
   }
   return { regularPrepBoxes, wholewheatPrepBoxes, regularRawBoxes, wholewheatRawBoxes };
 }
@@ -65,10 +77,10 @@ export function combinedPitaStockBoxes(params: {
   wholewheatRawBoxes: number;
 }): number {
   return (
-    pitaRawBoxesFromStockCount(params.regularPrepBoxes) +
-    pitaRawBoxesFromStockCount(params.wholewheatPrepBoxes) +
-    pitaRawBoxesFromStockCount(params.regularRawBoxes) +
-    pitaRawBoxesFromStockCount(params.wholewheatRawBoxes)
+    pitaPrepBoxesFromStockCount(params.regularPrepBoxes) +
+    pitaPrepBoxesFromStockCount(params.wholewheatPrepBoxes) +
+    pitaPrepBoxesFromStockCount(params.regularRawBoxes) +
+    pitaPrepBoxesFromStockCount(params.wholewheatRawBoxes)
   );
 }
 
@@ -77,7 +89,7 @@ export function calcPitaRawBoxesToPrep(params: {
   rawBoxes: number;
   batchSize: number | null | undefined;
 }): number {
-  const raw = Math.max(0, pitaRawBoxesFromStockCount(params.rawBoxes));
+  const raw = Math.max(0, pitaPrepBoxesFromStockCount(params.rawBoxes));
   if (raw <= 0) return 0;
   const batch = params.batchSize != null && params.batchSize > 0 ? params.batchSize : 1;
   return Math.ceil(raw / batch) * batch;
@@ -95,16 +107,16 @@ export function calcRegularPitaZaatarToMake(params: {
   const totalNeeded =
     Math.max(0, params.neededRegularBoxes) + Math.max(0, params.neededWholewheatBoxes);
   const totalFinished =
-    pitaRawBoxesFromStockCount(params.regularPrepBoxes) +
-    pitaRawBoxesFromStockCount(params.wholewheatPrepBoxes);
+    pitaPrepBoxesFromStockCount(params.regularPrepBoxes) +
+    pitaPrepBoxesFromStockCount(params.wholewheatPrepBoxes);
   const totalRaw =
-    pitaRawBoxesFromStockCount(params.regularRawBoxes) +
-    pitaRawBoxesFromStockCount(params.wholewheatRawBoxes);
+    pitaPrepBoxesFromStockCount(params.regularRawBoxes) +
+    pitaPrepBoxesFromStockCount(params.wholewheatRawBoxes);
   const finishedShortfall = Math.max(0, totalNeeded - totalFinished);
   return Math.max(0, totalRaw - finishedShortfall);
 }
 
-/** Reduce raw pita order need by combined finished + frozen stock (all pita types). */
+/** Reduce each pita type's order need by that type's finished + frozen stock only. */
 export function applyCombinedPitaStockCredit(params: {
   baseSuggested: Record<string, number>;
   rawIngredients: { id: string; name?: string | null }[];
@@ -114,38 +126,61 @@ export function applyCombinedPitaStockCredit(params: {
   wholewheatRawBoxes: number;
 }): Record<string, number> {
   const out = { ...params.baseSuggested };
-  const poolPieces =
-    combinedPitaStockBoxes({
-      regularPrepBoxes: params.regularPrepBoxes,
-      wholewheatPrepBoxes: params.wholewheatPrepBoxes,
-      regularRawBoxes: params.regularRawBoxes,
-      wholewheatRawBoxes: params.wholewheatRawBoxes,
-    }) * PITA_PIECES_PER_BOX;
-  if (poolPieces <= 0) return out;
-
   const regularRawId = params.rawIngredients.find((r) => isPitaBreadRawName(r.name))?.id;
   const wholeRawId = params.rawIngredients.find((r) => isWholewheatPitaRawName(r.name))?.id;
-  const regularNeed = regularRawId ? (out[regularRawId] ?? 0) : 0;
-  const wholeNeed = wholeRawId ? (out[wholeRawId] ?? 0) : 0;
-  const totalNeed = regularNeed + wholeNeed;
-  if (totalNeed <= 0) return out;
-
-  const remaining = Math.max(0, totalNeed - poolPieces);
-  if (remaining === 0) {
-    if (regularRawId) delete out[regularRawId];
-    if (wholeRawId) delete out[wholeRawId];
-    return out;
-  }
 
   if (regularRawId) {
-    const regularRemaining = Math.min(regularNeed, remaining);
-    if (regularRemaining <= 0) delete out[regularRawId];
-    else out[regularRawId] = regularRemaining;
+    const regularNeed = out[regularRawId] ?? 0;
+    if (regularNeed > 0) {
+      const poolPieces =
+        (pitaPrepBoxesFromStockCount(params.regularPrepBoxes) +
+          pitaPrepBoxesFromStockCount(params.regularRawBoxes)) *
+        PITA_PIECES_PER_BOX;
+      const remaining = Math.max(0, regularNeed - poolPieces);
+      if (remaining <= 0) delete out[regularRawId];
+      else out[regularRawId] = remaining;
+    }
   }
-  const afterRegular = remaining - Math.min(regularNeed, remaining);
+
   if (wholeRawId) {
-    if (afterRegular <= 0) delete out[wholeRawId];
-    else out[wholeRawId] = Math.min(wholeNeed, afterRegular);
+    const wholeNeed = out[wholeRawId] ?? 0;
+    if (wholeNeed > 0) {
+      const poolPieces =
+        (pitaPrepBoxesFromStockCount(params.wholewheatPrepBoxes) +
+          pitaPrepBoxesFromStockCount(params.wholewheatRawBoxes)) *
+        PITA_PIECES_PER_BOX;
+      const remaining = Math.max(0, wholeNeed - poolPieces);
+      if (remaining <= 0) delete out[wholeRawId];
+      else out[wholeRawId] = remaining;
+    }
   }
+
+  return out;
+}
+
+/**
+ * Wholewheat pita: keep at least 1 box (50 pcs) of raw+finished stock;
+ * when below, order 1 box (independent of white pita).
+ */
+export function applyWholewheatPitaMinBox(params: {
+  rawIngredients: { id: string; name?: string | null; stocktake_visible?: boolean | null }[];
+  baseSuggested: Record<string, number>;
+  wholewheatPrepBoxes: number;
+  wholewheatRawBoxes: number;
+}): Record<string, number> {
+  const wholeRawId = params.rawIngredients.find((r) => isWholewheatPitaRawName(r.name))?.id;
+  if (!wholeRawId) return params.baseSuggested;
+  const ing = params.rawIngredients.find((r) => r.id === wholeRawId);
+  if (ing?.stocktake_visible === false) return params.baseSuggested;
+
+  const onHandBoxes =
+    pitaPrepBoxesFromStockCount(params.wholewheatPrepBoxes) +
+    pitaPrepBoxesFromStockCount(params.wholewheatRawBoxes);
+  const out = { ...params.baseSuggested };
+  if (onHandBoxes >= 1) {
+    // Cover-window may still want more; only clear forced min, keep existing need.
+    return out;
+  }
+  out[wholeRawId] = Math.max(out[wholeRawId] ?? 0, PITA_PIECES_PER_BOX);
   return out;
 }
