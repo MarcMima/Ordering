@@ -33,6 +33,7 @@ import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   applyDailyNeedMultipliers,
   applyGarlicPeeledOrderGate,
+  applyAubergineSabichMinContainers,
   applyBakingPowderOrderGate,
   applyFlourOrderGate,
   applyLemonJuiceOrderGate,
@@ -60,11 +61,16 @@ import {
   passesMinOrderPackThreshold,
 } from "@/lib/orderingAdjustments";
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
+import {
+  applyDrinkTrayParToBaseSuggested,
+  applyDrinkTrayStandingPacks,
+} from "@/lib/drinkTrayPar";
 import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTime";
 import { computeRawCoveredByFinishedPrep, computePickledPrepRawCredit } from "@/lib/prepStockRawCredit";
 import { computeDefrostedFlatbreadRawCredit } from "@/lib/flatbreadPrepStock";
 import {
   applyCombinedPitaStockCredit,
+  applyWholewheatPitaMinBox,
   calcRegularPitaZaatarToMake,
   extractPitaStockCounts,
   isRegularPitaPrepName,
@@ -72,7 +78,7 @@ import {
 } from "@/lib/pitaPrepStock";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
-import { JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
+import { JS_WEEKDAY_LABELS, isWeeklyPlannedRaw } from "@/lib/stocktakeWeek";
 import { isWeeklyStocktakeDueOnDate, buildOrderingStockByRawId } from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
@@ -149,6 +155,57 @@ function packsForOrder(packs: IngredientPackSize[]): IngredientPackSize[] {
     return pr === "order" || pr === "both";
   });
   return o.length > 0 ? o : packs;
+}
+
+const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
+
+type RawWithNestedPacks = RawIngredient & {
+  ingredient_pack_sizes?: IngredientPackSize[] | IngredientPackSize | null;
+};
+
+async function loadRawIngredientsWithPacks(
+  supabase: ReturnType<typeof createClient>,
+  locationId: string
+): Promise<{ rawList: RawIngredient[]; packList: IngredientPackSize[] }> {
+  const rRes = await supabase
+    .from("raw_ingredients")
+    .select(RAW_INGREDIENTS_WITH_PACKS_SELECT)
+    .eq("location_id", locationId)
+    .order("name");
+  if (rRes.error) throw rRes.error;
+
+  const rawRows = (rRes.data as RawWithNestedPacks[]) ?? [];
+  const rawList: RawIngredient[] = [];
+  const packList: IngredientPackSize[] = [];
+  for (const row of rawRows) {
+    const { ingredient_pack_sizes: nested, ...ing } = row;
+    rawList.push(ing);
+    const list = Array.isArray(nested) ? nested : nested != null ? [nested] : [];
+    for (const p of list) packList.push(p);
+  }
+
+  const dedupe = new Map<string, IngredientPackSize>();
+  for (const p of packList) {
+    dedupe.set(p.id, normalizePackRow(p));
+  }
+  const rawIds = rawList.map((r) => r.id);
+  const packChunk = 100;
+  for (let i = 0; i < rawIds.length; i += packChunk) {
+    const chunk = rawIds.slice(i, i + packChunk);
+    const pr = await supabase
+      .from("ingredient_pack_sizes")
+      .select(
+        "id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple"
+      )
+      .in("raw_ingredient_id", chunk);
+    if (pr.error) throw pr.error;
+    const rows = ((pr.data as IngredientPackSize[]) ?? []).map(normalizePackRow);
+    for (const p of rows) {
+      if (!dedupe.has(p.id)) dedupe.set(p.id, p);
+    }
+  }
+
+  return { rawList, packList: Array.from(dedupe.values()) };
 }
 
 /** Card order: Java bakery → Van Gelder → Bidfood → others (A–Z). */
@@ -561,6 +618,9 @@ export default function OrderingPage() {
   const [newRawBySupplier, setNewRawBySupplier] = useState<Record<string, string>>({});
   /** Set when suggestion queries fail (RLS/network) so the page is not silently empty. */
   const [suggestionLoadError, setSuggestionLoadError] = useState<string | null>(null);
+  const [suggestionRefreshing, setSuggestionRefreshing] = useState(false);
+  const [recalculateFeedback, setRecalculateFeedback] = useState<string | null>(null);
+  const recalculateRequestedRef = useRef(false);
   /** Planning-only supplier cards (not an order day) start collapsed. */
   const [expandedPlanningSupplierIds, setExpandedPlanningSupplierIds] = useState<Set<string>>(
     () => new Set()
@@ -670,7 +730,7 @@ export default function OrderingPage() {
       supabase
         .from("raw_ingredients")
         .select(
-          `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
+          `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
         )
         .eq("location_id", locationId)
         .order("name"),
@@ -765,7 +825,14 @@ export default function OrderingPage() {
 
     /** Avoids setState / pack fetch after unmount or React Strict Mode re-run (stale async). */
     let alive = true;
+    setSuggestionRefreshing(true);
     void (async () => {
+      const finishRecalculateWithError = (message: string) => {
+        if (!recalculateRequestedRef.current) return;
+        recalculateRequestedRef.current = false;
+        setRecalculateFeedback(message);
+      };
+      try {
       const lpiRes = await supabase
         .from("location_prep_items")
         .select(
@@ -783,6 +850,7 @@ export default function OrderingPage() {
         setSupplementalPackSizes([]);
         setSuggestionLoadError(String(lpiRes.error.message));
         setSuggestionInsight(null);
+        finishRecalculateWithError(`Could not refresh from stocktake: ${lpiRes.error.message}`);
         return;
       }
       const lpiAll =
@@ -812,7 +880,7 @@ export default function OrderingPage() {
         ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d),
         supabase
           .from("locations")
-          .select("name, full_capacity_revenue, ordering_evening_day_fraction")
+          .select("name, full_capacity_revenue, ordering_evening_day_fraction, weekly_stocktake_day_of_week")
           .eq("id", locationId)
           .single(),
         prepIdsAtLocation.length === 0
@@ -821,7 +889,6 @@ export default function OrderingPage() {
               .from("prep_item_ingredients")
               .select("prep_item_id, raw_ingredient_id, quantity_per_unit")
               .in("prep_item_id", prepIdsAtLocation)
-              .in("raw_ingredient_id", rawIdList)
               .limit(10000),
         supabase
           .from("daily_stock_counts")
@@ -873,6 +940,11 @@ export default function OrderingPage() {
             : "Could not load order suggestion."
         );
         setSuggestionInsight(null);
+        finishRecalculateWithError(
+          typeof err === "object" && err && "message" in err
+            ? `Could not refresh from stocktake: ${String((err as { message?: string }).message)}`
+            : "Could not refresh from stocktake. Check your connection and try again."
+        );
         return;
       }
       setSuggestionLoadError(null);
@@ -881,6 +953,7 @@ export default function OrderingPage() {
         name?: string | null;
         full_capacity_revenue?: number | null;
         ordering_evening_day_fraction?: number | null;
+        weekly_stocktake_day_of_week?: number | null;
       } | null;
       const locationName = loc?.name ?? "";
       const recipes = (recipeRes.data as PrepItemIngredientRow[]) ?? [];
@@ -958,30 +1031,34 @@ export default function OrderingPage() {
       for (const row of (revRowsRes.data as { date: string; target_amount_cents: number | null }[]) ?? []) {
         revenueCentsByDate[row.date] = row.target_amount_cents;
       }
+      // Build UNSCALED (full-capacity) prep need so revenue scaling happens
+      // only once inside calcScaledNeedOverOrderWindow. A separate scaled map
+      // is kept for prep-gating and medi-salad display where today's actual need matters.
       const neededByPrepItemId: Record<string, number> = {};
       const revenueMultiplier = getRevenueMultiplier({
         todayRevenueCents: revCents,
         fullCapacityRevenue: loc?.full_capacity_revenue ?? null,
       });
+      const scaledNeededByPrepItemId: Record<string, number> = {};
       for (const row of lpi) {
         const prep = row.prep_items;
         if (!prep) continue;
-        neededByPrepItemId[row.prep_item_id] = calcNeededQuantity({
+        neededByPrepItemId[row.prep_item_id] = row.base_quantity ?? 0;
+        scaledNeededByPrepItemId[row.prep_item_id] = calcNeededQuantity({
           baseQuantity: row.base_quantity ?? 0,
           revenueMultiplier,
         });
       }
       if (mediSaladPrepItemIdFromAll && neededByPrepItemId[mediSaladPrepItemIdFromAll] == null) {
         const mediRow = lpiAll.find((row) => row.prep_item_id === mediSaladPrepItemIdFromAll);
-        // Scale by revenue like the lpi loop above; this need drives the VG tub count
-        // via aggregateDailyRawNeedFromPrep, so an unscaled value over-orders on low-revenue days.
-        neededByPrepItemId[mediSaladPrepItemIdFromAll] = calcNeededQuantity({
+        neededByPrepItemId[mediSaladPrepItemIdFromAll] = mediRow?.base_quantity ?? 1;
+        scaledNeededByPrepItemId[mediSaladPrepItemIdFromAll] = calcNeededQuantity({
           baseQuantity: mediRow?.base_quantity ?? 1,
           revenueMultiplier,
         });
       }
       const mediSaladNeedPrep = mediSaladPrepItemIdFromAll
-        ? (neededByPrepItemId[mediSaladPrepItemIdFromAll] ?? 0)
+        ? (scaledNeededByPrepItemId[mediSaladPrepItemIdFromAll] ?? 0)
         : 0;
       const locationPrepIds = new Set(lpi.map((row) => row.prep_item_id));
       const recipeFiltered = recipesMappedToLocation.filter(
@@ -1154,9 +1231,17 @@ export default function OrderingPage() {
         baseSuggested: applyProductionGatedBaseSuggested({
         rawIngredients,
         gatedRawIdsWithZeroNeed: productionGatedZeroRawIds,
-        baseSuggested: applyCombinedPitaStockCredit({
+        baseSuggested: applyWholewheatPitaMinBox({
           ...pitaStock,
           rawIngredients,
+          baseSuggested: applyCombinedPitaStockCredit({
+          ...pitaStock,
+          rawIngredients,
+          baseSuggested: applyAubergineSabichMinContainers({
+          rawIngredients,
+          locationPrepItems: lpi,
+          prepStockByPrepItemId,
+          currentRawStock: currentStock,
           baseSuggested: applyGarlicPeeledOrderGate({
           rawIngredients,
           currentRawStock: currentStock,
@@ -1186,6 +1271,9 @@ export default function OrderingPage() {
                 currentRawStock: currentStock,
                 revenueMultiplier,
                 orderPackByRawId,
+                baseSuggested: applyDrinkTrayParToBaseSuggested({
+                rawIngredients,
+                currentRawStock: currentStock,
                 baseSuggested: applyStockParToBaseSuggested({
                 rawIngredients,
                 currentRawStock: currentStock,
@@ -1218,10 +1306,13 @@ export default function OrderingPage() {
                 }),
                 orderPackByRawId,
               }),
+              }),
             }),
               }),
             }),
           }),
+        }),
+        }),
         }),
         }),
         }),
@@ -1381,10 +1472,33 @@ export default function OrderingPage() {
         kindByRaw: mediSaladPackCleanup.kindByRaw,
         rawIngredients,
       });
-      let suggestedForUi: Record<string, number> = { ...zuidasPackCleanup.suggestedPacks };
+      const drinkPackCleanup = applyDrinkTrayStandingPacks({
+        rawIngredients,
+        currentRawStock: currentStock,
+        suggestedPacks: zuidasPackCleanup.suggestedPacks,
+        kindByRaw: zuidasPackCleanup.kindByRaw,
+      });
+      let suggestedForUi: Record<string, number> = { ...drinkPackCleanup.suggestedPacks };
       let kindForUi: Record<string, SuggestionOrderKind> = {
-        ...(zuidasPackCleanup.kindByRaw as Record<string, SuggestionOrderKind>),
+        ...(drinkPackCleanup.kindByRaw as Record<string, SuggestionOrderKind>),
       };
+      // Weekly stocktake items (e.g. honey sticks): only on their weekly day.
+      const locationWeeklyDow = loc?.weekly_stocktake_day_of_week ?? null;
+      for (const ing of rawIngredients) {
+        if (!isWeeklyPlannedRaw(ing)) continue;
+        if (
+          isWeeklyStocktakeDueOnDate({
+            dateStr: d,
+            locationWeeklyDow,
+            ingredientWeeklyDow: ing.stocktake_day_of_week,
+          })
+        ) {
+          continue;
+        }
+        delete suggestedForUi[ing.id];
+        delete kindForUi[ing.id];
+        delete baseSuggested[ing.id];
+      }
       for (const rid of Object.keys(finalSuggested)) {
         if (finalSuggested[rid] > 0 && suggestedAfterMinPacks[rid] == null) {
           delete kindForUi[rid];
@@ -1430,6 +1544,17 @@ export default function OrderingPage() {
         packConversionLineCount,
         baseFallbackLineCount,
       });
+      if (recalculateRequestedRef.current) {
+        recalculateRequestedRef.current = false;
+        setRecalculateFeedback(
+          suggestionLineCount > 0
+            ? `Refreshed from stocktake for ${d}: ${suggestionLineCount} suggested line${suggestionLineCount === 1 ? "" : "s"} (${stockListToday.length} raw count${stockListToday.length === 1 ? "" : "s"} today).`
+            : `Refreshed from stocktake for ${d}. No order lines suggested (${stockListToday.length} raw count${stockListToday.length === 1 ? "" : "s"} today).`
+        );
+      }
+      } finally {
+        if (alive) setSuggestionRefreshing(false);
+      }
     })().catch(() => {
       if (!alive) return;
       setPrepStocktakeComplete(false);
@@ -1445,6 +1570,9 @@ export default function OrderingPage() {
       setMediSaladNeedPrep(0);
       setSuggestionLoadError("Could not load order suggestion.");
       setSuggestionInsight(null);
+      recalculateRequestedRef.current = false;
+      setRecalculateFeedback("Could not refresh from stocktake. Check your connection and try again.");
+      setSuggestionRefreshing(false);
     });
 
     return () => {
@@ -1879,8 +2007,29 @@ export default function OrderingPage() {
   }, [sortedSuppliers, visibleSuppliers]);
 
   const resetOrderLinesFromSuggestion = () => {
+    if (!locationId || suggestionRefreshing) return;
     setManualOrderOverrides(null);
-    setSuggestionRefreshToken((v) => v + 1);
+    setRecalculateFeedback(null);
+    recalculateRequestedRef.current = true;
+    setSuggestionRefreshing(true);
+    const today = localCalendarDateString();
+    setViewDate(today);
+    const supabase = createClient();
+    void (async () => {
+      try {
+        const { rawList, packList } = await loadRawIngredientsWithPacks(supabase, locationId);
+        setRawIngredients(rawList);
+        setPackSizes(packList);
+        setSupplementalPackSizes([]);
+        setSuggestionRefreshToken((v) => v + 1);
+      } catch (e) {
+        recalculateRequestedRef.current = false;
+        setSuggestionRefreshing(false);
+        setRecalculateFeedback(
+          e instanceof Error ? e.message : "Could not refresh catalog from database."
+        );
+      }
+    })();
   };
 
   const removeLine = (supplierId: string, lineKey: string) => {
@@ -2633,11 +2782,15 @@ export default function OrderingPage() {
               <button
                 type="button"
                 onClick={resetOrderLinesFromSuggestion}
-                className="rounded-lg border border-brand-green/20 bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-brand-sand/40"
+                disabled={suggestionRefreshing}
+                className="rounded-lg border border-brand-green/20 bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-brand-sand/40 disabled:cursor-wait disabled:opacity-60"
               >
-                Recalculate from stocktake
+                {suggestionRefreshing ? "Refreshing from stocktake…" : "Recalculate from stocktake"}
               </button>
-              {manualOrderOverrides != null && (
+              {recalculateFeedback && (
+                <span className="text-xs text-brand-green">{recalculateFeedback}</span>
+              )}
+              {manualOrderOverrides != null && !recalculateFeedback && (
                 <span className="text-xs text-accent-orange">
                   Manual edits — click Recalculate to refresh from latest counts.
                 </span>
