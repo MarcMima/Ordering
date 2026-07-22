@@ -113,7 +113,7 @@ export function calcRegularPitaZaatarToMake(params: {
     pitaPrepBoxesFromStockCount(params.regularRawBoxes) +
     pitaPrepBoxesFromStockCount(params.wholewheatRawBoxes);
   const finishedShortfall = Math.max(0, totalNeeded - totalFinished);
-  return Math.max(0, totalRaw - finishedShortfall);
+  return Math.min(totalRaw, finishedShortfall);
 }
 
 /** Reduce each pita type's order need by that type's finished + frozen stock only. */
