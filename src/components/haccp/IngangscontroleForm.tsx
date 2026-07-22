@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase";
 import type { HaccpIngangscontroleRow } from "@/lib/haccp/types";
 import { getHaccpStoreId } from "@/lib/haccp/types";
 import { lteMaxStatus, temperatureInputClass } from "@/lib/haccp/temperatureFieldStyle";
+import { localCalendarDateString } from "@/lib/date";
 
 const SUPPLIERS = ["Bidfood", "Van Gelder"] as const;
 const ROWS_PER_SUPPLIER = 5;
@@ -22,7 +23,7 @@ function normalizeSupplier(leverancier: string): (typeof SUPPLIERS)[number] | nu
 }
 
 function defaultDatum(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localCalendarDateString();
 }
 
 function emptyRow(
