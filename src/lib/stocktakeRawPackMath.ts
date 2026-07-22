@@ -94,6 +94,39 @@ export function rawUnitLower(ing: RawIngredient): string {
   return (ing.unit || "").toLowerCase().trim();
 }
 
+function isPieceStocktakeLabel(label: string): boolean {
+  const lc = label.toLowerCase();
+  return lc === "piece" || lc === "pieces";
+}
+
+function isSinglePieceContent(
+  amt: number | string | null | undefined,
+  unit: string | null | undefined
+): boolean {
+  if (amt == null || !unit) return false;
+  const sz = typeof amt === "string" ? parseFloat(amt) : Number(amt);
+  if (!Number.isFinite(sz) || sz !== 1) return false;
+  const u = unit.toLowerCase().trim();
+  return u === "pcs" || u === "piece" || u === "pieces";
+}
+
+/** Stocktake row hint under the ingredient name (English UI). */
+export function stocktakeMasterUnitHint(ing: RawIngredient): string | null {
+  const stockLabel = ing.stocktake_unit_label?.trim();
+  if (!stockLabel) return null;
+  const amt = ing.stocktake_content_amount;
+  const unit = ing.stocktake_content_unit ?? "";
+  if (isPieceStocktakeLabel(stockLabel) && isSinglePieceContent(amt, unit)) {
+    return "Pieces";
+  }
+  if (isPieceStocktakeLabel(stockLabel)) {
+    const amtStr = amt != null ? formatDecimal2(Number(amt)) : "—";
+    return `Pieces: ${amtStr} ${unit}`;
+  }
+  const amtStr = amt != null ? formatDecimal2(Number(amt)) : "—";
+  return `${stockLabel}: ${amtStr} ${unit}`;
+}
+
 /**
  * Base quantity (same unit as `daily_stock_counts` / recipes) that corresponds to entering "1"
  * in the stocktake field. Matches {@link StocktakeRawRow} resolution order.
@@ -127,11 +160,8 @@ export function stocktakeOrderUnitLabel(ing: RawIngredient, packs: IngredientPac
   const masterBase = baseAmountFromRawMaster(ing);
   const countWithMaster = masterBase != null && masterBase > 0;
   if (countWithMaster && ing.stocktake_unit_label?.trim()) {
-    const amt = ing.stocktake_content_amount;
-    const u = ing.stocktake_content_unit;
-    const amtStr =
-      amt != null && Number.isFinite(Number(amt)) ? formatDecimal2(Number(amt)) : String(amt ?? "");
-    return `${ing.stocktake_unit_label.trim()}${amt != null && u ? ` (${amtStr} ${u})` : ""}`;
+    const hint = stocktakeMasterUnitHint(ing);
+    if (hint) return hint;
   }
 
   const boxForGram = getGramStockBoxPack(ing, packListSt);
