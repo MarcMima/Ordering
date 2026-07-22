@@ -61,3 +61,6 @@ docs/gede-jph-mapping.xlsx
 docs/van-gelder-variants-bestellijst.xlsx
 docs/van-gelder-*-mappings.xlsx
 docs/van-gelder-mima-assortiment-status.xlsx
+
+# Claude Code local settings (may contain secrets) - never commit
+.claude/settings.local.json
