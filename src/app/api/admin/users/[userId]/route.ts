@@ -33,12 +33,13 @@ export async function PATCH(
   const admin = createAdminClient();
 
   if (body.displayName !== undefined || body.active !== undefined) {
-    await admin.from("user_profiles").upsert({
+    const { error: profErr } = await admin.from("user_profiles").upsert({
       user_id: userId,
       display_name: body.displayName ?? null,
       active: body.active ?? true,
       updated_at: new Date().toISOString(),
     });
+    if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
   }
 
   if (body.roleKey) {
@@ -50,17 +51,21 @@ export async function PATCH(
     if (roleErr || !roleRow) {
       return NextResponse.json({ error: "Unknown roleKey" }, { status: 400 });
     }
-    await admin.from("user_roles").delete().eq("user_id", userId);
-    await admin.from("user_roles").insert({ user_id: userId, role_id: roleRow.id });
+    const { error: delErr } = await admin.from("user_roles").delete().eq("user_id", userId);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+    const { error: insErr } = await admin.from("user_roles").insert({ user_id: userId, role_id: roleRow.id });
+    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
   }
 
   if (body.locationIds) {
     const locationIds = normalizeLocationIds(body.locationIds);
-    await admin.from("user_location_access").delete().eq("user_id", userId);
+    const { error: delLocErr } = await admin.from("user_location_access").delete().eq("user_id", userId);
+    if (delLocErr) return NextResponse.json({ error: delLocErr.message }, { status: 500 });
     if (body.roleKey !== "admin" && locationIds.length > 0) {
-      await admin
+      const { error: insLocErr } = await admin
         .from("user_location_access")
         .insert(locationIds.map((locationId) => ({ user_id: userId, location_id: locationId })));
+      if (insLocErr) return NextResponse.json({ error: insLocErr.message }, { status: 500 });
     }
   }
 

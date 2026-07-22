@@ -114,6 +114,9 @@ export default function PrepListPage() {
       try {
         if (lpiRes.error) throw new Error(lpiRes.error.message);
         if (countRes.error) throw new Error(countRes.error.message);
+        if (rawStockRes.error) throw new Error(rawStockRes.error.message);
+        if (rawRes.error) throw new Error(rawRes.error.message);
+        if (locRes.error) throw new Error(locRes.error.message);
 
         const raw = (lpiRes.data as (Omit<LocationPrepItemRow, "prep_items"> & { prep_items: PrepItem | PrepItem[] | null })[]) ?? [];
         const items: LocationPrepItemRow[] = raw.map((row) => ({

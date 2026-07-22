@@ -140,22 +140,27 @@ export async function POST(request: Request) {
     );
   }
 
-  await admin.from("user_profiles").upsert({
+  const { error: profileErr } = await admin.from("user_profiles").upsert({
     user_id: userId,
     email,
     display_name: body.displayName ?? null,
     active: true,
     updated_at: new Date().toISOString(),
   });
+  if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 });
 
-  await admin.from("user_roles").delete().eq("user_id", userId);
-  await admin.from("user_roles").insert({ user_id: userId, role_id: roleRow.id });
+  const { error: delRoleErr } = await admin.from("user_roles").delete().eq("user_id", userId);
+  if (delRoleErr) return NextResponse.json({ error: delRoleErr.message }, { status: 500 });
+  const { error: insRoleErr } = await admin.from("user_roles").insert({ user_id: userId, role_id: roleRow.id });
+  if (insRoleErr) return NextResponse.json({ error: insRoleErr.message }, { status: 500 });
 
-  await admin.from("user_location_access").delete().eq("user_id", userId);
+  const { error: delLocErr } = await admin.from("user_location_access").delete().eq("user_id", userId);
+  if (delLocErr) return NextResponse.json({ error: delLocErr.message }, { status: 500 });
   if (body.roleKey !== "admin" && locationIds.length > 0) {
-    await admin.from("user_location_access").insert(
+    const { error: insLocErr } = await admin.from("user_location_access").insert(
       locationIds.map((locationId) => ({ user_id: userId!, location_id: locationId }))
     );
+    if (insLocErr) return NextResponse.json({ error: insLocErr.message }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, user_id: userId });
