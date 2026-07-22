@@ -56,16 +56,15 @@ export function useAuthz() {
       .single<AuthzRow>();
 
     if (authzError || !authzData) {
-      // Keep client behavior aligned with middleware fail-open fallback:
-      // if authz RPC is temporarily unavailable, avoid locking users out
-      // of pages they already reached with a valid session.
+      // Fail closed: never synthesize isAdmin on RPC error.
+      // The user keeps basic access but no admin privileges.
       setAuthz({
         ...EMPTY_AUTHZ,
         userId: data.user.id,
         email: data.user.email ?? null,
-        isAdmin: true,
+        isAdmin: false,
       });
-      setError(authzError?.message ?? null);
+      setError(authzError?.message ?? "Authorization unavailable — please retry");
       setLoading(false);
       return;
     }
