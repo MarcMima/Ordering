@@ -7,7 +7,7 @@ import { TopNav } from "@/components/TopNav";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpWeeklyReading } from "@/lib/haccp/types";
-import { getHaccpStoreId } from "@/lib/haccp/types";
+import { getHaccpStoreId, parseWeeklyReadings } from "@/lib/haccp/types";
 import { APP_FORM_KEYS, type AppFormKey } from "@/lib/appFormKeys";
 import {
   isThermometerQuietPeriod,
@@ -17,11 +17,6 @@ import {
 import { isBereidenWeekComplete } from "@/lib/haccp/bereidenComplete";
 import { formatWeekYearParam, getISOWeekAndYear, parseWeekYearParam, shiftWeekYear } from "@/lib/haccp/week";
 import type { HaccpBereidenRow } from "@/lib/haccp/types";
-
-function parseWeeklyReadings(raw: unknown): HaccpWeeklyReading[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x) => x && typeof x === "object" && "equipment_id" in x) as HaccpWeeklyReading[];
-}
 
 type Card = {
   href: string;

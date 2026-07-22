@@ -5,6 +5,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import {
   getHaccpStoreId,
+  parseWeeklyReadings,
   type HaccpStoreEquipmentRow,
   type HaccpTemperaturenRow,
   type HaccpWeeklyReading,
@@ -16,11 +17,6 @@ import {
   type TempFieldStatus,
 } from "@/lib/haccp/temperatureFieldStyle";
 import { WEEKDAY_LABELS_EN } from "@/lib/haccp/week";
-
-function parseReadings(raw: unknown): HaccpWeeklyReading[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((x) => x && typeof x === "object" && "equipment_id" in x) as HaccpWeeklyReading[];
-}
 
 function emptyReading(): Omit<HaccpWeeklyReading, "equipment_id"> {
   return {
@@ -108,7 +104,7 @@ export function TemperaturenForm({
       const list = (data ?? []) as HaccpStoreEquipmentRow[];
       setEquipment(list);
       setEquipmentErr(null);
-      const existing = parseReadings(initial?.weekly_readings);
+      const existing = parseWeeklyReadings(initial?.weekly_readings);
       setReadings(mergeReadings(list, existing));
     })();
   }, [storeId, weekNumber, year, initial]);
