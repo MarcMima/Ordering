@@ -153,30 +153,30 @@ export function IngangscontroleForm({
     setSaving(true);
     setMessage(null);
     const supabase = createClient();
-    const { error: delErr } = await supabase
-      .from("haccp_ingangscontrole")
-      .delete()
-      .eq("store_id", storeId)
-      .eq("week_number", weekNumber)
-      .eq("year", year);
-    if (delErr) {
+
+    // Only save rows that have content (product name or any measurement)
+    const payload = rows
+      .filter((r) => r.product.trim() || r.temperatuur != null || r.verpakking_ok != null || r.tht_ok != null)
+      .map((r) => ({
+        ...r,
+        store_id: storeId,
+        week_number: weekNumber,
+        year,
+        datum: checkDate,
+        paraaf: signOff.trim() || null,
+        tht_ok: r.tht_ok,
+        use_by_date: null,
+      }));
+
+    if (payload.length === 0) {
       setSaving(false);
-      setMessage(delErr.message);
+      setMessage("Nothing to save — fill in at least one row.");
       return;
     }
 
-    const payload = rows.map((r) => ({
-      ...r,
-      store_id: storeId,
-      week_number: weekNumber,
-      year,
-      datum: checkDate,
-      paraaf: signOff.trim() || null,
-      tht_ok: r.tht_ok,
-      use_by_date: null,
-    }));
-
-    const { error } = await supabase.from("haccp_ingangscontrole").insert(payload);
+    const { error } = await supabase
+      .from("haccp_ingangscontrole")
+      .upsert(payload, { onConflict: "store_id,week_number,year,leverancier,line_slot" });
     setSaving(false);
     if (error) setMessage(error.message);
     else {
