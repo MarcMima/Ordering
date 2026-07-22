@@ -7,8 +7,26 @@ export const RED_ONION_VG_CRATE_EAN = "8713507249699";
 export const RED_ONION_VG_LOOSE_EAN = "8713507249705";
 export const RED_ONION_VG_CRATE_BAGS = 12;
 
+export const PARSLEY_VG_BOX_4KG_EAN = "8713507265965";
+export const PARSLEY_VG_BAG_1KG_EAN = "8713507199536";
+
 export function isRedOnionSlicedFineRawName(name: string | null | undefined): boolean {
   return (name ?? "").trim().toLowerCase() === "red onion sliced fine";
+}
+
+export function isParsleyRawName(name: string | null | undefined): boolean {
+  return (name ?? "").trim().toLowerCase() === "parsley";
+}
+
+/** 4 kg box (142088) vs 1 kg bag (142077). */
+export function parsleyVanGelderEanForPack(
+  packSize: number | null | undefined,
+  packSizeUnit: string | null | undefined
+): string {
+  const sz = Number(packSize);
+  const u = (packSizeUnit ?? "").toLowerCase().trim();
+  if (Number.isFinite(sz) && sz === 4 && u === "kg") return PARSLEY_VG_BOX_4KG_EAN;
+  return PARSLEY_VG_BAG_1KG_EAN;
 }
 
 /** App order quantity is already in VG order units (crates), not sub-units inside a crate. */

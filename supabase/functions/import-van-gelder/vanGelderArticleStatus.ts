@@ -1,6 +1,6 @@
 /**
  * Van Gelder Articles API: ProductStatus per EAN-variant.
- * Dispatch/sync: alleen `available` mag mee (zie isVanGelderEanDispatchAllowed).
+ * Dispatch/sync: `unavailable` blocks; `inactive` and `available` are orderable.
  */
 
 export type ParsedVanGelderArticle = {

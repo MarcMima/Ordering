@@ -34,6 +34,8 @@ import {
   applyDailyNeedMultipliers,
   applyGarlicPeeledOrderGate,
   applyBakingPowderOrderGate,
+  applyFlourOrderGate,
+  applyLemonJuiceOrderGate,
   applyMaxOrderBaseCaps,
   applyMinOrderBaseFloors,
   applyMintBagWhenPrepShort,
@@ -43,6 +45,7 @@ import {
   applyMinOrderPackThresholds,
   applyProductionGatedBaseSuggested,
   applyProductionGatedRawDailyNeed,
+  applySupplierExcludedRawSuppress,
   applyWestSuppressedRawOrders,
   applyPrepBatchIngredientShortfall,
   applyZuidasStandingOrderPacks,
@@ -52,12 +55,14 @@ import {
   mergeWeeklyIntervalDailyNeed,
   isSupplierOrderExcludedRawName,
   normRawIngredientName,
+  parsleyOrderLines,
   parsleyOrderSplit,
   passesMinOrderPackThreshold,
 } from "@/lib/orderingAdjustments";
 import { applyStockParToBaseSuggested } from "@/lib/stockPar";
 import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTime";
-import { computeRawCoveredByFinishedPrep } from "@/lib/prepStockRawCredit";
+import { computeRawCoveredByFinishedPrep, computePickledPrepRawCredit } from "@/lib/prepStockRawCredit";
+import { computeDefrostedFlatbreadRawCredit } from "@/lib/flatbreadPrepStock";
 import {
   applyCombinedPitaStockCredit,
   calcRegularPitaZaatarToMake,
@@ -292,13 +297,14 @@ function buildOrderLinesFromSuggestion(
     const kind = orderKindByRaw[rawId] ?? "pack";
 
     if (isParsleyRawName(ing.name) && baseSuggestedByRaw?.[rawId] != null) {
-      const split = parsleyOrderSplit(baseSuggestedByRaw[rawId]);
       const orderPacks = packsForOrder(allPacks);
-      const box4 = orderPacks.find((p) => p.size === 4 && p.size_unit === "kg")
-        ?? orderPacks.find((p) => (p.display_unit_label ?? "").toLowerCase().includes("4"))
-        ?? getBestPackSize(orderPacks);
-      const bag1 = orderPacks.find((p) => p.size === 1 && p.size_unit === "kg" && p.id !== box4?.id)
-        ?? orderPacks.find((p) => p.size === 1 && p.size_unit === "kg");
+      const box4 =
+        orderPacks.find((p) => p.size === 4 && p.size_unit === "kg") ??
+        orderPacks.find((p) => (p.display_unit_label ?? "").toLowerCase().includes("4")) ??
+        getBestPackSize(orderPacks);
+      const bag1 =
+        orderPacks.find((p) => p.size === 1 && p.size_unit === "kg" && p.id !== box4?.id) ??
+        orderPacks.find((p) => p.size === 1 && p.size_unit === "kg");
       const pushLine = (pack: IngredientPackSize | null | undefined, quantity: number) => {
         if (!pack || quantity <= 0) return;
         const line: OrderLine = {
@@ -314,8 +320,9 @@ function buildOrderLinesFromSuggestion(
         if (!next[supplierId]) next[supplierId] = [];
         next[supplierId].push(line);
       };
-      pushLine(box4, split.box4kg);
-      pushLine(bag1, split.bag1kg);
+      for (const row of parsleyOrderLines(baseSuggestedByRaw[rawId])) {
+        pushLine(row.packSizeKg === 4 ? box4 : bag1, row.quantity);
+      }
       continue;
     }
 
@@ -379,17 +386,12 @@ function orderLineKey(line: OrderLine): string {
   return `${line.raw_ingredient_id}:${line.pack_size_id ?? "none"}`;
 }
 
-/** Merge duplicate lines (same raw + pack) by summing quantities. Parsley stays split (4 kg + 1 kg). */
+/** Merge duplicate lines (same raw + pack) by summing quantities. */
 function mergeOrderLines(lines: OrderLine[]): OrderLine[] {
   const byKey = new Map<string, OrderLine>();
   const mergedKeys: string[] = [];
-  const out: OrderLine[] = [];
 
   for (const line of lines) {
-    if (isParsleyRawName(line.raw_ingredient_name)) {
-      out.push({ ...line });
-      continue;
-    }
     const key = orderLineKey(line);
     const prev = byKey.get(key);
     if (prev) {
@@ -400,7 +402,7 @@ function mergeOrderLines(lines: OrderLine[]): OrderLine[] {
     }
   }
 
-  return [...out, ...mergedKeys.map((key) => byKey.get(key)!).filter(Boolean)];
+  return mergedKeys.map((key) => byKey.get(key)!).filter(Boolean);
 }
 
 function mergeOrderLinesBySupplier(
@@ -819,6 +821,7 @@ export default function OrderingPage() {
               .from("prep_item_ingredients")
               .select("prep_item_id, raw_ingredient_id, quantity_per_unit")
               .in("prep_item_id", prepIdsAtLocation)
+              .in("raw_ingredient_id", rawIdList)
               .limit(10000),
         supabase
           .from("daily_stock_counts")
@@ -880,9 +883,6 @@ export default function OrderingPage() {
         ordering_evening_day_fraction?: number | null;
       } | null;
       const locationName = loc?.name ?? "";
-      const mediSaladNeedPrep = mediSaladPrepItemIdFromAll
-        ? (lpiAll.find((row) => row.prep_item_id === mediSaladPrepItemIdFromAll)?.base_quantity ?? 1)
-        : 0;
       const recipes = (recipeRes.data as PrepItemIngredientRow[]) ?? [];
       // `prep_item_ingredients.raw_ingredient_id` may point to source-location raw IDs.
       // Remap those recipe rows by raw-ingredient name to this location's raw IDs.
@@ -980,6 +980,9 @@ export default function OrderingPage() {
           revenueMultiplier,
         });
       }
+      const mediSaladNeedPrep = mediSaladPrepItemIdFromAll
+        ? (neededByPrepItemId[mediSaladPrepItemIdFromAll] ?? 0)
+        : 0;
       const locationPrepIds = new Set(lpi.map((row) => row.prep_item_id));
       const recipeFiltered = recipesMappedToLocation.filter(
         (r) => rawIds.has(r.raw_ingredient_id) && locationPrepIds.has(r.prep_item_id)
@@ -992,12 +995,38 @@ export default function OrderingPage() {
       const rawNameByRawId = Object.fromEntries(
         rawIngredients.map((r) => [r.id, r.name ?? ""])
       );
+      const prepNameByPrepItemId = Object.fromEntries(
+        lpiAll
+          .map((row) => [row.prep_item_id, row.prep_items?.name ?? ""] as const)
+          .filter(([, name]) => Boolean(name))
+      );
       const prepStockCreditByRawId = computeRawCoveredByFinishedPrep({
         recipeFiltered,
         prepStockByPrepItemId,
         rawNameByRawId,
+        prepNameByPrepItemId,
         prepYieldByPrepItemId,
       });
+      const flatbreadPrepCredit = computeDefrostedFlatbreadRawCredit({
+        prepItemsById: Object.fromEntries(
+          lpiAll.map((row) => [row.prep_item_id, row.prep_items])
+        ),
+        prepStockByPrepItemId,
+        rawIngredients,
+      });
+      for (const [rid, grams] of Object.entries(flatbreadPrepCredit)) {
+        prepStockCreditByRawId[rid] = (prepStockCreditByRawId[rid] ?? 0) + grams;
+      }
+      const pickledPrepCredit = computePickledPrepRawCredit({
+        prepItemsById: Object.fromEntries(
+          lpiAll.map((row) => [row.prep_item_id, row.prep_items])
+        ),
+        prepStockByPrepItemId,
+        rawIngredients,
+      });
+      for (const [rid, grams] of Object.entries(pickledPrepCredit)) {
+        prepStockCreditByRawId[rid] = (prepStockCreditByRawId[rid] ?? 0) + grams;
+      }
       let dailyRawNeed: Record<string, number> = { ...dailyRawNeedBase };
       const mediSaladPrepItemId = mediSaladPrepItemIdFromAll;
       dailyRawNeed = applyMediSaladVanGelderOverride({
@@ -1052,6 +1081,7 @@ export default function OrderingPage() {
         prepLinkedRawIds,
         basePerStocktakeUnitByRawId,
         recentCountedRawIds: new Set(stockRows.map((r) => r.raw_ingredient_id)),
+        currentRawStock: currentStock,
       });
       const locationSupplierIds = new Set(
         ((supRes.data as { id: string }[]) ?? []).map((s) => s.id)
@@ -1115,7 +1145,9 @@ export default function OrderingPage() {
         rawIngredients,
         rawStockByRawId: currentStock,
       });
-      const baseSuggested = applyWestSuppressedRawOrders({
+      const baseSuggested = applySupplierExcludedRawSuppress({
+        rawIngredients,
+        baseSuggested: applyWestSuppressedRawOrders({
         locationId,
         locationName,
         rawIngredients,
@@ -1126,6 +1158,12 @@ export default function OrderingPage() {
           ...pitaStock,
           rawIngredients,
           baseSuggested: applyGarlicPeeledOrderGate({
+          rawIngredients,
+          currentRawStock: currentStock,
+          baseSuggested: applyFlourOrderGate({
+          rawIngredients,
+          currentRawStock: currentStock,
+          baseSuggested: applyLemonJuiceOrderGate({
           rawIngredients,
           currentRawStock: currentStock,
           baseSuggested: applyBakingPowderOrderGate({
@@ -1147,16 +1185,20 @@ export default function OrderingPage() {
                 prepStockByPrepItemId,
                 currentRawStock: currentStock,
                 revenueMultiplier,
+                orderPackByRawId,
                 baseSuggested: applyStockParToBaseSuggested({
                 rawIngredients,
                 currentRawStock: currentStock,
+                prepStockCreditByRawId,
                 baseSuggested: applyPrepBatchIngredientShortfall({
                   recipeFiltered,
                   locationPrepItems: lpi,
                   prepStockByPrepItemId,
                   currentRawStock: currentStock,
+                  prepStockCreditByRawId,
                   revenueMultiplier,
                   prepYieldByPrepItemId,
+                  rawNameByRawId,
                   baseSuggested: suggestOrderBaseQuantities({
                   today: todayForCover,
                   todayDateStr: d,
@@ -1180,6 +1222,9 @@ export default function OrderingPage() {
               }),
             }),
           }),
+        }),
+        }),
+        }),
         }),
         }),
         }),
@@ -1286,8 +1331,8 @@ export default function OrderingPage() {
         const ing = rawIngredients.find((r) => r.id === rid);
         if (isParsleyRawName(ing?.name)) {
           const split = parsleyOrderSplit(baseAmt);
-          if (split.box4kg > 0) {
-            finalSuggested[rid] = split.box4kg;
+          if (split.box4kg > 0 || split.bag1kg > 0) {
+            finalSuggested[rid] = Math.max(split.box4kg, split.bag1kg, 1);
             kindByRaw[rid] = "pack";
           }
           continue;
@@ -2518,9 +2563,11 @@ export default function OrderingPage() {
           </div>
         )}
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-green/10 bg-surface px-4 py-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-brand-green/25 bg-brand-sand/60 px-4 py-3 shadow-sm">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">Stock &amp; suggestions</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-brand-green">
+              Review day (stock &amp; suggestions)
+            </p>
             <p className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
               {new Date(`${viewDate}T12:00:00`).toLocaleDateString("en-GB", {
                 weekday: "long",
@@ -2529,8 +2576,22 @@ export default function OrderingPage() {
                 year: "numeric",
               })}
             </p>
+            <p className="mt-1 text-xs text-ink-soft">
+              Use Previous day to compare last week&apos;s counts and suggestions. Orders can only be sent on Today.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={viewDate}
+              max={todayDateStr}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v && v <= todayDateStr) setViewDate(v);
+              }}
+              className="rounded-lg border border-brand-green/20 bg-surface px-2 py-1.5 text-xs font-medium text-ink"
+              aria-label="Jump to date"
+            />
             <button
               type="button"
               onClick={() => setViewDate((d) => shiftCalendarDateString(d, -1))}

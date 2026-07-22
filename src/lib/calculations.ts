@@ -582,6 +582,12 @@ export function suggestOrderBaseQuantities(params: {
     } else if (coverDates.length < intervalDays) {
       coverDates = fallbackCoverCalendarDates(today, intervalDays);
     }
+    const picklingLead =
+      !dailyReorder &&
+      picklingLeadTimeRawIds?.has(rawId) &&
+      picklingLeadTimeDays > 0
+        ? picklingLeadTimeDays
+        : 0;
     const scaledNeed = calcScaledNeedOverOrderWindow({
       dailyNeedAtFullCapacity: dailyNeed,
       coverDates,
@@ -589,10 +595,7 @@ export function suggestOrderBaseQuantities(params: {
       eveningFraction: orderingEveningDayFraction,
       revenueCentsByDate,
       fullCapacityRevenue,
-      extraFullDays:
-        picklingLeadTimeRawIds?.has(rawId) && picklingLeadTimeDays > 0
-          ? picklingLeadTimeDays
-          : 0,
+      extraFullDays: picklingLead,
     });
     const prepCredit = prepStockCreditByRawId?.[rawId] ?? 0;
     const base = Math.max(0, Math.ceil(scaledNeed - stock - prepCredit));

@@ -18,6 +18,7 @@ export const VG_EAN_TO_ARTICLE_ID: Record<string, string> = {
   "8713507199536": "142077",
   "8713507200386": "161263",
   "8713507200393": "161263",
+  "8713507206074": "161450",
   "8713507200638": "161273",
   "8713507203639": "161329",
   "8713507203646": "161329",
@@ -41,5 +42,6 @@ export const VG_EAN_TO_ARTICLE_ID: Record<string, string> = {
   "8713507273182": "161874",
   "8713507273304": "153020",
   "8713507283716": "118384",
+  "8713507208214": "250005",
 };
 export const VG_STATUS_ARTICLE_IDS = [...new Set(Object.values(VG_EAN_TO_ARTICLE_ID))];

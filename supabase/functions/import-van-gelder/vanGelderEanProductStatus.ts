@@ -18,13 +18,15 @@ export type VanGelderEanStatusEntry = {
   articleId: string;
 };
 
-/** Alleen `available` mag mee in VG-order (inactive/unavailable → skip). */
+/** `unavailable` blocks; `inactive` and `available` are orderable (VG catalog rules). */
 export function isVanGelderEanDispatchAllowed(
   productStatus: string | null | undefined
 ): boolean {
   const s = (productStatus ?? "").trim().toLowerCase();
   if (!s) return true;
-  return s === "available";
+  if (s === "unavailable") return false;
+  if (s === "available" || s === "inactive") return true;
+  return false;
 }
 
 export function vanGelderSkipReasonForStatus(
@@ -32,10 +34,22 @@ export function vanGelderSkipReasonForStatus(
 ): string | null {
   const s = (productStatus ?? "").trim().toLowerCase();
   if (!s) return null;
-  if (s === "inactive") return "ProductStatus inactive";
   if (s === "unavailable") return "ProductStatus unavailable";
-  if (s !== "available") return `ProductStatus ${s}`;
+  if (s !== "available" && s !== "inactive") return `ProductStatus ${s}`;
   return null;
+}
+
+const VG_API_PRODUCT_STATUSES = new Set(["available", "inactive", "unavailable"]);
+
+/** Sync labels (unknown_product_status, not_on_price_list, …) are not Articles API statuses. */
+export function resolveVanGelderDispatchProductStatus(
+  entry: VanGelderEanStatusEntry | null,
+  vgLastStatus: string | null | undefined
+): string {
+  if (entry?.productStatus?.trim()) return entry.productStatus.trim();
+  const cached = (vgLastStatus ?? "").trim().toLowerCase();
+  if (VG_API_PRODUCT_STATUSES.has(cached)) return cached;
+  return "";
 }
 
 async function fetchArticleVariants(articleId: string): Promise<ParsedVanGelderArticle[]> {

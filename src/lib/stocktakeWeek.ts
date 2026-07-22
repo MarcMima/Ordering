@@ -51,25 +51,45 @@ export type StockCountRow = {
   date: string;
 };
 
-/** Daily raws: today only. Weekly raws: latest count on or before today (within loaded window). */
+/**
+ * Stock for ordering on `todayDateStr`:
+ * - Prefer today's count when present.
+ * - Otherwise use the latest count on or before that date (carry-forward).
+ * Weekly-planned raws use the same fallback within the loaded window.
+ */
 export function buildOrderingStockByRawId(params: {
   rows: StockCountRow[];
   todayDateStr: string;
   rawIngredients: { id: string; order_interval_days?: number | null; stocktake_day_of_week?: number | null }[];
 }): Record<string, number> {
-  const weeklyIds = new Set(
-    params.rawIngredients.filter(isWeeklyPlannedRaw).map((r) => r.id)
-  );
-  const best: Record<string, { date: string; quantity: number }> = {};
+  const todayByRaw: Record<string, number> = {};
+  const latestOnOrBefore: Record<string, { date: string; quantity: number }> = {};
+
   for (const row of params.rows) {
+    if (row.date > params.todayDateStr) continue;
     const rid = row.raw_ingredient_id;
-    if (!weeklyIds.has(rid) && row.date !== params.todayDateStr) continue;
     const qty = Number(row.quantity);
     if (!Number.isFinite(qty)) continue;
-    const prev = best[rid];
+
+    if (row.date === params.todayDateStr) {
+      todayByRaw[rid] = qty;
+    }
+
+    const prev = latestOnOrBefore[rid];
     if (!prev || row.date > prev.date) {
-      best[rid] = { date: row.date, quantity: qty };
+      latestOnOrBefore[rid] = { date: row.date, quantity: qty };
     }
   }
-  return Object.fromEntries(Object.entries(best).map(([k, v]) => [k, v.quantity]));
+
+  const out: Record<string, number> = {};
+  for (const ing of params.rawIngredients) {
+    const rid = ing.id;
+    if (todayByRaw[rid] != null) {
+      out[rid] = todayByRaw[rid]!;
+      continue;
+    }
+    const latest = latestOnOrBefore[rid];
+    if (latest) out[rid] = latest.quantity;
+  }
+  return out;
 }

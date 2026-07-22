@@ -51,6 +51,7 @@ import {
   buildVanGelderEanProductStatusIndex,
   isVanGelderEanDispatchAllowed,
   lookupVanGelderEanStatus,
+  resolveVanGelderDispatchProductStatus,
   vanGelderSkipReasonForStatus,
 } from "../import-van-gelder/vanGelderEanProductStatus.ts";
 import { VG_EAN_TO_ARTICLE_ID } from "../import-van-gelder/vanGelderMimaEanArticleIndex.ts";
@@ -65,6 +66,8 @@ import {
 } from "../import-van-gelder/vanGelderSupplierIngredient.ts";
 import {
   expandRedOnionBagQty,
+  isParsleyRawName,
+  parsleyVanGelderEanForPack,
   isRedOnionSlicedFineRawName,
   RED_ONION_VG_LOOSE_EAN,
   vanGelderDispatchQtyForLine,
@@ -90,6 +93,8 @@ type OrderLine = {
   raw_ingredient_id: string;
   quantity: number;
   unit: string;
+  pack_size_id?: string | null;
+  pack_size?: { size: number; size_unit: string } | null;
   raw_ingredient: { name: string };
   supplier_ingredient: {
     ean_code: string | null; // GTIN-14 voor Bidfood, GTIN-13 voor Van Gelder
@@ -167,15 +172,27 @@ type SupplierIngredientDetails = {
   vg_last_status?: string | null;
 };
 
+function isVanGelderEanBlockedForDispatch(
+  ean: string,
+  activePriceEans: Set<string>,
+  statusIndex: Map<string, VanGelderEanStatusEntry>,
+  vgLastStatus?: string | null
+): boolean {
+  const norm = normalizeVanGelderEan(ean);
+  if (!norm) return true;
+  const onList = isEanOnActivePriceList(norm, activePriceEans);
+  const entry = lookupVanGelderEanStatus(norm, statusIndex);
+  const ps = resolveVanGelderDispatchProductStatus(entry, vgLastStatus);
+  if (!ps) return !onList;
+  return !isVanGelderEanDispatchAllowed(ps);
+}
+
 function isVanGelderEanOrderable(
   ean: string,
   activePriceEans: Set<string>,
   statusIndex: Map<string, VanGelderEanStatusEntry>
 ): boolean {
-  const norm = normalizeVanGelderEan(ean);
-  if (!norm || !isEanOnActivePriceList(norm, activePriceEans)) return false;
-  const entry = lookupVanGelderEanStatus(norm, statusIndex);
-  return isVanGelderEanDispatchAllowed(entry?.productStatus);
+  return !isVanGelderEanBlockedForDispatch(ean, activePriceEans, statusIndex);
 }
 
 function expandVanGelderLineToRegels(
@@ -195,6 +212,11 @@ function expandVanGelderLineToRegels(
       );
     }
     return expandRedOnionBagQty(bagQty, looseOk);
+  }
+
+  if (isParsleyRawName(line.raw_ingredient.name)) {
+    const ean = parsleyVanGelderEanForPack(line.pack_size?.size, line.pack_size?.size_unit);
+    return [{ ean, aantal: bagQty }];
   }
 
   return [
@@ -817,24 +839,27 @@ async function dispatchVanGelder(
       const blockedStatus = validLines.filter((line) => {
         const ean = normalizeVanGelderEan(line.supplier_ingredient?.ean_code);
         if (!ean) return false;
-        const entry = lookupVanGelderEanStatus(ean, statusIndex);
-        const ps =
-          entry?.productStatus ??
-          (line.supplier_ingredient as SupplierIngredientDetails | undefined)?.vg_last_status ??
-          "";
-        return !isVanGelderEanDispatchAllowed(ps);
+        return isVanGelderEanBlockedForDispatch(
+          ean,
+          activePriceEans,
+          statusIndex,
+          (line.supplier_ingredient as SupplierIngredientDetails | undefined)?.vg_last_status
+        );
       });
       if (blockedStatus.length > 0) {
         validLines = validLines.filter((line) => !blockedStatus.includes(line));
         const details = blockedStatus
           .map((line) => {
             const ean = line.supplier_ingredient?.ean_code?.trim() ?? "?";
-            const entry = lookupVanGelderEanStatus(ean, statusIndex);
-            const ps =
-              entry?.productStatus ??
-              (line.supplier_ingredient as SupplierIngredientDetails | undefined)?.vg_last_status ??
-              "?";
-            const reason = vanGelderSkipReasonForStatus(ps) ?? `ProductStatus ${ps}`;
+            const entry = lookupVanGelderEanStatus(
+              normalizeVanGelderEan(line.supplier_ingredient?.ean_code),
+              statusIndex
+            );
+            const ps = resolveVanGelderDispatchProductStatus(
+              entry,
+              (line.supplier_ingredient as SupplierIngredientDetails | undefined)?.vg_last_status
+            );
+            const reason = vanGelderSkipReasonForStatus(ps) ?? `ProductStatus ${ps || "?"}`;
             return `${line.raw_ingredient.name} (EAN ${ean}) → ${reason}`;
           })
           .join("; ");
@@ -1718,7 +1743,8 @@ Deno.serve(async (req: Request) => {
             ),
             order_line_items (
               *,
-              raw_ingredient:raw_ingredients (name)
+              raw_ingredient:raw_ingredients (name),
+              pack_size:ingredient_pack_sizes (size, size_unit)
             )
           `)
           .eq("id", row.order_id)
@@ -1798,7 +1824,8 @@ Deno.serve(async (req: Request) => {
       ),
       order_line_items (
         *,
-        raw_ingredient:raw_ingredients (name)
+        raw_ingredient:raw_ingredients (name),
+        pack_size:ingredient_pack_sizes (size, size_unit)
       )
     `)
       .eq("id", order_id)
