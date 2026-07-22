@@ -64,3 +64,6 @@ docs/van-gelder-mima-assortiment-status.xlsx
 
 # Claude Code local settings (may contain secrets) - never commit
 .claude/settings.local.json
+
+# Supabase CLI local state (regenerated on connect, not source)
+supabase/.temp/
