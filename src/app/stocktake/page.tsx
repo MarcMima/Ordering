@@ -147,6 +147,28 @@ export default function StocktakePage() {
   const todayDateStr = localCalendarDateString();
   const isHistoricalView = viewDate < todayDateStr;
   const date = viewDate;
+
+  // Update date when calendar day changes (tablet left open overnight)
+  useEffect(() => {
+    const check = () => {
+      const now = localCalendarDateString();
+      setViewDate((prev) => {
+        // Only auto-advance if the user was viewing "today" — don't override
+        // a manually chosen historical date.
+        if (prev < now) return now;
+        return prev;
+      });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
   const [expectedRevenue, setExpectedRevenue] = useState("");
   const [revenueSaving, setRevenueSaving] = useState(false);
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItem[]>([]);
