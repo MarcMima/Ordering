@@ -202,6 +202,12 @@ export default function AdminPage() {
             >
               Ingredient prices
             </Link>
+            <Link
+              href="/admin/colli"
+              className="block label hover:text-ink"
+            >
+              Order colli
+            </Link>
             {canManageUsers && !isAuthDisabled() && (
               <Link
                 href="/admin/users"
