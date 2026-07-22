@@ -655,6 +655,8 @@ export default function OrderingPage() {
     packConversionLineCount: number;
     /** Lines without order packs: stocktake and/or recipe units. */
     baseFallbackLineCount: number;
+    /** Recipe raw names from other locations that could not be matched here. */
+    unmatchedRecipeNames: string[];
   } | null>(null);
 
   const orderBySupplierRef = useRef<Record<string, OrderLine[]>>({});
@@ -901,7 +903,8 @@ export default function OrderingPage() {
         supabase
           .from("supplier_ingredients")
           .select("supplier_id, raw_ingredient_id, is_preferred")
-          .in("raw_ingredient_id", rawIdList),
+          .in("raw_ingredient_id", rawIdList)
+          .limit(10000),
         supabase
           .from("daily_prep_counts")
           .select("id", { count: "exact", head: true })
@@ -961,6 +964,7 @@ export default function OrderingPage() {
       // `prep_item_ingredients.raw_ingredient_id` may point to source-location raw IDs.
       // Remap those recipe rows by raw-ingredient name to this location's raw IDs.
       let recipesMappedToLocation: PrepItemIngredientRow[] = recipes;
+      const unmatchedRecipeNames: string[] = [];
       const locationRawIdSet = new Set(rawIngredients.map((r) => r.id));
       const recipeRawIds = [...new Set(recipes.map((r) => r.raw_ingredient_id).filter(Boolean))];
       const missingRecipeRawIds = recipeRawIds.filter((id) => !locationRawIdSet.has(id));
@@ -976,16 +980,21 @@ export default function OrderingPage() {
         const locRawIdByName = Object.fromEntries(
           rawIngredients.map((r) => [normIngredientName(r.name), r.id])
         );
+        const unmatchedNames = new Set<string>();
         recipesMappedToLocation = recipes
           .map((row) => {
             if (locationRawIdSet.has(row.raw_ingredient_id)) return row;
             const srcName = srcNameById[row.raw_ingredient_id];
             if (!srcName) return null;
             const mappedRawId = locRawIdByName[srcName];
-            if (!mappedRawId) return null;
+            if (!mappedRawId) {
+              unmatchedNames.add(srcName);
+              return null;
+            }
             return { ...row, raw_ingredient_id: mappedRawId };
           })
           .filter((row): row is PrepItemIngredientRow => Boolean(row));
+        unmatchedRecipeNames.push(...unmatchedNames);
       }
       recipesMappedToLocation = dedupePrepItemIngredientRows(recipesMappedToLocation);
       const stockRows =
@@ -1544,6 +1553,7 @@ export default function OrderingPage() {
         revenueEveningDate: d,
         packConversionLineCount,
         baseFallbackLineCount,
+        unmatchedRecipeNames,
       });
       if (recalculateRequestedRef.current) {
         recalculateRequestedRef.current = false;
@@ -1642,7 +1652,7 @@ export default function OrderingPage() {
               .select("supplier_id, day_of_week")
               .eq("location_id", locationId),
             supabase.from("suppliers").select("id").eq("location_id", locationId),
-            supabase.from("supplier_ingredients").select("supplier_id, raw_ingredient_id, is_preferred"),
+            supabase.from("supplier_ingredients").select("supplier_id, raw_ingredient_id, is_preferred").limit(10000),
             supabase
               .from("locations")
               .select("weekly_stocktake_day_of_week")
@@ -2877,6 +2887,12 @@ export default function OrderingPage() {
                   {suggestionInsight.baseFallbackLineCount}
                 </li>
                 <li>Pack rows loaded from DB for this suggestion: {suggestionInsight.packRowsLoadedFromDb}</li>
+                {suggestionInsight.unmatchedRecipeNames.length > 0 && (
+                  <li className="text-accent-terracotta">
+                    Unmatched recipe rows at this location: {suggestionInsight.unmatchedRecipeNames.length} —{" "}
+                    {suggestionInsight.unmatchedRecipeNames.join(", ")}
+                  </li>
+                )}
               </ul>
               {suggestionInsight.packFetchError && (
                 <p className="mt-2 text-xs font-medium text-accent-terracotta">
