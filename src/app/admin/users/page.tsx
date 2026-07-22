@@ -41,23 +41,6 @@ export default function AdminUsersPage() {
   const authOff = isAuthDisabled();
   const { allowed, loading: canLoading } = useCan(PERMISSIONS.usersManage);
 
-  if (authOff) {
-    return (
-      <div className="min-h-screen bg-background font-sans">
-        <TopNav />
-        <main className="mx-auto max-w-lg px-4 py-12 text-center">
-          <h1 className="section-title text-xl">Users disabled</h1>
-          <p className="mt-3 help-text">
-            Login and user management are turned off. Set{" "}
-            <code className="text-xs">NEXT_PUBLIC_AUTH_DISABLED=false</code> to re-enable.
-          </p>
-          <Link href="/admin" className="mt-6 inline-block label">
-            ← Admin
-          </Link>
-        </main>
-      </div>
-    );
-  }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +142,24 @@ export default function AdminUsersPage() {
     setMessage("User updated.");
     setSaving(false);
     await loadData();
+  }
+
+  if (authOff) {
+    return (
+      <div className="min-h-screen bg-background font-sans">
+        <TopNav />
+        <main className="mx-auto max-w-lg px-4 py-12 text-center">
+          <h1 className="section-title text-xl">Users disabled</h1>
+          <p className="mt-3 help-text">
+            Login and user management are turned off. Set{" "}
+            <code className="text-xs">NEXT_PUBLIC_AUTH_DISABLED=false</code> to re-enable.
+          </p>
+          <Link href="/admin" className="mt-6 inline-block label">
+            ← Admin
+          </Link>
+        </main>
+      </div>
+    );
   }
 
   if (canLoading || loading) {

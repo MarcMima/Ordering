@@ -249,8 +249,9 @@ export function IngangscontroleForm({
                         value={r.temperatuur ?? ""}
                         onChange={(e) => {
                           const t = e.target.value.trim();
+                          const num = Number(t.replace(",", "."));
                           updateFlat(i, {
-                            temperatuur: t === "" ? null : Number(t.replace(",", ".")),
+                            temperatuur: t === "" ? null : isFinite(num) ? num : null,
                           });
                         }}
                         placeholder={r.soort === "V" ? "≤7" : "—"}

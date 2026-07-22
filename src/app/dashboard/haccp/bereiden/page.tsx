@@ -64,7 +64,7 @@ function Inner() {
             <p className="text-ink-soft/80">Loading…</p>
           ) : (
             <BereidenServerenForm
-              key={`${week}-${year}`}
+              key={`${storeId}-${week}-${year}`}
               weekNumber={week}
               year={year}
               initial={row}

@@ -59,7 +59,7 @@ function Inner() {
             <p className="text-ink-soft/80">Loading…</p>
           ) : (
             <IngangscontroleForm
-              key={rows === undefined ? "loading" : `${week}-${year}-${rows.map((r) => r.id).join(",")}`}
+              key={rows === undefined ? "loading" : `${storeId}-${week}-${year}-${rows.map((r) => r.id).join(",")}`}
               weekNumber={week}
               year={year}
               initialRows={rows}
