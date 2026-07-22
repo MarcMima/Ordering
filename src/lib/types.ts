@@ -55,6 +55,8 @@ export interface RawIngredient {
   stocktake_content_unit?: string | null;
   /** Sort position on stocktake (daily vs weekly lists ordered separately). Lower = earlier. */
   stocktake_display_order?: number | null;
+  /** Order in multiples of this many packs (default 1). Single source of truth for colli step. */
+  order_pack_multiple?: number | null;
   created_at?: string;
   updated_at?: string;
 }

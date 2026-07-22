@@ -158,7 +158,7 @@ function packsForOrder(packs: IngredientPackSize[]): IngredientPackSize[] {
   return o.length > 0 ? o : packs;
 }
 
-const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
+const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
 
 type RawWithNestedPacks = RawIngredient & {
   ingredient_pack_sizes?: IngredientPackSize[] | IngredientPackSize | null;
@@ -1433,7 +1433,7 @@ export default function OrderingPage() {
         if (pc != null && pc > 0) {
           if (!passesMinOrderPackThreshold(ing?.name, pc)) continue;
           const entry = packAndUnitByRawId[rid];
-          const mult = entry?.pack?.order_pack_multiple ?? 1;
+          const mult = ing?.order_pack_multiple ?? entry?.pack?.order_pack_multiple ?? 1;
           finalSuggested[rid] = applyOrderPackMultipleRounding(pc, mult);
           kindByRaw[rid] = "pack";
           continue;
@@ -1444,7 +1444,7 @@ export default function OrderingPage() {
           const stocktakePcs = Math.max(1, Math.ceil(baseAmt / bps));
           if (!passesMinOrderPackThreshold(ing?.name, stocktakePcs)) continue;
           const entry = packAndUnitByRawId[rid];
-          const mult = entry?.pack?.order_pack_multiple ?? 1;
+          const mult = ing?.order_pack_multiple ?? entry?.pack?.order_pack_multiple ?? 1;
           finalSuggested[rid] = applyOrderPackMultipleRounding(stocktakePcs, mult, {
             quantityIsColliUnits: true,
           });
@@ -2062,7 +2062,8 @@ export default function OrderingPage() {
     const packs = packSizesByIngredient[line.raw_ingredient_id] ?? [];
     const pack =
       packs.find((p) => p.id === line.pack_size_id) ?? getOrderPackDeterministic(packsForOrder(packs)) ?? getBestPackSize(packsForOrder(packs));
-    const mult = pack?.order_pack_multiple ?? 1;
+    const rawIng = rawIngredients.find((r) => r.id === line.raw_ingredient_id);
+    const mult = rawIng?.order_pack_multiple ?? pack?.order_pack_multiple ?? 1;
     if (line.quantity <= 0 || mult <= 1) return;
     const kind = suggestionOrderKindByRaw[line.raw_ingredient_id] ?? "pack";
     const snapped = applyOrderPackMultipleRounding(line.quantity, mult, {
@@ -2480,7 +2481,8 @@ export default function OrderingPage() {
               const linePack =
                 linePacks.find((p) => p.id === line.pack_size_id) ??
                 getOrderPackDeterministic(packsForOrder(linePacks)) ?? getBestPackSize(packsForOrder(linePacks));
-              const coliMultiple = Math.max(1, linePack?.order_pack_multiple ?? 1);
+              const lineRawIng = rawIngredients.find((r) => r.id === line.raw_ingredient_id);
+              const coliMultiple = Math.max(1, lineRawIng?.order_pack_multiple ?? linePack?.order_pack_multiple ?? 1);
               const qtyStep = kind === "stocktake" ? 1 : coliMultiple > 1 ? 1 : coliMultiple;
               return (
                 <li
