@@ -22,6 +22,7 @@ import {
   suggestOrderBaseQuantities,
   baseAmountsToPackCounts,
   getBestPackSize,
+  getOrderPackDeterministic,
   applyOrderPackMultipleRounding,
   getRevenueMultiplier,
   coverWindowCalendarDates,
@@ -523,8 +524,8 @@ function orderLineRowView(
   const bestPack =
     kind === "pack"
       ? packForLine ??
-        getBestPackSize(forOrder) ??
-        (allPacks.length > 0 ? getBestPackSize(allPacks) : null)
+        getOrderPackDeterministic(forOrder) ?? getBestPackSize(forOrder) ??
+        (allPacks.length > 0 ? getOrderPackDeterministic(allPacks) ?? getBestPackSize(allPacks) : null)
       : null;
 
   if (kind === "pack" && bestPack) {
@@ -1211,7 +1212,7 @@ export default function OrderingPage() {
         const packs = packsForOrder(
           packSizes.filter((p) => p.raw_ingredient_id === ing.id).map(normalizePackRow)
         );
-        orderPackByRawId[ing.id] = getBestPackSize(packs);
+        orderPackByRawId[ing.id] = getOrderPackDeterministic(packs) ?? getBestPackSize(packs);
         if (isPicklingRawName(ing.name)) picklingLeadTimeRawIds.add(ing.id);
       }
       const pitaStock = extractPitaStockCounts({
@@ -1403,8 +1404,8 @@ export default function OrderingPage() {
       for (const rid of baseRawIds) {
         const list = packsForRawMerged(rid);
         const forOrder = packsForOrder(list);
-        let best = getBestPackSize(forOrder);
-        if (!best && list.length > 0) best = getBestPackSize(list);
+        let best = getOrderPackDeterministic(forOrder) ?? getBestPackSize(forOrder);
+        if (!best && list.length > 0) best = getOrderPackDeterministic(list) ?? getBestPackSize(list);
         const ingRow = rawIngredients.find((r) => r.id === rid);
         packAndUnitByRawId[rid] =
           best && ingRow && best.size > 0
@@ -2060,7 +2061,7 @@ export default function OrderingPage() {
   const snapLineQuantityToColi = (supplierId: string, line: OrderLine) => {
     const packs = packSizesByIngredient[line.raw_ingredient_id] ?? [];
     const pack =
-      packs.find((p) => p.id === line.pack_size_id) ?? getBestPackSize(packsForOrder(packs));
+      packs.find((p) => p.id === line.pack_size_id) ?? getOrderPackDeterministic(packsForOrder(packs)) ?? getBestPackSize(packsForOrder(packs));
     const mult = pack?.order_pack_multiple ?? 1;
     if (line.quantity <= 0 || mult <= 1) return;
     const kind = suggestionOrderKindByRaw[line.raw_ingredient_id] ?? "pack";
@@ -2104,7 +2105,7 @@ export default function OrderingPage() {
       const box4 =
         orderPacks.find((p) => p.size === 4 && p.size_unit === "kg") ??
         orderPacks.find((p) => (p.display_unit_label ?? "").toLowerCase().includes("4")) ??
-        getBestPackSize(orderPacks);
+        getOrderPackDeterministic(orderPacks) ?? getBestPackSize(orderPacks);
       if (box4) {
         pushLine(box4, 1);
         setNewRawBySupplier((prev) => ({ ...prev, [supplierId]: "" }));
@@ -2112,7 +2113,7 @@ export default function OrderingPage() {
       }
     }
 
-    const best = getBestPackSize(orderPacks) ?? getBestPackSize(allPacks);
+    const best = getOrderPackDeterministic(orderPacks) ?? getBestPackSize(orderPacks) ?? getOrderPackDeterministic(allPacks) ?? getBestPackSize(allPacks);
     const line: OrderLine = {
       raw_ingredient_id: rawId,
       raw_ingredient_name: ing.name,
@@ -2478,7 +2479,7 @@ export default function OrderingPage() {
               const linePacks = packSizesByIngredient[line.raw_ingredient_id] ?? [];
               const linePack =
                 linePacks.find((p) => p.id === line.pack_size_id) ??
-                getBestPackSize(packsForOrder(linePacks));
+                getOrderPackDeterministic(packsForOrder(linePacks)) ?? getBestPackSize(packsForOrder(linePacks));
               const coliMultiple = Math.max(1, linePack?.order_pack_multiple ?? 1);
               const qtyStep = kind === "stocktake" ? 1 : coliMultiple > 1 ? 1 : coliMultiple;
               return (

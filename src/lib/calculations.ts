@@ -279,6 +279,30 @@ export function getBestPackSize<T extends { id: string; size: number; price_cent
 }
 
 /**
+ * Deterministic order-pack selection: prefers pack_purpose='order', then 'both',
+ * then any. Tie-breaks on lowest id (stable across price changes).
+ * Never uses price — prevents colli from flipping when prices change.
+ */
+export function getOrderPackDeterministic<
+  T extends { id: string; size: number; pack_purpose?: string | null }
+>(packSizes: T[]): T | null {
+  const valid = packSizes.filter((p) => p.size > 0);
+  if (valid.length === 0) return null;
+  const purposeRank = (p: T) => {
+    const pp = (p.pack_purpose ?? "").toLowerCase();
+    if (pp === "order") return 0;
+    if (pp === "both") return 1;
+    return 2;
+  };
+  return valid.sort((a, b) => {
+    const ra = purposeRank(a);
+    const rb = purposeRank(b);
+    if (ra !== rb) return ra - rb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  })[0];
+}
+
+/**
  * Calculates the quantity needed of an ingredient based on current stock,
  * target/required level, and optional usage rate.
  */
