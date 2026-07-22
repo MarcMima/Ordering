@@ -58,6 +58,26 @@ function minBaseAmountForPar(params: {
   return rule.minPacks * basePerPack;
 }
 
+function dbParRuleForIngredient(ing: RawIngredient): StockParRule | null {
+  const kind = ing.stock_par_kind;
+  if (!kind) return null;
+  if (kind === "base") {
+    const minAmount = ing.stock_par_min_amount;
+    if (minAmount == null || minAmount <= 0) return null;
+    return { kind: "base", minAmount };
+  }
+  if (kind === "packs") {
+    const minPacks = ing.stock_par_min_packs;
+    if (minPacks == null || minPacks < 0) return null;
+    return {
+      kind: "packs",
+      minPacks,
+      orderPacks: ing.stock_par_order_packs != null ? ing.stock_par_order_packs : undefined,
+    };
+  }
+  return null;
+}
+
 /**
  * Par-managed items: suppress when effective stock (raw + finished prep credit) is at par;
  * otherwise order only the shortfall to par — never stack cover-window bulk on top.
@@ -74,7 +94,11 @@ export function applyStockParToBaseSuggested(params: {
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
     if (!isRawVisibleOnStocktake(ing)) continue;
-    const rule = MIN_STOCK_PAR_BY_RAW_NAME[(ing.name ?? "").toLowerCase().trim()];
+    // Prefer DB columns; fall back to hardcoded map.
+    const rule =
+      dbParRuleForIngredient(ing) ??
+      MIN_STOCK_PAR_BY_RAW_NAME[(ing.name ?? "").toLowerCase().trim()] ??
+      null;
     if (rule == null) continue;
     const minBase = minBaseAmountForPar({
       ing,

@@ -208,6 +208,12 @@ export default function AdminPage() {
             >
               Order colli
             </Link>
+            <Link
+              href="/admin/ordering-overrides"
+              className="block label hover:text-ink"
+            >
+              Ordering overrides
+            </Link>
             {canManageUsers && !isAuthDisabled() && (
               <Link
                 href="/admin/users"

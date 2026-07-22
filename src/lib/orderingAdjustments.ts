@@ -1,6 +1,6 @@
 import type { PrepItemIngredientRow } from "@/lib/calculations";
 import { calcNeededQuantity, calcToMake } from "@/lib/calculations";
-import type { IngredientPackSize, RawIngredient } from "@/lib/types";
+import type { IngredientPackSize, RawIngredient, RawIngredientLocationOrdering } from "@/lib/types";
 import type { PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import { packSizeToBaseAmount } from "@/lib/stocktakeRawPackMath";
 
@@ -442,9 +442,11 @@ export const MIN_ORDER_PACKS_BY_RAW_NAME: Record<string, number> = {
 
 export function passesMinOrderPackThreshold(
   rawName: string | null | undefined,
-  packCount: number
+  packCount: number,
+  dbMinPacks?: number | null
 ): boolean {
-  const min = MIN_ORDER_PACKS_BY_RAW_NAME[normName(rawName)];
+  // Prefer DB column; fall back to hardcoded map.
+  const min = dbMinPacks != null ? dbMinPacks : MIN_ORDER_PACKS_BY_RAW_NAME[normName(rawName)];
   if (min == null) return packCount > 0;
   return packCount >= min;
 }
@@ -599,12 +601,33 @@ export function applyZuidasStandingOrderPacks(params: {
   rawIngredients: RawIngredient[];
   suggestedPacks: Record<string, number>;
   kindByRaw: Record<string, string>;
+  /** Per-location overrides from raw_ingredient_location_ordering. */
+  locationOrderingByRawId?: Record<string, RawIngredientLocationOrdering>;
 }): { suggestedPacks: Record<string, number>; kindByRaw: Record<string, string> } {
   const out = { ...params.suggestedPacks };
   const kindOut = { ...params.kindByRaw };
-  const standingByRawName = isZuidasLocation(params.locationName, params.locationId)
+  const isZuidas = isZuidasLocation(params.locationName, params.locationId);
+  const isPijp = isPijpLocation(params.locationName, params.locationId);
+
+  if (params.locationOrderingByRawId && Object.keys(params.locationOrderingByRawId).length > 0) {
+    // DB path: use standing_order_packs from location ordering overrides.
+    for (const ing of params.rawIngredients) {
+      const locOverride = params.locationOrderingByRawId[ing.id];
+      const minPacks = locOverride?.standing_order_packs;
+      if (minPacks == null || minPacks <= 0) continue;
+      const cur = out[ing.id] ?? 0;
+      if (cur < minPacks) {
+        out[ing.id] = minPacks;
+        kindOut[ing.id] = normName(ing.name) === "aubergine" ? "stocktake" : (kindOut[ing.id] ?? "pack");
+      }
+    }
+    return { suggestedPacks: out, kindByRaw: kindOut };
+  }
+
+  // Hardcoded fallback.
+  const standingByRawName = isZuidas
     ? ZUIDAS_STANDING_ORDER_PACKS_BY_RAW_NAME
-    : isPijpLocation(params.locationName, params.locationId)
+    : isPijp
       ? PIJP_STANDING_ORDER_PACKS_BY_RAW_NAME
       : null;
   if (!standingByRawName) {
@@ -616,7 +639,6 @@ export function applyZuidasStandingOrderPacks(params: {
     const cur = out[rid] ?? 0;
     if (cur < minPacks) {
       out[rid] = minPacks;
-      // Cauliflower standing order must use the 10 kg box pack (not stocktake bag 2.5 kg).
       kindOut[rid] = rawName === "aubergine" ? "stocktake" : (kindOut[rid] ?? "pack");
     }
   }
@@ -642,6 +664,8 @@ export function applyDailyNeedMultipliers(params: {
   rawIngredients: RawIngredient[];
   locationId?: string | null;
   locationName?: string | null;
+  /** Per-location overrides loaded from raw_ingredient_location_ordering. */
+  locationOrderingByRawId?: Record<string, RawIngredientLocationOrdering>;
 }): Record<string, number> {
   const out = { ...params.dailyRawNeed };
   const allNormedNames = new Set(params.rawIngredients.map((r) => normName(r.name)));
@@ -650,18 +674,29 @@ export function applyDailyNeedMultipliers(params: {
   const zuidas = isZuidasLocation(params.locationName, params.locationId);
   const pijp = isPijpLocation(params.locationName, params.locationId);
   for (const ing of params.rawIngredients) {
-    let mult = DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-    if (west) {
-      const westMult = WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-      if (westMult != null) mult = (mult ?? 1) * westMult;
-    }
-    if (zuidas) {
-      const zuidasMult = ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-      if (zuidasMult != null) mult = (mult ?? 1) * zuidasMult;
-    }
-    if (pijp) {
-      const pijpMult = PIJP_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
-      if (pijpMult != null) mult = (mult ?? 1) * pijpMult;
+    // Prefer DB column; fall back to hardcoded global multiplier.
+    let mult: number | null | undefined =
+      ing.ordering_daily_need_multiplier != null
+        ? ing.ordering_daily_need_multiplier
+        : DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+
+    // Location-specific multiplier: DB override takes precedence over hardcoded location maps.
+    const locOverride = params.locationOrderingByRawId?.[ing.id];
+    if (locOverride?.daily_need_multiplier != null) {
+      mult = (mult ?? 1) * locOverride.daily_need_multiplier;
+    } else {
+      if (west) {
+        const westMult = WEST_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+        if (westMult != null) mult = (mult ?? 1) * westMult;
+      }
+      if (zuidas) {
+        const zuidasMult = ZUIDAS_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+        if (zuidasMult != null) mult = (mult ?? 1) * zuidasMult;
+      }
+      if (pijp) {
+        const pijpMult = PIJP_DAILY_NEED_MULTIPLIER_BY_RAW_NAME[normName(ing.name)];
+        if (pijpMult != null) mult = (mult ?? 1) * pijpMult;
+      }
     }
     if (isDrinkRawName(ing.name)) {
       mult = (mult ?? 1) * SUMMER_DRINK_MULTIPLIER;
@@ -768,7 +803,10 @@ export function applyMaxOrderBaseCaps(params: {
   const { rawIngredients, baseSuggested } = params;
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
-    const cap = MAX_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
+    // Prefer DB column; fall back to hardcoded map.
+    const cap = ing.ordering_max_order_base != null
+      ? ing.ordering_max_order_base
+      : MAX_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
     if (cap == null) continue;
     const cur = out[ing.id];
     if (cur != null && cur > cap) out[ing.id] = cap;
@@ -784,7 +822,10 @@ export function applyMinOrderBaseFloors(params: {
   const { rawIngredients, baseSuggested } = params;
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
-    const floor = MIN_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
+    // Prefer DB column; fall back to hardcoded map.
+    const floor = ing.ordering_min_order_base != null
+      ? ing.ordering_min_order_base
+      : MIN_ORDER_BASE_BY_RAW_NAME[normName(ing.name)];
     if (floor == null) continue;
     const cur = out[ing.id];
     if (cur != null && cur > 0) out[ing.id] = Math.max(cur, floor);
@@ -940,7 +981,7 @@ export function applyMinOrderPackThresholds(params: {
   const { rawIngredients, suggestedPacks } = params;
   const out = { ...suggestedPacks };
   for (const ing of rawIngredients) {
-    if (!passesMinOrderPackThreshold(ing.name, out[ing.id] ?? 0)) {
+    if (!passesMinOrderPackThreshold(ing.name, out[ing.id] ?? 0, ing.ordering_min_order_packs)) {
       delete out[ing.id];
     }
   }

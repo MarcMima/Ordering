@@ -48,21 +48,26 @@ export default function AdminColliPage() {
   const save = async (id: string, value: number | null) => {
     setSaving((s) => ({ ...s, [id]: true }));
     setSavedMsg((s) => ({ ...s, [id]: "" }));
-    const supabase = createClient();
-    const { error: e } = await supabase
-      .from("raw_ingredients")
-      .update({ order_pack_multiple: value })
-      .eq("id", id);
-    setSaving((s) => ({ ...s, [id]: false }));
-    if (e) {
-      setSavedMsg((s) => ({ ...s, [id]: `Error: ${e.message}` }));
-    } else {
-      setSavedMsg((s) => ({ ...s, [id]: "Saved" }));
-      setRows((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, order_pack_multiple: value } : r))
-      );
-      setTimeout(() => setSavedMsg((s) => ({ ...s, [id]: "" })), 2000);
+    try {
+      const res = await fetch("/api/admin/raw-ingredients", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, fields: { order_pack_multiple: value } }),
+      });
+      const json = await res.json() as { error?: string };
+      if (!res.ok) {
+        setSavedMsg((s) => ({ ...s, [id]: `Error: ${json.error ?? res.statusText}` }));
+      } else {
+        setSavedMsg((s) => ({ ...s, [id]: "Saved" }));
+        setRows((prev) =>
+          prev.map((r) => (r.id === id ? { ...r, order_pack_multiple: value } : r))
+        );
+        setTimeout(() => setSavedMsg((s) => ({ ...s, [id]: "" })), 2000);
+      }
+    } catch (err) {
+      setSavedMsg((s) => ({ ...s, [id]: `Error: ${err instanceof Error ? err.message : "unknown"}` }));
     }
+    setSaving((s) => ({ ...s, [id]: false }));
   };
 
   const filtered = filter

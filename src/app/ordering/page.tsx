@@ -8,7 +8,7 @@ import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
 import { DailyWorkflowStepper } from "@/components/DailyWorkflowStepper";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
-import type { Supplier, RawIngredient, IngredientPackSize, PrepItem } from "@/lib/types";
+import type { Supplier, RawIngredient, IngredientPackSize, PrepItem, RawIngredientLocationOrdering } from "@/lib/types";
 import { buildYieldMetaForPrepItem, type PrepItemYieldMeta } from "@/lib/prepRecipeYield";
 import {
   daysUntilDeliveryWhenOrderingToday,
@@ -158,7 +158,7 @@ function packsForOrder(packs: IngredientPackSize[]): IngredientPackSize[] {
   return o.length > 0 ? o : packs;
 }
 
-const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
+const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
 
 type RawWithNestedPacks = RawIngredient & {
   ingredient_pack_sizes?: IngredientPackSize[] | IngredientPackSize | null;
@@ -590,6 +590,11 @@ export default function OrderingPage() {
     string,
     OrderLine[]
   > | null>(null);
+  /** Per-locatie ordering overrides geladen vanuit raw_ingredient_location_ordering. */
+  const [locationOrderingByRawId, setLocationOrderingByRawId] = useState<Record<string, RawIngredientLocationOrdering>>({});
+  /** True als een opgeslagen concept is hersteld bij het laden. */
+  const [draftRestored, setDraftRestored] = useState(false);
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -686,6 +691,7 @@ export default function OrderingPage() {
 
   useEffect(() => {
     setManualOrderOverrides(null);
+    setDraftRestored(false);
   }, [suggestionRevisionKey]);
 
   /** Drop legacy browser drafts — order list is always derived from live stock + suggestion. */
@@ -702,6 +708,24 @@ export default function OrderingPage() {
     }
   }, [locationId]);
 
+  /** Debounced upsert van het bestel-concept naar order_drafts. */
+  useEffect(() => {
+    if (!locationId) return;
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = setTimeout(() => {
+      const todayStr = localCalendarDateString();
+      const supabase = createClient();
+      const overrides = manualOrderOverrides ?? {};
+      void supabase.from("order_drafts").upsert(
+        { location_id: locationId, date: todayStr, overrides, updated_at: new Date().toISOString() },
+        { onConflict: "location_id,date" }
+      );
+    }, 1200);
+    return () => {
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [locationId, manualOrderOverrides]);
+
   useEffect(() => {
     if (!locationId) {
       setSuppliers([]);
@@ -710,6 +734,7 @@ export default function OrderingPage() {
       setPackSizes([]);
       setSupplementalPackSizes([]);
       setManualOrderOverrides(null);
+      setLocationOrderingByRawId({});
       setSuggestionOrderKindByRaw({});
       setCurrentRawStockById({});
       setCurrentPrepStockById({});
@@ -718,11 +743,13 @@ export default function OrderingPage() {
       setNewRawBySupplier({});
       setPrepStocktakeComplete(false);
       setWorkflowStocktakeComplete(false);
+      setDraftRestored(false);
       setLoading(false);
       return;
     }
     setManualOrderOverrides(null);
     setSupplementalPackSizes([]);
+    setDraftRestored(false);
     setLoading(true);
     const supabase = createClient();
 
@@ -733,12 +760,16 @@ export default function OrderingPage() {
       supabase
         .from("raw_ingredients")
         .select(
-          `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
+          `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
         )
         .eq("location_id", locationId)
         .order("name"),
+      supabase
+        .from("raw_ingredient_location_ordering")
+        .select("id, raw_ingredient_id, location_id, daily_need_multiplier, standing_order_packs")
+        .eq("location_id", locationId),
     ])
-      .then(async ([sRes, schRes, rRes]) => {
+      .then(async ([sRes, schRes, rRes, loRes]) => {
         if (sRes.error) throw sRes.error;
         if (schRes.error) throw schRes.error;
         if (rRes.error) throw rRes.error;
@@ -778,10 +809,30 @@ export default function OrderingPage() {
           }
         }
 
+        // Build location ordering overrides map.
+        const locOrderingRows = (loRes.data as RawIngredientLocationOrdering[]) ?? [];
+        const locOrderingMap: Record<string, RawIngredientLocationOrdering> = {};
+        for (const row of locOrderingRows) locOrderingMap[row.raw_ingredient_id] = row;
+
+        // Restore today's draft if it exists (date-keyed, so stale drafts are ignored).
+        const todayStr = localCalendarDateString();
+        const draftRes = await supabase
+          .from("order_drafts")
+          .select("overrides, date")
+          .eq("location_id", locationId)
+          .eq("date", todayStr)
+          .maybeSingle();
+        const savedDraft = draftRes.data?.overrides as Record<string, OrderLine[]> | null | undefined;
+
         setSuppliers((sRes.data as Supplier[]) ?? []);
         setSchedules((schRes.data as DeliverySchedule[]) ?? []);
         setRawIngredients(rawList);
         setPackSizes(Array.from(dedupe.values()));
+        setLocationOrderingByRawId(locOrderingMap);
+        if (savedDraft && typeof savedDraft === "object" && Object.keys(savedDraft).length > 0) {
+          setManualOrderOverrides(savedDraft);
+          setDraftRestored(true);
+        }
         setError(null);
       })
       .catch((e) => {
@@ -790,6 +841,7 @@ export default function OrderingPage() {
         setSchedules([]);
         setRawIngredients([]);
         setPackSizes([]);
+        setLocationOrderingByRawId({});
       })
       .finally(() => setLoading(false));
   }, [locationId]);
@@ -1131,6 +1183,7 @@ export default function OrderingPage() {
         rawIngredients,
         locationId,
         locationName,
+        locationOrderingByRawId,
       });
       dailyRawNeed = applyProductionGatedRawDailyNeed({
         locationId,
@@ -1481,6 +1534,7 @@ export default function OrderingPage() {
         suggestedPacks: mediSaladPackCleanup.suggestedPacks,
         kindByRaw: mediSaladPackCleanup.kindByRaw,
         rawIngredients,
+        locationOrderingByRawId,
       });
       const drinkPackCleanup = applyDrinkTrayStandingPacks({
         rawIngredients,
@@ -1589,7 +1643,7 @@ export default function OrderingPage() {
     return () => {
       alive = false;
     };
-  }, [locationId, locationOptions, rawIngredients, schedules, packSizes, suppliers, suggestionRefreshToken, viewDate]);
+  }, [locationId, locationOptions, rawIngredients, schedules, packSizes, suppliers, suggestionRefreshToken, viewDate, locationOrderingByRawId]);
 
   useEffect(() => {
     if (isHistoricalView) return;
@@ -2020,6 +2074,7 @@ export default function OrderingPage() {
   const resetOrderLinesFromSuggestion = () => {
     if (!locationId || suggestionRefreshing) return;
     setManualOrderOverrides(null);
+    setDraftRestored(false);
     setRecalculateFeedback(null);
     recalculateRequestedRef.current = true;
     setSuggestionRefreshing(true);
@@ -2803,7 +2858,12 @@ export default function OrderingPage() {
               {recalculateFeedback && (
                 <span className="text-xs text-brand-green">{recalculateFeedback}</span>
               )}
-              {manualOrderOverrides != null && !recalculateFeedback && (
+              {draftRestored && manualOrderOverrides != null && !recalculateFeedback && (
+                <span className="text-xs text-brand-green font-medium">
+                  Draft restored — your edits from earlier today have been reloaded.
+                </span>
+              )}
+              {manualOrderOverrides != null && !draftRestored && !recalculateFeedback && (
                 <span className="text-xs text-accent-orange">
                   Manual edits — click Recalculate to refresh from latest counts.
                 </span>
