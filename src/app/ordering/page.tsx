@@ -698,9 +698,15 @@ export default function OrderingPage() {
   );
 
   useEffect(() => {
+    // A restored draft must survive the suggestion settling on load / tab
+    // navigation. Without this guard the key changes as stock + suggestion data
+    // arrive after the restore, wiping the user's saved edits (e.g. a removed
+    // line) so the auto-suggestion reappears. Explicit "Recalculate from
+    // stocktake" is the way to refresh from the latest counts.
+    if (draftRestored) return;
     setManualOrderOverrides(null);
     setDraftRestored(false);
-  }, [suggestionRevisionKey]);
+  }, [suggestionRevisionKey, draftRestored]);
 
   /** Drop legacy browser drafts — order list is always derived from live stock + suggestion. */
   useEffect(() => {
