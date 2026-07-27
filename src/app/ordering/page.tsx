@@ -594,6 +594,7 @@ export default function OrderingPage() {
   const [locationOrderingByRawId, setLocationOrderingByRawId] = useState<Record<string, RawIngredientLocationOrdering>>({});
   /** True als een opgeslagen concept is hersteld bij het laden. */
   const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -711,15 +712,28 @@ export default function OrderingPage() {
   /** Debounced upsert van het bestel-concept naar order_drafts. */
   useEffect(() => {
     if (!locationId) return;
+    // Only persist once there are real manual edits. While null (initial load /
+    // pre-restore) writing {} would clobber a draft we are about to restore.
+    if (manualOrderOverrides == null) return;
     if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
     draftSaveTimerRef.current = setTimeout(() => {
       const todayStr = localCalendarDateString();
       const supabase = createClient();
-      const overrides = manualOrderOverrides ?? {};
-      void supabase.from("order_drafts").upsert(
-        { location_id: locationId, date: todayStr, overrides, updated_at: new Date().toISOString() },
-        { onConflict: "location_id,date" }
-      );
+      void supabase
+        .from("order_drafts")
+        .upsert(
+          { location_id: locationId, date: todayStr, overrides: manualOrderOverrides, updated_at: new Date().toISOString() },
+          { onConflict: "location_id,date" }
+        )
+        .then(({ error }) => {
+          // Surface failures instead of failing silently (e.g. RLS denial).
+          if (error) {
+            console.error("order_drafts upsert failed:", error.message);
+            setDraftSaveFailed(true);
+          } else {
+            setDraftSaveFailed(false);
+          }
+        });
     }, 1200);
     return () => {
       if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
@@ -2866,6 +2880,11 @@ export default function OrderingPage() {
               {manualOrderOverrides != null && !draftRestored && !recalculateFeedback && (
                 <span className="text-xs text-accent-orange">
                   Manual edits — click Recalculate to refresh from latest counts.
+                </span>
+              )}
+              {draftSaveFailed && (
+                <span className="text-xs text-accent-terracotta font-medium">
+                  Could not save your draft — check your connection or permissions.
                 </span>
               )}
             </div>
