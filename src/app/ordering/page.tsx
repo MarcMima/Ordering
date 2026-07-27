@@ -596,6 +596,13 @@ export default function OrderingPage() {
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftSaveFailed, setDraftSaveFailed] = useState(false);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** True while a debounced draft save is scheduled but has not fired yet. */
+  const draftSavePendingRef = useRef(false);
+  /** Latest location + overrides, read by the unmount flush below. */
+  const draftLatestRef = useRef<{ locationId: string | null; overrides: Record<string, OrderLine[]> | null }>({
+    locationId: null,
+    overrides: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -709,6 +716,28 @@ export default function OrderingPage() {
     }
   }, [locationId]);
 
+  // Keep the latest location + overrides available to the unmount flush.
+  draftLatestRef.current = { locationId, overrides: manualOrderOverrides };
+
+  const writeOrderDraft = (loc: string, overrides: Record<string, OrderLine[]>) => {
+    const supabase = createClient();
+    void supabase
+      .from("order_drafts")
+      .upsert(
+        { location_id: loc, date: localCalendarDateString(), overrides, updated_at: new Date().toISOString() },
+        { onConflict: "location_id,date" }
+      )
+      .then(({ error }) => {
+        // Surface failures instead of failing silently (e.g. RLS denial).
+        if (error) {
+          console.error("order_drafts upsert failed:", error.message);
+          setDraftSaveFailed(true);
+        } else {
+          setDraftSaveFailed(false);
+        }
+      });
+  };
+
   /** Debounced upsert van het bestel-concept naar order_drafts. */
   useEffect(() => {
     if (!locationId) return;
@@ -716,29 +745,34 @@ export default function OrderingPage() {
     // pre-restore) writing {} would clobber a draft we are about to restore.
     if (manualOrderOverrides == null) return;
     if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSavePendingRef.current = true;
+    const loc = locationId;
+    const overrides = manualOrderOverrides;
     draftSaveTimerRef.current = setTimeout(() => {
-      const todayStr = localCalendarDateString();
-      const supabase = createClient();
-      void supabase
-        .from("order_drafts")
-        .upsert(
-          { location_id: locationId, date: todayStr, overrides: manualOrderOverrides, updated_at: new Date().toISOString() },
-          { onConflict: "location_id,date" }
-        )
-        .then(({ error }) => {
-          // Surface failures instead of failing silently (e.g. RLS denial).
-          if (error) {
-            console.error("order_drafts upsert failed:", error.message);
-            setDraftSaveFailed(true);
-          } else {
-            setDraftSaveFailed(false);
-          }
-        });
+      draftSaveTimerRef.current = null;
+      draftSavePendingRef.current = false;
+      writeOrderDraft(loc, overrides);
     }, 1200);
     return () => {
       if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
     };
   }, [locationId, manualOrderOverrides]);
+
+  // Flush a still-pending draft save when leaving the page, so an edit made just
+  // before navigating away (e.g. remove a line, then switch to another tab) is
+  // persisted instead of being dropped when the debounce timer is cleared.
+  useEffect(() => {
+    return () => {
+      if (!draftSavePendingRef.current) return;
+      draftSavePendingRef.current = false;
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      const { locationId: loc, overrides } = draftLatestRef.current;
+      if (loc && overrides != null) writeOrderDraft(loc, overrides);
+    };
+  }, []);
 
   useEffect(() => {
     if (!locationId) {
