@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/meeting-reminders?slot=morning", "schedule": "0 7 * * *" },
+    { "path": "/api/meeting-reminders?slot=afternoon", "schedule": "0 14 * * 5" }
+  ]
+}
