@@ -8,11 +8,12 @@ Endpoint `GET /api/meeting-reminders` stuurt de voorbereidings-mails die aan de 
 |---|---------|------|--------|
 | 1 | **Elke vrijdag, 16:00** (14:00 UTC) | Team (Marc, Michiel, Hadi) | "Update/klik je MMMM to-do's weg vóór de weekly maandag." |
 | 2 | **Elke dinsdag, ~09:00** (07:00 UTC) | Team* | "MMMM is verwerkt — loop je *Drafts for review* na en pas aan waar nodig." |
-| 3 | **De maandag 8 dagen (een week + een dag) vóór de MMM** | Team | "MMM (eerste dinsdag v/d maand) komt eraan — update je data en bereid voor." |
+| 3a | **Een week vóór de MMM** (de vorige dinsdag) | Team | "MMM komt over een week — update je data en bereid voor." |
+| 3b | **Een dag vóór de MMM** (de maandag ervoor) | Team | "MMM is morgen — laatste datacheck." |
 
 \* Reminder 2 gaat standaard naar het hele team (iedere owner loopt zijn eigen drafts na). Alleen Marc laten cureren? Zet `DRAFTS_REVIEW_RECIPIENTS = [MARC]` bovenin `route.ts`.
 
-De MMM is in de agenda de **eerste dinsdag van de maand** (1 sep, 6 okt, 3 nov, 1 dec …). De endpoint rekent "eerste dinsdag − 8 dagen" zelf uit; verschuif je de meeting, dan blijft de regel kloppen zolang het de eerste dinsdag is. Wijkt de MMM structureel af, pas dan `firstTuesday`/`preMMMTarget` aan.
+De MMM is in de agenda de **eerste dinsdag van de maand** (1 sep, 6 okt, 3 nov, 1 dec …). "Een week en een dag ervoor" = **twee** momenten: 7 dagen ervoor (de vorige dinsdag) en 1 dag ervoor (de maandag). De endpoint rekent dat zelf uit met `mmmDaysAway(p, 7)` en `mmmDaysAway(p, 1)`; verschuif je de meeting, dan blijft het kloppen zolang het de eerste dinsdag is. Wijkt de MMM structureel af, pas dan `firstTuesday`/`mmmDaysAway` aan.
 
 Alle mail is **Engelstalig** — Hadi (Operations) leest mee.
 
@@ -34,6 +35,6 @@ Alle mail is **Engelstalig** — Hadi (Operations) leest mee.
 curl "https://ordering-alpha.vercel.app/api/meeting-reminders?secret=<CRON_SECRET>&test=preMMMM"
 ```
 
-`test`-waarden: `preMMMM` | `postMMMM` | `preMMM`. Forceert die ene mail (echt verstuurd naar het team), ongeacht de datum — puur om verzending/deliverability te checken. Haal de test-call weg zodra het werkt.
+`test`-waarden: `preMMMM` | `postMMMM` | `preMMMweek` | `preMMMday`. Forceert die ene mail (echt verstuurd naar het team), ongeacht de datum — puur om verzending/deliverability te checken. Haal de test-call weg zodra het werkt.
 
 Een gewone call zonder `test` (`?secret=…`) stuurt alleen wat vandaag daadwerkelijk aan de beurt is — op een niet-matchende dag dus niets.

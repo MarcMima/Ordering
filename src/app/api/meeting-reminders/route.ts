@@ -10,9 +10,9 @@ import { NextResponse } from "next/server";
 //                   afgeronde weg, vóór de weekly meeting op maandag.
 //   2. post-MMMM  — elke DINSDAG (ochtend): de verwerkte "Drafts for review" nalopen
 //                   en waar nodig aanpassen (de MMMM is maandag; pipeline verwerkt ma.).
-//   3. pre-MMM    — de MAANDAG die 8 dagen (een week en een dag) vóór de MMM valt.
-//                   De MMM is de EERSTE DINSDAG van de maand: team updatet data en
-//                   bereidt zaken voor.
+//   3. pre-MMM    — TWEE momenten vóór de MMM (eerste DINSDAG v/d maand): een week
+//                   ervoor (de vorige dinsdag) én een dag ervoor (de maandag). Team
+//                   updatet data en bereidt zaken voor.
 //
 // Verzending gaat via Resend (zelfde conventie als plaud-webhook: RESEND_API_KEY +
 // FROM_EMAIL). Alle mail is Engelstalig — Hadi (Operations) leest mee, dus alles waar
@@ -85,16 +85,16 @@ function diffDays(fromMs: number, toMs: number): number {
   return Math.round((toMs - fromMs) / 86_400_000);
 }
 
-// Valt vandaag exact 8 dagen (een week en een dag) vóór een eerste-dinsdag-MMM?
-// De eerste-dinsdag - 8 valt altijd in de vóórgaande maand, dus we kijken naar de
-// eerste dinsdag van deze én de volgende maand (jaar-overgang meegenomen).
-function preMMMTarget(p: AmsParts): { y: number; m: number; d: number } | null {
+// Valt vandaag exact `daysBefore` dagen vóór een eerste-dinsdag-MMM?
+// We kijken naar de eerste dinsdag van deze én de volgende maand (jaar-overgang mee).
+// Gebruikt voor twee momenten: een week ervoor (7) en een dag ervoor (1).
+function mmmDaysAway(p: AmsParts, daysBefore: number): { y: number; m: number; d: number } | null {
   const today = dateOnly(p.year, p.month, p.day);
   const nextMonth = p.month === 12 ? 1 : p.month + 1;
   const nextYear = p.month === 12 ? p.year + 1 : p.year;
   const candidates = [firstTuesday(p.year, p.month), firstTuesday(nextYear, nextMonth)];
   for (const c of candidates) {
-    if (diffDays(today, dateOnly(c.y, c.m, c.d)) === 8) return c;
+    if (diffDays(today, dateOnly(c.y, c.m, c.d)) === daysBefore) return c;
   }
   return null;
 }
@@ -164,21 +164,41 @@ function postMMMMMail(): Mail {
   return { to: DRAFTS_REVIEW_RECIPIENTS, subject, text, html };
 }
 
-function preMMMMail(mmm: { y: number; m: number; d: number }): Mail {
+function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
   const when = fmtDate(mmm.y, mmm.m, mmm.d);
-  const subject = "Monthly Mima Meeting in ~1 week — update your data & prepare";
+  const subject = "Monthly Mima Meeting in a week — update your data & prepare";
   const text =
     "Hi team,\n\n" +
-    `The monthly tactical meeting (MMM) is coming up on ${when} at 09:00. That's a week ` +
-    "and a day away — time to prepare. Please update your numbers and data, and get your " +
-    "domain updates ready so we can make good tactical decisions." +
+    `The monthly tactical meeting (MMM) is one week from today, on ${when} at 09:00. ` +
+    "Time to start preparing: please update your numbers and data and get your domain " +
+    "updates ready so we can make good tactical decisions." +
     tasksLink() +
     "\n\nThanks!";
   const html =
     "<p>Hi team,</p>" +
-    `<p>The monthly tactical meeting (<strong>MMM</strong>) is coming up on <strong>${when}</strong> ` +
-    "at 09:00. That's a week and a day away — time to prepare. Please update your numbers " +
-    "and data, and get your domain updates ready so we can make good tactical decisions.</p>" +
+    `<p>The monthly tactical meeting (<strong>MMM</strong>) is one week from today, on ` +
+    `<strong>${when}</strong> at 09:00. Time to start preparing: please update your numbers ` +
+    "and data and get your domain updates ready so we can make good tactical decisions.</p>" +
+    tasksLinkHtml() +
+    "<p>Thanks!</p>";
+  return { to: TEAM, subject, text, html };
+}
+
+function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
+  const when = fmtDate(mmm.y, mmm.m, mmm.d);
+  const subject = "Monthly Mima Meeting tomorrow — final data check";
+  const text =
+    "Hi team,\n\n" +
+    `Reminder: the monthly tactical meeting (MMM) is tomorrow, ${when} at 09:00. ` +
+    "Please make sure your numbers and data are up to date and your domain updates are " +
+    "ready, so we can dive straight in." +
+    tasksLink() +
+    "\n\nThanks!";
+  const html =
+    "<p>Hi team,</p>" +
+    `<p>Reminder: the monthly tactical meeting (<strong>MMM</strong>) is <strong>tomorrow</strong>, ` +
+    `${when} at 09:00. Please make sure your numbers and data are up to date and your domain ` +
+    "updates are ready, so we can dive straight in.</p>" +
     tasksLinkHtml() +
     "<p>Thanks!</p>";
   return { to: TEAM, subject, text, html };
@@ -230,16 +250,22 @@ export async function GET(req: Request) {
     let mail: Mail | null = null;
     if (test === "preMMMM") mail = preMMMMMail();
     else if (test === "postMMMM") mail = postMMMMMail();
-    else if (test === "preMMM") {
-      const c = preMMMTarget(p) ?? firstTuesday(
+    else if (test === "preMMMweek") {
+      const c = mmmDaysAway(p, 7) ?? firstTuesday(
         p.month === 12 ? p.year + 1 : p.year,
         p.month === 12 ? 1 : p.month + 1,
       );
-      mail = preMMMMail(c);
+      mail = preMMMWeekMail(c);
+    } else if (test === "preMMMday") {
+      const c = mmmDaysAway(p, 1) ?? firstTuesday(
+        p.month === 12 ? p.year + 1 : p.year,
+        p.month === 12 ? 1 : p.month + 1,
+      );
+      mail = preMMMDayMail(c);
     }
     if (!mail) {
       return NextResponse.json(
-        { error: "unknown test value (use preMMMM | postMMMM | preMMM)" },
+        { error: "unknown test value (use preMMMM | postMMMM | preMMMweek | preMMMday)" },
         { status: 400 },
       );
     }
@@ -261,10 +287,15 @@ export async function GET(req: Request) {
   if (p.weekday === 2 && slotAllows("morning")) {
     due.push({ name: "post-MMMM", mail: postMMMMMail() });
   }
-  // 3. pre-MMM — 8 dagen vóór de eerste-dinsdag-MMM, ochtend-slot
-  const mmm = preMMMTarget(p);
-  if (mmm && slotAllows("morning")) {
-    due.push({ name: "pre-MMM", mail: preMMMMail(mmm) });
+  // 3a. pre-MMM (week) — 7 dagen vóór de eerste-dinsdag-MMM, ochtend-slot
+  const mmmWeek = mmmDaysAway(p, 7);
+  if (mmmWeek && slotAllows("morning")) {
+    due.push({ name: "pre-MMM-week", mail: preMMMWeekMail(mmmWeek) });
+  }
+  // 3b. pre-MMM (dag) — 1 dag vóór de eerste-dinsdag-MMM, ochtend-slot
+  const mmmDay = mmmDaysAway(p, 1);
+  if (mmmDay && slotAllows("morning")) {
+    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay) });
   }
 
   const results: { name: string; to: string[]; ok: boolean; error?: string }[] = [];
