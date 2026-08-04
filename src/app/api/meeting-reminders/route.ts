@@ -113,13 +113,64 @@ function fmtDate(y: number, m: number, d: number): string {
 // ---- Mailinhoud (Engels) --------------------------------------------------
 type Mail = { to: string[]; subject: string; text: string; html: string };
 
+// Merk-kleuren — accent is makkelijk te wijzigen (Mediterrane groen).
+const C_ACCENT = "#2f7a57";
+const C_INK = "#1f1d1a";
+const C_BODY = "#4a4640";
+const C_MUTED = "#9a948c";
+const C_LINE = "#e7e2da";
+const C_PAPER = "#f4f2ee";
+const C_CARD = "#ffffff";
+const BTN_LABEL = "Open your tasks in Notion";
+const EMAIL_FOOTER =
+  "You're receiving this because you're part of the Mima management team. " +
+  "It's an automated reminder tied to the meeting schedule.";
+
 function tasksLink(): string {
   return TASKS_DB_URL ? `\n\nYour tasks: ${TASKS_DB_URL}` : "";
 }
-function tasksLinkHtml(): string {
-  return TASKS_DB_URL
-    ? `<p><a href="${TASKS_DB_URL}">Open your tasks in Notion</a></p>`
-    : "";
+
+// Gedeelde, e-mailclient-vriendelijke opmaak: inline styles, table-layout,
+// bulletproof button. Alle vier de reminders gebruiken dezelfde kaart.
+function renderEmail(opts: {
+  eyebrow: string;
+  heading: string;
+  paragraphs: string[];
+  buttonLabel?: string;
+  buttonUrl?: string;
+}): string {
+  const paras = opts.paragraphs
+    .map((p) => `<p style="margin:14px 0 0 0;">${p}</p>`)
+    .join("");
+  const button =
+    opts.buttonUrl && opts.buttonLabel
+      ? `<table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
+        `<td style="border-radius:8px;background:${C_ACCENT};">` +
+        `<a href="${opts.buttonUrl}" style="display:inline-block;padding:12px 22px;` +
+        `font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;` +
+        `color:#ffffff;text-decoration:none;border-radius:8px;">${opts.buttonLabel} &rarr;</a>` +
+        `</td></tr></table>`
+      : "";
+  return (
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C_PAPER};padding:28px 12px;">` +
+    `<tr><td align="center">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:${C_CARD};border:1px solid ${C_LINE};border-radius:14px;">` +
+    `<tr><td style="padding:26px 36px 0 36px;">` +
+    `<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;letter-spacing:1px;color:${C_ACCENT};font-weight:700;">mima</div>` +
+    `<div style="height:1px;background:${C_LINE};margin:18px 0 0 0;"></div>` +
+    `</td></tr>` +
+    `<tr><td style="padding:22px 36px 0 36px;">` +
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:${C_ACCENT};font-weight:700;">${opts.eyebrow}</div>` +
+    `<h1 style="font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.3;color:${C_INK};margin:10px 0 0 0;font-weight:700;">${opts.heading}</h1>` +
+    `</td></tr>` +
+    `<tr><td style="padding:2px 36px 0 36px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${C_BODY};">${paras}</td></tr>` +
+    `<tr><td style="padding:24px 36px 4px 36px;">${button}</td></tr>` +
+    `<tr><td style="padding:26px 36px 28px 36px;">` +
+    `<div style="height:1px;background:${C_LINE};margin-bottom:16px;"></div>` +
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C_MUTED};">${EMAIL_FOOTER}</div>` +
+    `</td></tr>` +
+    `</table></td></tr></table>`
+  );
 }
 
 function preMMMMMail(): Mail {
@@ -132,14 +183,18 @@ function preMMMMMail(): Mail {
     "up-to-date list." +
     tasksLink() +
     "\n\nThanks!";
-  const html =
-    "<p>Hi team,</p>" +
-    "<p>The weekly meeting (<strong>MMMM</strong>) is on Monday morning. Please take a few " +
-    "minutes to go through your Mima to-do's in Notion: tick off or dismiss the ones that " +
-    "are already done, and update the status of the rest. That way we start Monday with a " +
-    "clean, up-to-date list.</p>" +
-    tasksLinkHtml() +
-    "<p>Thanks!</p>";
+  const html = renderEmail({
+    eyebrow: "Weekly meeting &middot; MMMM",
+    heading: "Update your to-do&rsquo;s before Monday",
+    paragraphs: [
+      "The weekly meeting (<strong>MMMM</strong>) is on Monday morning. Please take a few " +
+        "minutes to go through your Mima to-do&rsquo;s in Notion: tick off or dismiss the ones " +
+        "that are already done, and update the status of the rest.",
+      "That way we start Monday with a clean, up-to-date list.",
+    ],
+    buttonLabel: BTN_LABEL,
+    buttonUrl: TASKS_DB_URL,
+  });
   return { to: TEAM, subject, text, html };
 }
 
@@ -153,14 +208,18 @@ function postMMMMMail(): Mail {
     "they're confirmed." +
     tasksLink() +
     "\n\nThanks!";
-  const html =
-    "<p>Hi team,</p>" +
-    "<p>Monday's weekly meeting (<strong>MMMM</strong>) has been processed into Notion. " +
-    "New to-do's and decisions are in as <strong>\"Drafts for review\"</strong>. Please " +
-    "open your tasks, check the items assigned to you, and adjust owner, domain, priority " +
-    "or deadline where needed — then they're confirmed.</p>" +
-    tasksLinkHtml() +
-    "<p>Thanks!</p>";
+  const html = renderEmail({
+    eyebrow: "Weekly meeting &middot; MMMM",
+    heading: "Review your &ldquo;Drafts for review&rdquo;",
+    paragraphs: [
+      "Monday&rsquo;s weekly meeting (<strong>MMMM</strong>) has been processed into Notion. " +
+        "New to-do&rsquo;s and decisions are in as <strong>&ldquo;Drafts for review&rdquo;</strong>.",
+      "Please open your tasks, check the items assigned to you, and adjust owner, domain, " +
+        "priority or deadline where needed &mdash; then they&rsquo;re confirmed.",
+    ],
+    buttonLabel: BTN_LABEL,
+    buttonUrl: TASKS_DB_URL,
+  });
   return { to: DRAFTS_REVIEW_RECIPIENTS, subject, text, html };
 }
 
@@ -174,13 +233,18 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
     "updates ready so we can make good tactical decisions." +
     tasksLink() +
     "\n\nThanks!";
-  const html =
-    "<p>Hi team,</p>" +
-    `<p>The monthly tactical meeting (<strong>MMM</strong>) is one week from today, on ` +
-    `<strong>${when}</strong> at 09:00. Time to start preparing: please update your numbers ` +
-    "and data and get your domain updates ready so we can make good tactical decisions.</p>" +
-    tasksLinkHtml() +
-    "<p>Thanks!</p>";
+  const html = renderEmail({
+    eyebrow: "Monthly meeting &middot; MMM",
+    heading: "Monthly meeting in a week",
+    paragraphs: [
+      `The monthly tactical meeting (<strong>MMM</strong>) is one week from today, on ` +
+        `<strong>${when}</strong> at 09:00.`,
+      "Time to start preparing: please update your numbers and data and get your domain " +
+        "updates ready so we can make good tactical decisions.",
+    ],
+    buttonLabel: BTN_LABEL,
+    buttonUrl: TASKS_DB_URL,
+  });
   return { to: TEAM, subject, text, html };
 }
 
@@ -194,13 +258,18 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
     "ready, so we can dive straight in." +
     tasksLink() +
     "\n\nThanks!";
-  const html =
-    "<p>Hi team,</p>" +
-    `<p>Reminder: the monthly tactical meeting (<strong>MMM</strong>) is <strong>tomorrow</strong>, ` +
-    `${when} at 09:00. Please make sure your numbers and data are up to date and your domain ` +
-    "updates are ready, so we can dive straight in.</p>" +
-    tasksLinkHtml() +
-    "<p>Thanks!</p>";
+  const html = renderEmail({
+    eyebrow: "Monthly meeting &middot; MMM",
+    heading: "Monthly meeting tomorrow",
+    paragraphs: [
+      `Reminder: the monthly tactical meeting (<strong>MMM</strong>) is <strong>tomorrow</strong>, ` +
+        `${when} at 09:00.`,
+      "Please make sure your numbers and data are up to date and your domain updates are " +
+        "ready, so we can dive straight in.",
+    ],
+    buttonLabel: BTN_LABEL,
+    buttonUrl: TASKS_DB_URL,
+  });
   return { to: TEAM, subject, text, html };
 }
 
