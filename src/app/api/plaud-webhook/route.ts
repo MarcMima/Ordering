@@ -10,6 +10,7 @@ import {
   amsterdamPeriodWindow,
   buildSystemPrompt,
 } from "./meetingTypes";
+import { finalizeMeetingRecord } from "./meetingRecord";
 
 // Plaud-meeting -> Notion-taken webhook.
 // Ondersteunt drie meeting-types (MMMM/MMM/QMM), onderscheiden op de opnametitel
@@ -501,7 +502,24 @@ export async function POST(req: Request) {
     // 7. TAKEN AANMAKEN (relatie + Horizon per type, incl. dedup laag 2)
     const created = await createTasks(notion, tasks, type, meetingPageId);
 
-    // 8. AFRONDEN (succes)
+    // 8. MEETING-RECORD VERRIJKEN (best-effort, mag taak-aanmaak nooit breken):
+    // titel met periode-nummer, Status -> Completed, Present -> aanwezigen.
+    let meetingRecord: { renamed: string | null; completed: boolean; present: string[] } | null =
+      null;
+    try {
+      meetingRecord = await finalizeMeetingRecord(
+        notion,
+        type,
+        meetingPageId,
+        summary,
+        PEOPLE,
+        meetingDate
+      );
+    } catch (e: any) {
+      console.error(`[plaud-webhook] finalizeMeetingRecord failed: ${e?.message ?? e}`);
+    }
+
+    // 9. AFRONDEN (succes)
     await updateSyncLog(notion, syncLogId, {
       status: "Done",
       tasksCreated: created,
@@ -509,7 +527,14 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(
-      { ok: true, type: type.key, created, extracted: tasks.length, meeting: meetingPageId },
+      {
+        ok: true,
+        type: type.key,
+        created,
+        extracted: tasks.length,
+        meeting: meetingPageId,
+        meetingRecord,
+      },
       { status: 200 }
     );
   } catch (err: any) {
