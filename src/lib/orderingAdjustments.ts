@@ -834,8 +834,8 @@ export function applyMinOrderBaseFloors(params: {
 }
 
 const MINT_PREP_NAME = "mint";
-/** Raw mint per finished Mint GN 1/6 (prep_item_ingredients). */
-const MINT_RAW_G_PER_PREP_UNIT = 500;
+/** Raw mint per finished Mint GN 1/6 (prep_item_ingredients): a full 1/6 GN holds 40 g. */
+const MINT_RAW_G_PER_PREP_UNIT = 40;
 
 const BAKING_POWDER_RAW_NAME = "baking powder";
 const BAKING_POWDER_ORDER_THRESHOLD_G = 500;
