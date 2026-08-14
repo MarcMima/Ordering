@@ -882,8 +882,9 @@ export function applyFlourOrderGate(params: {
     delete out[flourId];
     return out;
   }
-  // Below the reorder point: order the shortfall; pack rounding turns this into one 10 kg case.
-  out[flourId] = Math.max(out[flourId] ?? 0, FLOUR_REORDER_BELOW_G - stock);
+  // Below the reorder point: order exactly the shortfall (overriding cover-window
+  // or par amounts); pack rounding turns this into one 10 kg case.
+  out[flourId] = FLOUR_REORDER_BELOW_G - stock;
   return out;
 }
 
