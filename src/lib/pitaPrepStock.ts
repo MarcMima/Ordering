@@ -116,7 +116,11 @@ export function calcRegularPitaZaatarToMake(params: {
   return Math.min(totalRaw, finishedShortfall);
 }
 
-/** Reduce each pita type's order need by that type's finished + frozen stock only. */
+/**
+ * Reduce each pita type's order need by that type's **finished prep** boxes.
+ * Frozen raw stock is already subtracted in suggestOrderBaseQuantities
+ * (daily_stock_counts); crediting it here again halves the advice.
+ */
 export function applyCombinedPitaStockCredit(params: {
   baseSuggested: Record<string, number>;
   rawIngredients: { id: string; name?: string | null }[];
@@ -133,9 +137,7 @@ export function applyCombinedPitaStockCredit(params: {
     const regularNeed = out[regularRawId] ?? 0;
     if (regularNeed > 0) {
       const poolPieces =
-        (pitaPrepBoxesFromStockCount(params.regularPrepBoxes) +
-          pitaPrepBoxesFromStockCount(params.regularRawBoxes)) *
-        PITA_PIECES_PER_BOX;
+        pitaPrepBoxesFromStockCount(params.regularPrepBoxes) * PITA_PIECES_PER_BOX;
       const remaining = Math.max(0, regularNeed - poolPieces);
       if (remaining <= 0) delete out[regularRawId];
       else out[regularRawId] = remaining;
@@ -146,9 +148,7 @@ export function applyCombinedPitaStockCredit(params: {
     const wholeNeed = out[wholeRawId] ?? 0;
     if (wholeNeed > 0) {
       const poolPieces =
-        (pitaPrepBoxesFromStockCount(params.wholewheatPrepBoxes) +
-          pitaPrepBoxesFromStockCount(params.wholewheatRawBoxes)) *
-        PITA_PIECES_PER_BOX;
+        pitaPrepBoxesFromStockCount(params.wholewheatPrepBoxes) * PITA_PIECES_PER_BOX;
       const remaining = Math.max(0, wholeNeed - poolPieces);
       if (remaining <= 0) delete out[wholeRawId];
       else out[wholeRawId] = remaining;

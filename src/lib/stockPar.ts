@@ -11,8 +11,8 @@ export type StockParRule =
  * Par-managed items order **only** up to this level — cover-window bulk is not added on top.
  */
 export const MIN_STOCK_PAR_BY_RAW_NAME: Record<string, StockParRule> = {
-  /** Max 11 kg on hand (10 kg case + 1 kg buffer). */
-  "all purpose flour": { kind: "base", minAmount: 11000 },
+  /** Reorder point: only order when stock dips below 2 kg (then one 10 kg case). */
+  "all purpose flour": { kind: "base", minAmount: 2000 },
   /** 1 can = 1 kg; reorder below 0.5 can (500 g). */
   "baking powder": { kind: "base", minAmount: 500 },
   "baking soda": { kind: "packs", minPacks: 1 },
@@ -30,16 +30,15 @@ export const MIN_STOCK_PAR_BY_RAW_NAME: Record<string, StockParRule> = {
   "sugar white": { kind: "packs", minPacks: 0.5, orderPacks: 1 },
   /** Below 0.5 × 5 L bottle → order 1 bottle. */
   "olive oil": { kind: "packs", minPacks: 0.5, orderPacks: 1 },
-  /** 1 case = 6 × 1 kg buckets. */
-  "greek yoghurt 10%": { kind: "packs", minPacks: 1 },
+  /** Order pack = 1 kg bucket (Bidfood EM); keep 1 case = 6 buckets on hand. */
+  "greek yoghurt 10%": { kind: "packs", minPacks: 6 },
   "vanilla extract": { kind: "packs", minPacks: 1 },
-  "whole wheat pita bread 15 cm": { kind: "packs", minPacks: 1, orderPacks: 1 },
   "garbage bags blue 145l (roll 20)": { kind: "packs", minPacks: 1 },
   "soof mint": { kind: "packs", minPacks: 1 },
   "soof cardamom": { kind: "packs", minPacks: 1 },
   /** Below 1 tray (12 bottles) → order 1 tray. */
-  "charlie's orange": { kind: "packs", minPacks: 1, orderPacks: 1 },
-  "charlie's mandarin": { kind: "packs", minPacks: 1, orderPacks: 1 },
+  "charlie's orange mandarin": { kind: "packs", minPacks: 1, orderPacks: 1 },
+  "charlie's grapefruit": { kind: "packs", minPacks: 1, orderPacks: 1 },
   mint: { kind: "packs", minPacks: 1 },
   /** Reorder only below 0.2 box (100 sticks/box). */
   "honey sticks": { kind: "packs", minPacks: 0.2 },

@@ -71,7 +71,6 @@ import { computeRawCoveredByFinishedPrep, computePickledPrepRawCredit } from "@/
 import { computeDefrostedFlatbreadRawCredit } from "@/lib/flatbreadPrepStock";
 import {
   applyCombinedPitaStockCredit,
-  applyWholewheatPitaMinBox,
   calcRegularPitaZaatarToMake,
   extractPitaStockCounts,
   isRegularPitaPrepName,
@@ -351,7 +350,10 @@ function buildOrderLinesFromSuggestion(
     if (!ing) continue;
     const allPacks = packSizesByIngredient[rawId] ?? [];
     const packs = packsForOrder(allPacks);
-    const best = getBestPackSize(packs);
+    // Same pack picker as the quantity math (page suggestion pipeline) — the
+    // price-based getBestPackSize can pick a different pack row than the one
+    // the suggested quantity was computed against.
+    const best = getOrderPackDeterministic(packs) ?? getBestPackSize(packs);
     const kind = orderKindByRaw[rawId] ?? "pack";
 
     if (isParsleyRawName(ing.name) && baseSuggestedByRaw?.[rawId] != null) {
@@ -1348,10 +1350,7 @@ export default function OrderingPage() {
         baseSuggested: applyProductionGatedBaseSuggested({
         rawIngredients,
         gatedRawIdsWithZeroNeed: productionGatedZeroRawIds,
-        baseSuggested: applyWholewheatPitaMinBox({
-          ...pitaStock,
-          rawIngredients,
-          baseSuggested: applyCombinedPitaStockCredit({
+        baseSuggested: applyCombinedPitaStockCredit({
           ...pitaStock,
           rawIngredients,
           baseSuggested: applyAubergineSabichMinContainers({
@@ -1428,7 +1427,6 @@ export default function OrderingPage() {
               }),
             }),
           }),
-        }),
         }),
         }),
         }),
@@ -1561,9 +1559,7 @@ export default function OrderingPage() {
           if (!passesMinOrderPackThreshold(ing?.name, stocktakePcs)) continue;
           const entry = packAndUnitByRawId[rid];
           const mult = ing?.order_pack_multiple ?? entry?.pack?.order_pack_multiple ?? 1;
-          finalSuggested[rid] = applyOrderPackMultipleRounding(stocktakePcs, mult, {
-            quantityIsColliUnits: true,
-          });
+          finalSuggested[rid] = applyOrderPackMultipleRounding(stocktakePcs, mult);
           kindByRaw[rid] = "stocktake";
         } else {
           finalSuggested[rid] = Math.max(1, Math.ceil(baseAmt));
@@ -2184,10 +2180,7 @@ export default function OrderingPage() {
     const rawIng = rawIngredients.find((r) => r.id === line.raw_ingredient_id);
     const mult = rawIng?.order_pack_multiple ?? pack?.order_pack_multiple ?? 1;
     if (line.quantity <= 0 || mult <= 1) return;
-    const kind = suggestionOrderKindByRaw[line.raw_ingredient_id] ?? "pack";
-    const snapped = applyOrderPackMultipleRounding(line.quantity, mult, {
-      quantityIsColliUnits: kind === "stocktake",
-    });
+    const snapped = applyOrderPackMultipleRounding(line.quantity, mult);
     if (snapped !== line.quantity) {
       updateLineQuantity(supplierId, orderLineKey(line), snapped);
     }
@@ -2602,7 +2595,8 @@ export default function OrderingPage() {
                 getOrderPackDeterministic(packsForOrder(linePacks)) ?? getBestPackSize(packsForOrder(linePacks));
               const lineRawIng = rawIngredients.find((r) => r.id === line.raw_ingredient_id);
               const coliMultiple = Math.max(1, lineRawIng?.order_pack_multiple ?? linePack?.order_pack_multiple ?? 1);
-              const qtyStep = kind === "stocktake" ? 1 : coliMultiple > 1 ? 1 : coliMultiple;
+              // Spinner moves in the colli step so arrow clicks land on valid quantities.
+              const qtyStep = coliMultiple;
               return (
                 <li
                   key={`${sup.id}-${lineKey}`}

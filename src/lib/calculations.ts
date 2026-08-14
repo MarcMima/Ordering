@@ -362,7 +362,10 @@ export function calcScaledNeedOverOrderWindow(params: {
   /** Local calendar date of the ordering day (evening slice uses this day's revenue). */
   eveningDate: string;
   eveningFraction?: number | null;
-  /** Missing date → full-capacity day (multiplier 1). Explicit null cents → closed day. */
+  /**
+   * Missing future date inherits the ordering day's target (forecast applies to
+   * the whole window); no target anywhere → full-capacity day (multiplier 1).
+   */
   revenueCentsByDate: Record<string, number | null | undefined>;
   fullCapacityRevenue: number | null;
   /** Extra full days of raw need (e.g. pickling lead time), scaled by evening date revenue. */
@@ -378,8 +381,13 @@ export function calcScaledNeedOverOrderWindow(params: {
   } = params;
   if (dailyNeedAtFullCapacity <= 0) return 0;
 
+  const eveningCents = revenueCentsByDate[eveningDate];
   const multForDate = (date: string) => {
-    const cents = revenueCentsByDate[date];
+    let cents = revenueCentsByDate[date];
+    // Weekend/future rows are usually not entered yet on the ordering day;
+    // planning them at 100% capacity systematically over-orders (e.g. Friday
+    // chicken). Inherit the ordering day's forecast instead.
+    if (cents === undefined) cents = eveningCents;
     return getRevenueMultiplier({
       todayRevenueCents: cents === undefined ? null : cents,
       fullCapacityRevenue,
@@ -534,20 +542,18 @@ export function roundUpToMultiple(n: number, m: number): number {
 }
 
 /**
- * Apply supplier colli / MOQ to an order quantity.
- * - `quantityIsColliUnits`: count is already trays/boxes/cases — only round up to whole units.
- * - Otherwise `orderPackMultiple` is items per colli (e.g. 12 bags per case): convert with ceil(count / m).
+ * Apply supplier colli / MOQ to an order quantity in packs.
+ * `orderPackMultiple` is a step: order in multiples of this many packs
+ * (raw_ingredients.order_pack_multiple, e.g. medi salad in pairs, tahini per 12
+ * buckets). The quantity stays expressed in supplier order units — never divide
+ * it into colli groups, or the dispatched amount shrinks by the colli factor.
  */
 export function applyOrderPackMultipleRounding(
   count: number,
-  orderPackMultiple: number,
-  opts?: { quantityIsColliUnits?: boolean }
+  orderPackMultiple: number
 ): number {
   if (!Number.isFinite(count) || count <= 0) return count;
-  const m = Math.max(1, Math.floor(Number(orderPackMultiple)));
-  if (m <= 1) return Math.max(1, Math.ceil(count));
-  if (opts?.quantityIsColliUnits) return Math.max(1, Math.ceil(count));
-  return Math.max(1, Math.ceil(count / m));
+  return roundUpToMultiple(count, orderPackMultiple);
 }
 
 /**

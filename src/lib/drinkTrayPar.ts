@@ -11,8 +11,8 @@ export const DRINK_TRAY_PAR_BY_RAW_NAME: Record<
   "coca cola": { trayPcs: 24, minTrays: 2 },
   "sparkling water": { trayPcs: 18, minTrays: 2 },
   "still water": { trayPcs: 18, minTrays: 2 },
-  "charlie's orange": { trayPcs: 12, minTrays: 1 },
-  "charlie's mandarin": { trayPcs: 12, minTrays: 1 },
+  "charlie's orange mandarin": { trayPcs: 12, minTrays: 1 },
+  "charlie's grapefruit": { trayPcs: 12, minTrays: 1 },
 };
 
 function onHandTrays(stockPcs: number, trayPcs: number): number {
