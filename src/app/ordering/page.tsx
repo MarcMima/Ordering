@@ -71,7 +71,6 @@ import { computeRawCoveredByFinishedPrep, computePickledPrepRawCredit } from "@/
 import { computeDefrostedFlatbreadRawCredit } from "@/lib/flatbreadPrepStock";
 import {
   applyCombinedPitaStockCredit,
-  applyWholewheatPitaMinBox,
   calcRegularPitaZaatarToMake,
   extractPitaStockCounts,
   isRegularPitaPrepName,
@@ -1351,10 +1350,7 @@ export default function OrderingPage() {
         baseSuggested: applyProductionGatedBaseSuggested({
         rawIngredients,
         gatedRawIdsWithZeroNeed: productionGatedZeroRawIds,
-        baseSuggested: applyWholewheatPitaMinBox({
-          ...pitaStock,
-          rawIngredients,
-          baseSuggested: applyCombinedPitaStockCredit({
+        baseSuggested: applyCombinedPitaStockCredit({
           ...pitaStock,
           rawIngredients,
           baseSuggested: applyAubergineSabichMinContainers({
@@ -1431,7 +1427,6 @@ export default function OrderingPage() {
               }),
             }),
           }),
-        }),
         }),
         }),
         }),

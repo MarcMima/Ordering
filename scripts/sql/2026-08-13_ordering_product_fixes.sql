@@ -11,6 +11,10 @@
 --   E. Mint: zakje 80 g i.p.v. 1 kg; volle 1/6 GN = 40 g (was 500 g)
 --   F. Pijp: komkommer → Komkommer brunoise 10mm 1kg kist 6 stuks (VG 161341 / EAN 8713507203882)
 --   G. Tomaat: bestel-pack = kist 6 × 1 kg (VG KST6ST) i.p.v. losse kilo-dozen met deel-veelvoud
+--   H. Bloem: bestelpunt 2 kg (alleen bestellen als voorraad onder 2 kg dipt)
+--   I. Kip: prep "Marinated chicken" → "Grilled chicken"; raw "Chicken" → "Marinated chicken"
+--   J. Wholewheat pita: par-regel weg — zelfde cover-window regel als regular
+--   K. Frozen flatbreads: bestelpunt 35 zakjes (12,25 kg); MOQ-afronding maakt er 65 zakjes van
 
 BEGIN;
 
@@ -224,6 +228,37 @@ WHERE lower(btrim(ri.name)) = 'tomato'
 UPDATE raw_ingredients
 SET order_pack_multiple = 1, updated_at = NOW()
 WHERE lower(btrim(name)) = 'tomato';
+
+-- ─── H. Bloem: bestelpunt 2 kg ───────────────────────────────────────────────────
+UPDATE raw_ingredients
+SET stock_par_kind = 'base', stock_par_min_amount = 2000, updated_at = NOW()
+WHERE lower(btrim(name)) = 'all purpose flour';
+
+-- ─── I. Kip: prep → Grilled chicken, raw → Marinated chicken ─────────────────────
+-- We kopen gemarineerde kip in; beide tellingen (raw dozen + gegrilde bakken)
+-- tellen na de code-update mee als voorraad.
+UPDATE prep_items
+SET name = 'Grilled chicken', updated_at = NOW()
+WHERE lower(btrim(name)) = 'marinated chicken';
+
+UPDATE raw_ingredients
+SET name = 'Marinated chicken', updated_at = NOW()
+WHERE lower(btrim(name)) = 'chicken';
+
+-- ─── J. Wholewheat pita: zelfde regel als regular (par weg) ──────────────────────
+UPDATE raw_ingredients
+SET stock_par_kind = NULL, stock_par_min_amount = NULL,
+    stock_par_min_packs = NULL, stock_par_order_packs = NULL,
+    updated_at = NOW()
+WHERE lower(btrim(name)) = 'whole wheat pita bread 15 cm';
+
+-- ─── K. Frozen flatbreads: bestelpunt 35 zakjes (à 5 pcs × 70 g = 350 g) ─────────
+-- Java levert dagelijks maar MOQ is 65 zakjes; zonder bestelpunt adviseert de app
+-- pas als morgen niet meer gedekt is. Onder 35 zakjes (raw + defrosted samen)
+-- verschijnt de bestelling; colli-afronding maakt er automatisch 65 zakjes van.
+UPDATE raw_ingredients
+SET stock_par_kind = 'base', stock_par_min_amount = 12250, updated_at = NOW()
+WHERE lower(btrim(name)) = 'frozen flatbreads';
 
 COMMIT;
 

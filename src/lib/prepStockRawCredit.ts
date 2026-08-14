@@ -24,6 +24,10 @@ export const PREP_STOCK_RAW_CREDIT_RAW_NAMES = new Set([
   "middle eastern pickles",
   "parsley",
   "green chili",
+  // Chicken is bought in marinated; counted Grilled chicken bags (10 kg raw each,
+  // via the recipe link) reduce the raw "Marinated chicken" order need.
+  "marinated chicken",
+  "chicken",
 ]);
 
 /**

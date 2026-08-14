@@ -163,6 +163,7 @@ export function normRawIngredientName(name: string | null | undefined): string {
 /** Prep bought ready-made (not produced from raw in-house) — cover-window math is enough. */
 const PREP_BATCH_SHORTFALL_EXCLUDED_PREP_NAMES = new Set([
   "marinated chicken",
+  "grilled chicken",
   "pickled onion",
   "pickled cabbage",
 ]);
@@ -846,8 +847,8 @@ const LEMON_JUICE_RAW_NAME = "lemon juice";
 const LEMON_JUICE_CASE_ML = 12000;
 
 const FLOUR_RAW_NAME = "all purpose flour";
-/** Never keep more than 11 kg on hand (one 10 kg case + small buffer). */
-const FLOUR_MAX_STOCK_G = 11000;
+/** Reorder point: only order (one 10 kg case) when counted stock dips below 2 kg. */
+const FLOUR_REORDER_BELOW_G = 2000;
 
 /** Order one can when stock falls below half a can; skip cover-window bulk orders. */
 export function applyBakingPowderOrderGate(params: {
@@ -867,7 +868,7 @@ export function applyBakingPowderOrderGate(params: {
   return out;
 }
 
-/** Cap to one case shortfall; par logic usually handles this — safety net only. */
+/** Flour is a pure reorder-point item: no line at all until stock < 2 kg, then one case. */
 export function applyFlourOrderGate(params: {
   rawIngredients: RawIngredient[];
   currentRawStock: Record<string, number>;
@@ -877,13 +878,12 @@ export function applyFlourOrderGate(params: {
   if (!flourId) return params.baseSuggested;
   const stock = params.currentRawStock[flourId] ?? 0;
   const out = { ...params.baseSuggested };
-  if (stock >= FLOUR_MAX_STOCK_G) {
+  if (stock >= FLOUR_REORDER_BELOW_G) {
     delete out[flourId];
     return out;
   }
-  const shortfall = FLOUR_MAX_STOCK_G - stock;
-  if (out[flourId] != null) out[flourId] = Math.min(out[flourId], shortfall);
-  else if (shortfall > 0) out[flourId] = shortfall;
+  // Below the reorder point: order the shortfall; pack rounding turns this into one 10 kg case.
+  out[flourId] = Math.max(out[flourId] ?? 0, FLOUR_REORDER_BELOW_G - stock);
   return out;
 }
 

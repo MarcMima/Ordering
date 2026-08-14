@@ -362,7 +362,10 @@ export function calcScaledNeedOverOrderWindow(params: {
   /** Local calendar date of the ordering day (evening slice uses this day's revenue). */
   eveningDate: string;
   eveningFraction?: number | null;
-  /** Missing date → full-capacity day (multiplier 1). Explicit null cents → closed day. */
+  /**
+   * Missing future date inherits the ordering day's target (forecast applies to
+   * the whole window); no target anywhere → full-capacity day (multiplier 1).
+   */
   revenueCentsByDate: Record<string, number | null | undefined>;
   fullCapacityRevenue: number | null;
   /** Extra full days of raw need (e.g. pickling lead time), scaled by evening date revenue. */
@@ -378,8 +381,13 @@ export function calcScaledNeedOverOrderWindow(params: {
   } = params;
   if (dailyNeedAtFullCapacity <= 0) return 0;
 
+  const eveningCents = revenueCentsByDate[eveningDate];
   const multForDate = (date: string) => {
-    const cents = revenueCentsByDate[date];
+    let cents = revenueCentsByDate[date];
+    // Weekend/future rows are usually not entered yet on the ordering day;
+    // planning them at 100% capacity systematically over-orders (e.g. Friday
+    // chicken). Inherit the ordering day's forecast instead.
+    if (cents === undefined) cents = eveningCents;
     return getRevenueMultiplier({
       todayRevenueCents: cents === undefined ? null : cents,
       fullCapacityRevenue,
