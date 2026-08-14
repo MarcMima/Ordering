@@ -65,7 +65,7 @@
 | **Flatbreads** | Java, MOQ 65 zakjes (à 5 st). Bestelpunt: onder 35 zakjes (raw + defrosted) → 65 zakjes. DB par 12 250 g. |
 | **Medi salad 3kg** | VG tub (`ST`), per 2. Alleen Pijp/Zuidas (vervangt losse komkommer+tomaat voor die prep). |
 | **Mint** | VG zakje 80 g; 1/6 GN = 40 g; par 1 zakje. |
-| **Komkommer Pijp** | Brunoise 10mm 1 kg (VG 161341), kist van 6 (`KST6ST`), telling per zak 1 kg. Raw heet bewust nog "Cucumber" (code koppelt op naam). |
+| **Komkommer Pijp** | Brunoise 10mm 1 kg (VG 161341), kist van 6 (`KST6ST`), telling per container van 1 kg. Raw heet bewust nog "Cucumber" (code koppelt op naam). |
 | **Vanille** | Dawn Aroma Mauritius fles 1 kg, Bidfood 381760 (`FL`). |
 | **Charlie's** | "Orange Mandarin" (165077) + "Grapefruit" (144466), tray 12, par 1 tray. |
 | **Aubergine puree** | Blik 2,83 kg (`BL`), per 6; par 5 660 g (±2 blikken). |
