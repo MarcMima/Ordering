@@ -60,6 +60,27 @@ type NutritionDiscrepancy = {
   use_declared_override: boolean;
 };
 
+type ChannelFoodCost = {
+  menu_item_id: string;
+  menu_item_name: string;
+  channel: string;
+  channel_display_name: string;
+  price_cents: number | null;
+  cost_incl_waste_cents: number | null;
+  food_cost_pct: number | null;
+};
+
+type BlendedFoodCost = {
+  location_id: string;
+  location_name: string;
+  menu_item_id: string;
+  menu_item_name: string;
+  blended_cost_cents: number | null;
+  blended_food_cost_pct: number | null;
+  covered_mix_pct: number | null;
+  channels_counted: number;
+};
+
 function formatPrice(cents: number) {
   return `€${(cents / 100).toFixed(2)}`;
 }
@@ -303,6 +324,113 @@ function ScraperStatus({ runs }: { runs: ScraperRun[] }) {
   );
 }
 
+
+function FoodCostByChannel({
+  channelRows,
+  blendedRows,
+  locationId,
+  onLocationChange,
+}: {
+  channelRows: ChannelFoodCost[];
+  blendedRows: BlendedFoodCost[];
+  locationId: string;
+  onLocationChange: (id: string) => void;
+}) {
+  const locations = Array.from(
+    new Map(blendedRows.map((r) => [r.location_id, r.location_name])).entries()
+  ).sort((a, b) => a[1].localeCompare(b[1]));
+
+  const channels = Array.from(
+    new Map(channelRows.map((r) => [r.channel, r.channel_display_name])).entries()
+  );
+
+  // per menu-item: de kanaalregels, plus de blend van de gekozen locatie
+  const items = Array.from(new Map(channelRows.map((r) => [r.menu_item_id, r.menu_item_name])).entries())
+    .sort((a, b) => a[1].localeCompare(b[1]));
+
+  const blendByItem = new Map(
+    blendedRows.filter((r) => r.location_id === locationId).map((r) => [r.menu_item_id, r])
+  );
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mt-6 card">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Food cost per kanaal</h3>
+          <p className="help-text">
+            Kostprijs incl. waste gedeeld door netto omzet (prijs excl. BTW minus commissie).
+            De blend weegt de kanalen met de werkelijke verkoopmix uit het datawarehouse.
+          </p>
+        </div>
+        {locations.length > 0 && (
+          <select
+            className="shrink-0 card rounded-lg px-2 py-1 text-xs"
+            value={locationId}
+            onChange={(e) => onLocationChange(e.target.value)}
+          >
+            {locations.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {blendedRows.length === 0 && (
+        <p className="mb-3 text-xs text-accent-orange">
+          Nog geen verkoopmix in channel_mix — de blend-kolom blijft leeg tot de nachtelijke
+          vulling vanuit het datawarehouse draait.
+        </p>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-ink-soft/70">
+              <th className="py-1 pr-3 font-medium">Menu-item</th>
+              {channels.map(([key, label]) => (
+                <th key={key} className="py-1 pr-3 font-medium">
+                  {label}
+                </th>
+              ))}
+              <th className="py-1 font-medium">Blended</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(([itemId, itemName]) => {
+              const blend = blendByItem.get(itemId);
+              return (
+                <tr key={itemId} className="border-t border-brand-green/10">
+                  <td className="py-1.5 pr-3">{itemName}</td>
+                  {channels.map(([key]) => {
+                    const row = channelRows.find((r) => r.menu_item_id === itemId && r.channel === key);
+                    return (
+                      <td key={key} className="py-1.5 pr-3 tabular-nums">
+                        {row?.food_cost_pct != null ? `${row.food_cost_pct.toFixed(1)}%` : "—"}
+                      </td>
+                    );
+                  })}
+                  <td className="py-1.5 tabular-nums font-semibold">
+                    {blend?.blended_food_cost_pct != null ? `${blend.blended_food_cost_pct.toFixed(1)}%` : "—"}
+                    {blend?.covered_mix_pct != null && blend.covered_mix_pct < 99.5 && (
+                      <span className="ml-1 font-normal text-accent-orange">
+                        ({blend.covered_mix_pct.toFixed(0)}% mix)
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPricesPage() {
   const [ingredients, setIngredients] = useState<RawIngredient[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -314,6 +442,9 @@ export default function AdminPricesPage() {
   const [foodCostIssues, setFoodCostIssues] = useState<QualityIssue[]>([]);
   const [nutritionIssues, setNutritionIssues] = useState<QualityIssue[]>([]);
   const [nutritionDiscrepancies, setNutritionDiscrepancies] = useState<NutritionDiscrepancy[]>([]);
+  const [channelFoodCosts, setChannelFoodCosts] = useState<ChannelFoodCost[]>([]);
+  const [blendedFoodCosts, setBlendedFoodCosts] = useState<BlendedFoodCost[]>([]);
+  const [blendLocationId, setBlendLocationId] = useState("");
 
   const loadPrices = useCallback(async () => {
     const supabase = createClient();
@@ -345,6 +476,21 @@ export default function AdminPricesPage() {
       setFoodCostIssues((foodIssues.data as QualityIssue[]) ?? []);
       setNutritionIssues((nutIssues.data as QualityIssue[]) ?? []);
       setNutritionDiscrepancies((diffs.data as NutritionDiscrepancy[]) ?? []);
+      const [chanCosts, blended] = await Promise.all([
+        supabase
+          .from("computed_menu_item_channel_food_cost")
+          .select("menu_item_id, menu_item_name, channel, channel_display_name, price_cents, cost_incl_waste_cents, food_cost_pct")
+          .not("price_cents", "is", null)
+          .order("menu_item_name"),
+        supabase
+          .from("computed_menu_item_blended_food_cost")
+          .select("location_id, location_name, menu_item_id, menu_item_name, blended_cost_cents, blended_food_cost_pct, covered_mix_pct, channels_counted")
+          .order("menu_item_name"),
+      ]);
+      setChannelFoodCosts((chanCosts.data as ChannelFoodCost[]) ?? []);
+      const blendedRows = (blended.data as BlendedFoodCost[]) ?? [];
+      setBlendedFoodCosts(blendedRows);
+      setBlendLocationId((prev) => prev || blendedRows[0]?.location_id || "");
       await loadPrices();
       setLoading(false);
     }
@@ -439,6 +585,13 @@ export default function AdminPricesPage() {
         </div>
 
         <ScraperStatus runs={scraperRuns} />
+
+        <FoodCostByChannel
+          channelRows={channelFoodCosts}
+          blendedRows={blendedFoodCosts}
+          locationId={blendLocationId}
+          onLocationChange={setBlendLocationId}
+        />
 
         <div className="mt-6 grid gap-4">
           <div className="card">
