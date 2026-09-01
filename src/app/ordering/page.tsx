@@ -2889,7 +2889,7 @@ export default function OrderingPage() {
                     return (
                       <div className="mt-1 flex w-full basis-full flex-wrap items-center gap-1.5">
                         <span className="text-xs text-ink-soft/70">
-                          Waarom anders? (optioneel)
+                          Why different? (optional)
                         </span>
                         {ADJUSTMENT_REASONS.map((opt) => {
                           const active = reason === opt.value;
@@ -2920,8 +2920,8 @@ export default function OrderingPage() {
                             onChange={(e) =>
                               updateLineAdjustment(sup.id, lineKey, { note: e.target.value })
                             }
-                            placeholder="Toelichting"
-                            aria-label={`Toelichting voor ${row.product}`}
+                            placeholder="Add a note"
+                            aria-label={`Note for ${row.product}`}
                             className="min-w-[10rem] flex-1 rounded border border-brand-green/15 bg-surface px-2 py-0.5 text-xs text-ink"
                           />
                         )}

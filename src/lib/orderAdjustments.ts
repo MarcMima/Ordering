@@ -1,16 +1,18 @@
 /**
- * Incidentele redenen waarom een besteld aantal afwijkt van de suggestie (migratie 208).
+ * Redenen waarom een besteld aantal afwijkt van de suggestie (migraties 208 + 210).
  *
- * Bewust géén optie "klopt structureel niet": of iets structureel is blijkt uit herhaling
- * en wordt door de patroondetectie bepaald, niet door een vinkje van de manager. Een
- * afwijking zónder reden is daarmee juist het structurele signaal.
+ * De eerste vier zijn incidenteel: ze verklaren de afwijking weg. "suggestion_off" is
+ * dat juist niet — dat is de manager die zegt dat het advies zelf niet klopt, en telt
+ * dus zwaarder mee in de patroondetectie. Een afwijking zónder reden blijft eveneens
+ * een structureel signaal.
  */
 export const ADJUSTMENT_REASONS = [
-  { value: "promo", label: "Promotie/actie" },
-  { value: "event", label: "Evenement/feest" },
-  { value: "weather", label: "Weer" },
-  { value: "delivery_issue", label: "Leverprobleem/kwaliteit" },
-  { value: "other", label: "Anders…" },
+  { value: "promo", label: "Promotion" },
+  { value: "event", label: "Catering/event" },
+  { value: "weather", label: "Weather" },
+  { value: "delivery_issue", label: "Delivery/quality issue" },
+  { value: "suggestion_off", label: "Suggestion seems off" },
+  { value: "other", label: "Other…" },
 ] as const;
 
 export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]["value"];

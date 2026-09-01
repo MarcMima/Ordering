@@ -157,7 +157,7 @@ function OrderingHistory() {
       setLoading(false);
     })().catch(() => {
       if (!alive) return;
-      setError("Kon de gegevens van deze dag niet laden.");
+      setError("Could not load data for this day.");
       setData(null);
       setLoading(false);
     });
@@ -208,7 +208,7 @@ function OrderingHistory() {
           : Array.from(ordered?.supplierIds ?? []);
         return {
           rawId,
-          name: snap?.name || data.rawNameById[rawId] || "(onbekend)",
+          name: snap?.name || data.rawNameById[rawId] || "(unknown)",
           supplierNames: supplierIds
             .map((id) => data.supplierNameById[id])
             .filter(Boolean)
@@ -223,13 +223,13 @@ function OrderingHistory() {
           note: ordered?.note ?? null,
         };
       })
-      .sort((a, b) => a.name.localeCompare(b.name, "nl", { sensitivity: "base" }));
+      .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
   }, [data]);
 
   const prepCountRows = useMemo(() => {
     if (!data) return [];
     return [...data.prepCounts].sort((a, b) =>
-      (a.prep_items?.name ?? "").localeCompare(b.prep_items?.name ?? "", "nl", {
+      (a.prep_items?.name ?? "").localeCompare(b.prep_items?.name ?? "", "en", {
         sensitivity: "base",
       })
     );
@@ -240,10 +240,10 @@ function OrderingHistory() {
     return [...data.stockCounts]
       .map((row) => ({
         ...row,
-        name: data.rawNameById[row.raw_ingredient_id] ?? "(onbekend)",
+        name: data.rawNameById[row.raw_ingredient_id] ?? "(unknown)",
         unit: data.rawUnitById[row.raw_ingredient_id] ?? "",
       }))
-      .sort((a, b) => a.name.localeCompare(b.name, "nl", { sensitivity: "base" }));
+      .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
   }, [data]);
 
   return (
@@ -252,20 +252,20 @@ function OrderingHistory() {
       <main className="mx-auto max-w-5xl px-3 py-4 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-xl font-semibold text-ink">Terugkijken per dag</h1>
+            <h1 className="text-xl font-semibold text-ink">History by day</h1>
             <p className="help-text">
-              {locationName ? `${locationName} — ` : ""}telling, suggestie van toen en de
-              verstuurde bestelling. Alleen lezen.
+              {locationName ? `${locationName} — ` : ""}stock count, the suggestion as it stood
+              that day, and the order that was actually sent. Read-only.
             </p>
           </div>
           <Link href="/ordering" className="btn-ghost text-sm">
-            Naar bestellen
+            Back to ordering
           </Link>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium text-ink" htmlFor="history-date">
-            Datum
+            Date
           </label>
           <input
             id="history-date"
@@ -277,53 +277,52 @@ function OrderingHistory() {
           />
           {isPast && (
             <span className="rounded-full bg-brand-sand/60 px-2 py-0.5 text-xs text-ink-soft">
-              Verleden — read-only
+              Past day — read-only
             </span>
           )}
         </div>
 
         {!locationId && (
-          <p className="mt-6 text-sm text-ink-soft">Kies eerst een locatie.</p>
+          <p className="mt-6 text-sm text-ink-soft">Select a location first.</p>
         )}
-        {locationId && loading && <p className="mt-6 text-sm text-ink-soft">Laden…</p>}
+        {locationId && loading && <p className="mt-6 text-sm text-ink-soft">Loading…</p>}
         {error && (
           <p className="mt-6 alert-error rounded-lg px-3 py-2 text-sm">
-            Kon de gegevens niet laden: {error}
+            Could not load data: {error}
           </p>
         )}
 
         {locationId && !loading && !error && data && (
           <>
             <section className="mt-6">
-              <h2 className="font-semibold text-ink">Gesuggereerd vs besteld</h2>
+              <h2 className="font-semibold text-ink">Suggested vs ordered</h2>
               {data.snapshotLines == null && (
                 <p className="help-text mt-1">
-                  Geen suggestie-snapshot voor deze dag. Snapshots worden vastgelegd vanaf het
-                  moment dat deze functie live ging; voor eerdere dagen is alleen de verstuurde
-                  bestelling bekend.
+                  No suggestion snapshot for this day. Snapshots are recorded from the moment
+                  this feature went live; for earlier days only the sent order is known.
                 </p>
               )}
               {data.snapshotCreatedAt && (
                 <p className="help-text mt-1">
-                  Snapshot vastgelegd op{" "}
-                  {new Date(data.snapshotCreatedAt).toLocaleString("nl-NL")}.
+                  Snapshot recorded at{" "}
+                  {new Date(data.snapshotCreatedAt).toLocaleString("en-GB")}.
                 </p>
               )}
               {comparison.length === 0 ? (
-                <p className="help-text mt-2">Niets gesuggereerd en niets besteld op deze dag.</p>
+                <p className="help-text mt-2">Nothing suggested and nothing ordered on this day.</p>
               ) : (
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[46rem] text-sm">
                     <thead>
                       <tr className="border-b border-brand-green/15 text-left text-xs text-ink-soft">
-                        <th className="py-1.5 pr-2 font-medium">Grondstof</th>
-                        <th className="py-1.5 pr-2 font-medium">Leverancier</th>
-                        <th className="py-1.5 pr-2 text-right font-medium">Gesuggereerd</th>
-                        <th className="py-1.5 pr-2 text-right font-medium">Besteld</th>
-                        <th className="py-1.5 pr-2 font-medium">Reden</th>
-                        <th className="py-1.5 pr-2 text-right font-medium">Voorraad</th>
-                        <th className="py-1.5 pr-2 text-right font-medium">Behoefte/dag</th>
-                        <th className="py-1.5 text-right font-medium">Dagen</th>
+                        <th className="py-1.5 pr-2 font-medium">Ingredient</th>
+                        <th className="py-1.5 pr-2 font-medium">Supplier</th>
+                        <th className="py-1.5 pr-2 text-right font-medium">Suggested</th>
+                        <th className="py-1.5 pr-2 text-right font-medium">Ordered</th>
+                        <th className="py-1.5 pr-2 font-medium">Reason</th>
+                        <th className="py-1.5 pr-2 text-right font-medium">Stock</th>
+                        <th className="py-1.5 pr-2 text-right font-medium">Need/day</th>
+                        <th className="py-1.5 text-right font-medium">Days</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -354,7 +353,7 @@ function OrderingHistory() {
                               {row.orderedQuantity ?? "—"}
                             </td>
                             <td className="py-1.5 pr-2 text-xs text-ink-soft">
-                              {row.reason ?? (deviates ? "geen reden opgegeven" : "—")}
+                              {row.reason ?? (deviates ? "no reason given" : "—")}
                               {row.note ? ` — ${row.note}` : ""}
                             </td>
                             <td className="py-1.5 pr-2 text-right tabular-nums text-ink-soft">
@@ -376,21 +375,21 @@ function OrderingHistory() {
             </section>
 
             <section className="mt-8">
-              <h2 className="font-semibold text-ink">Verstuurde bestellingen</h2>
+              <h2 className="font-semibold text-ink">Sent orders</h2>
               {data.orders.length === 0 ? (
-                <p className="help-text mt-2">Geen bestelling verstuurd op deze dag.</p>
+                <p className="help-text mt-2">No order sent on this day.</p>
               ) : (
                 <ul className="mt-2 space-y-1">
                   {data.orders.map((order) => (
                     <li key={order.id} className="text-sm text-ink-soft">
                       <span className="font-medium text-ink">
-                        {data.supplierNameById[order.supplier_id] ?? "(onbekende leverancier)"}
+                        {data.supplierNameById[order.supplier_id] ?? "(unknown supplier)"}
                       </span>{" "}
-                      — {(order.order_line_items ?? []).length} regel
+                      — {(order.order_line_items ?? []).length} line
                       {(order.order_line_items ?? []).length === 1 ? "" : "s"}
                       {order.status ? ` · ${order.status}` : ""}
                       {order.created_at
-                        ? ` · ${new Date(order.created_at).toLocaleTimeString("nl-NL", {
+                        ? ` · ${new Date(order.created_at).toLocaleTimeString("en-GB", {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}`
@@ -402,9 +401,9 @@ function OrderingHistory() {
             </section>
 
             <section className="mt-8">
-              <h2 className="font-semibold text-ink">Telling grondstoffen</h2>
+              <h2 className="font-semibold text-ink">Ingredient stock count</h2>
               {stockCountRows.length === 0 ? (
-                <p className="help-text mt-2">Geen telling geregistreerd op deze dag.</p>
+                <p className="help-text mt-2">No stock count recorded on this day.</p>
               ) : (
                 <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
                   {stockCountRows.map((row) => (
@@ -423,9 +422,9 @@ function OrderingHistory() {
             </section>
 
             <section className="mt-8 pb-10">
-              <h2 className="font-semibold text-ink">Telling prep</h2>
+              <h2 className="font-semibold text-ink">Prep count</h2>
               {prepCountRows.length === 0 ? (
-                <p className="help-text mt-2">Geen preptelling geregistreerd op deze dag.</p>
+                <p className="help-text mt-2">No prep count recorded on this day.</p>
               ) : (
                 <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">
                   {prepCountRows.map((row) => (
@@ -433,7 +432,7 @@ function OrderingHistory() {
                       key={row.prep_item_id}
                       className="flex justify-between gap-3 border-b border-brand-green/5 py-1 text-sm"
                     >
-                      <span className="text-ink">{row.prep_items?.name ?? "(onbekend)"}</span>
+                      <span className="text-ink">{row.prep_items?.name ?? "(unknown)"}</span>
                       <span className="tabular-nums text-ink-soft">
                         {formatDecimal2(row.quantity)}
                       </span>

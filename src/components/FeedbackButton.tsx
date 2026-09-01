@@ -6,9 +6,9 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 
 const FEEDBACK_TYPES = [
-  { value: "probleem", label: "Probleem" },
-  { value: "idee", label: "Idee" },
-  { value: "anders", label: "Anders" },
+  { value: "problem", label: "Problem" },
+  { value: "idea", label: "Idea" },
+  { value: "other", label: "Other" },
 ] as const;
 
 type FeedbackType = (typeof FEEDBACK_TYPES)[number]["value"];
@@ -21,7 +21,7 @@ export function FeedbackButton() {
   const pathname = usePathname();
   const { locationId } = useLocation();
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<FeedbackType>("probleem");
+  const [type, setType] = useState<FeedbackType>("problem");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -53,7 +53,7 @@ export function FeedbackButton() {
     if (insertError) {
       // Zichtbaar maken, niet inslikken: anders denkt de manager dat het verstuurd is.
       console.error("app_feedback insert failed:", insertError.message);
-      setError("Niet verzonden — controleer je verbinding en probeer het opnieuw.");
+      setError("Not sent — check your connection and try again.");
       return;
     }
     setMessage("");
@@ -73,7 +73,7 @@ export function FeedbackButton() {
         aria-expanded={open}
         aria-haspopup="dialog"
         className="btn-ghost shrink-0"
-        title="Feedback over de app"
+        title="Feedback about the app"
       >
         Feedback
       </button>
@@ -83,14 +83,14 @@ export function FeedbackButton() {
           role="status"
           className="absolute right-0 top-full z-40 mt-1 whitespace-nowrap rounded-md bg-brand-green px-2 py-1 text-xs font-medium text-white"
         >
-          Bedankt — verzonden.
+          Thanks — sent.
         </span>
       )}
 
       {open && (
         <div
           role="dialog"
-          aria-label="Feedback over de app"
+          aria-label="Feedback about the app"
           className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-brand-green/15 bg-surface p-3 shadow-lg"
         >
           <div className="flex flex-wrap gap-1.5">
@@ -119,8 +119,8 @@ export function FeedbackButton() {
             onChange={(e) => setMessage(e.target.value)}
             rows={4}
             autoFocus
-            placeholder="Wat wil je kwijt?"
-            aria-label="Bericht"
+            placeholder="What's on your mind?"
+            aria-label="Message"
             className="mt-2 w-full rounded-lg border border-brand-green/15 bg-background px-2 py-1.5 text-sm text-ink"
           />
 
@@ -130,7 +130,7 @@ export function FeedbackButton() {
 
           <div className="mt-2 flex items-center justify-end gap-2">
             <button type="button" onClick={() => setOpen(false)} className="btn-ghost text-xs">
-              Annuleren
+              Cancel
             </button>
             <button
               type="button"
@@ -138,7 +138,7 @@ export function FeedbackButton() {
               disabled={saving || message.trim() === ""}
               className="btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
             >
-              {saving ? "Versturen…" : "Versturen"}
+              {saving ? "Sending…" : "Send"}
             </button>
           </div>
         </div>
