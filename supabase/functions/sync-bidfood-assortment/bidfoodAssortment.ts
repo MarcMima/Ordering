@@ -532,6 +532,23 @@ function euro(cents: number): string {
   return `EUR ${(cents / 100).toFixed(2)}`;
 }
 
+// Every supplier exists once per location, so one article change shows up three
+// or four times. The mail collapses those into a single line with a count.
+function collapse<T>(rows: T[], keyOf: (r: T) => string): { row: T; count: number }[] {
+  const seen = new Map<string, { row: T; count: number }>();
+  for (const r of rows) {
+    const key = keyOf(r);
+    const hit = seen.get(key);
+    if (hit) hit.count++;
+    else seen.set(key, { row: r, count: 1 });
+  }
+  return Array.from(seen.values());
+}
+
+function times(count: number): string {
+  return count > 1 ? ` [${count} locations]` : "";
+}
+
 export function formatSyncReportEmail(result: SyncResult, fileName?: string): { subject: string; text: string } {
   const issues = result.lines.filter((l) => l.action !== "ok" && l.action !== "updated");
   const parts: string[] = [];
@@ -547,7 +564,7 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     fileName ? `File: ${fileName}` : "",
     "",
     `Rows in file: ${result.rowsInFile}`,
-    `Mappings checked: ${result.mappingsChecked}`,
+    `Mappings checked: ${result.mappingsChecked} (counted per location)`,
     `Updated: ${result.mappingsUpdated}`,
     `Auto-replaced: ${result.autoReplaced}`,
     `Inactive (needs manual fix): ${result.inactive}`,
@@ -557,48 +574,67 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     "",
   ];
 
+  const lineKey = (l: SyncLineResult) =>
+    `${l.ingredient}|${l.oldCode}|${l.oldUom}|${l.action}|${l.detail}`;
+
   if (result.autoReplaced > 0) {
     lines.push("Auto-replaced:");
-    for (const l of result.lines.filter((x) => x.action === "auto_replaced")) {
-      lines.push(`- ${l.ingredient} (${l.location}): ${l.detail}`);
+    for (const { row: l, count } of collapse(
+      result.lines.filter((x) => x.action === "auto_replaced"),
+      lineKey
+    )) {
+      lines.push(`- ${l.ingredient}: ${l.detail}${times(count)}`);
     }
     lines.push("");
   }
 
   if (result.inactive > 0) {
     lines.push("Inactive — ordering blocked until fixed:");
-    for (const l of result.lines.filter((x) => x.action === "inactive")) {
-      lines.push(`- ${l.ingredient} (${l.location}): ${l.oldCode} ${l.oldUom} — ${l.detail}`);
+    for (const { row: l, count } of collapse(
+      result.lines.filter((x) => x.action === "inactive"),
+      lineKey
+    )) {
+      lines.push(`- ${l.ingredient}: ${l.oldCode} ${l.oldUom} — ${l.detail}${times(count)}`);
     }
     lines.push("");
   }
 
   if (result.notInFile > 0) {
     lines.push("Not in weekly file:");
-    for (const l of result.lines.filter((x) => x.action === "not_in_file")) {
-      lines.push(`- ${l.ingredient} (${l.location}): ${l.oldCode} ${l.oldUom}`);
+    for (const { row: l, count } of collapse(
+      result.lines.filter((x) => x.action === "not_in_file"),
+      lineKey
+    )) {
+      lines.push(`- ${l.ingredient}: ${l.oldCode} ${l.oldUom}${times(count)}`);
     }
     lines.push("");
   }
 
   if (result.priceChanges.length > 0) {
+    const collapsed = collapse(
+      result.priceChanges,
+      (p) => `${p.ingredient}|${p.code}|${p.uom}|${p.oldCents}|${p.newCents}`
+    ).sort((a, b) => Math.abs(b.row.pct) - Math.abs(a.row.pct));
     lines.push(`Prices refreshed${result.dryRun ? " (would be)" : ""}:`);
-    const sorted = [...result.priceChanges].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
-    for (const p of sorted) {
+    for (const { row: p, count } of collapsed) {
       lines.push(
-        `- ${p.ingredient} (${p.location}): ${euro(p.oldCents)} -> ${euro(p.newCents)} (${
+        `- ${p.ingredient}: ${euro(p.oldCents)} -> ${euro(p.newCents)} (${
           p.pct > 0 ? "+" : ""
-        }${p.pct.toFixed(1)}%) — art ${p.code}${p.uom}`
+        }${p.pct.toFixed(1)}%) — art ${p.code}${p.uom}${times(count)}`
       );
     }
     lines.push("");
   }
 
   if (result.priceNotes.length > 0) {
+    const collapsed = collapse(
+      result.priceNotes,
+      (p) => `${p.ingredient}|${p.code}|${p.newCents}|${p.reason}`
+    );
     lines.push("Prices NOT applied automatically — check these:");
-    for (const p of result.priceNotes) {
+    for (const { row: p, count } of collapsed) {
       lines.push(
-        `- ${p.ingredient} (${p.location}): file says ${euro(p.newCents)} for art ${p.code} — ${p.reason}`
+        `- ${p.ingredient}: file says ${euro(p.newCents)} for art ${p.code} — ${p.reason}${times(count)}`
       );
     }
     lines.push("");
