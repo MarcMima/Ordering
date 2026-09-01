@@ -32,7 +32,7 @@ import {
 } from "@/lib/calculations";
 import { formatDecimal2, formatOrderAmount, formatPrepQuantity } from "@/lib/format";
 import { ADJUSTMENT_REASONS, type AdjustmentReason } from "@/lib/orderAdjustments";
-import { localCalendarDateString, shiftCalendarDateString } from "@/lib/date";
+import { localCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
   applyDailyNeedMultipliers,
@@ -657,9 +657,7 @@ export default function OrderingPage() {
   const [dispatchStatusBySupplier, setDispatchStatusBySupplier] = useState<Record<string, DispatchStatus>>({});
   const [suggestionRefreshToken, setSuggestionRefreshToken] = useState(0);
   /** Calendar date for stock counts and suggestions (today or a past day for review). */
-  const [viewDate, setViewDate] = useState(() => localCalendarDateString());
   const todayDateStr = useMemo(() => localCalendarDateString(), [suggestionRefreshToken]);
-  const isHistoricalView = viewDate < todayDateStr;
   const [suggestedOrder, setSuggestedOrder] = useState<Record<string, number>>({});
   /** Base-unit order need per raw (for parsley 4kg + 1kg split lines). */
   const [baseSuggestedByRaw, setBaseSuggestedByRaw] = useState<Record<string, number>>({});
@@ -831,7 +829,7 @@ export default function OrderingPage() {
   useEffect(() => {
     setSnapshotFrozen(false);
     setSnapshotSaveError(null);
-  }, [locationId, viewDate]);
+  }, [locationId, todayDateStr]);
 
   /**
    * Debounced upsert of the computed suggestion into order_suggestion_snapshots.
@@ -845,7 +843,7 @@ export default function OrderingPage() {
     // null = suggestion not computed yet; writing [] would blank a real snapshot.
     if (suggestionSnapshotLines == null) return;
     const loc = locationId;
-    const date = viewDate;
+    const date = todayDateStr;
     const lines = suggestionSnapshotLines;
     if (snapshotSaveTimerRef.current) clearTimeout(snapshotSaveTimerRef.current);
     let cancelled = false;
@@ -897,7 +895,7 @@ export default function OrderingPage() {
         snapshotSaveTimerRef.current = null;
       }
     };
-  }, [locationId, viewDate, suggestionSnapshotLines, snapshotFrozen]);
+  }, [locationId, todayDateStr, suggestionSnapshotLines, snapshotFrozen]);
 
   useEffect(() => {
     if (!locationId) {
@@ -1038,7 +1036,7 @@ export default function OrderingPage() {
       setSuggestionSnapshotLines(null);
       return;
     }
-    const d = viewDate;
+    const d = todayDateStr;
     const requestLocationId = locationId;
     const rawsForRequest = rawIngredients.filter((r) =>
       isRawVisibleOnStocktakeForLocation(r, locationId)
@@ -1847,10 +1845,9 @@ export default function OrderingPage() {
     return () => {
       alive = false;
     };
-  }, [locationId, locationOptions, rawIngredients, schedules, packSizes, suppliers, suggestionRefreshToken, viewDate, locationOrderingByRawId]);
+  }, [locationId, locationOptions, rawIngredients, schedules, packSizes, suppliers, suggestionRefreshToken, todayDateStr, locationOrderingByRawId]);
 
   useEffect(() => {
-    if (isHistoricalView) return;
     const triggerRefresh = () => setSuggestionRefreshToken((v) => v + 1);
     const onVisibility = () => {
       if (document.visibilityState === "visible") triggerRefresh();
@@ -1861,7 +1858,7 @@ export default function OrderingPage() {
       window.removeEventListener("focus", triggerRefresh);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [isHistoricalView]);
+  }, []);
 
   /** Refresh suggestion when returning to Ordering. */
   useEffect(() => {
@@ -2106,8 +2103,8 @@ export default function OrderingPage() {
   }, [locationId]);
 
   const orderingDayAnchor = useMemo(
-    () => new Date(`${viewDate}T12:00:00`),
-    [viewDate]
+    () => new Date(`${todayDateStr}T12:00:00`),
+    [todayDateStr]
   );
 
   const locationWeeklyStocktakeDow = useMemo(() => {
@@ -2282,8 +2279,8 @@ export default function OrderingPage() {
     setRecalculateFeedback(null);
     recalculateRequestedRef.current = true;
     setSuggestionRefreshing(true);
-    const today = localCalendarDateString();
-    setViewDate(today);
+    // todayDateStr hangt aan suggestionRefreshToken, die hieronder wordt opgehoogd —
+    // zo rolt de datum alsnog om als de app over middernacht open blijft staan.
     const supabase = createClient();
     void (async () => {
       try {
@@ -2949,7 +2946,7 @@ export default function OrderingPage() {
             <button
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, true)}
-              disabled={anyLoading || isHistoricalView}
+              disabled={anyLoading}
               className={`rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-50 ${
                 dryRunLoading
                   ? "border-brand-green/30 bg-brand-sand/60 text-ink"
@@ -2961,7 +2958,7 @@ export default function OrderingPage() {
             <button
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, false)}
-              disabled={anyLoading || isHistoricalView}
+              disabled={anyLoading}
               className="btn-primary rounded-lg px-3 py-2 text-xs font-medium disabled:opacity-50"
             >
               {sendLoading ? "Sending…" : "Send supplier"}
@@ -3040,9 +3037,14 @@ export default function OrderingPage() {
           <h1 className="section-title text-xl sm:text-2xl">
             Ordering
           </h1>
-          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80">
-            Dashboard
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/ordering/history" className="text-sm font-medium text-ink-soft/80">
+              History
+            </Link>
+            <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80">
+              Dashboard
+            </Link>
+          </div>
         </div>
 
         <DailyWorkflowStepper
@@ -3079,74 +3081,6 @@ export default function OrderingPage() {
               Each card lists items for that supplier from Admin (supplier ingredients). You see product, amount, and
               unit — adjust mappings in Admin if something is wrong. Confirm once to save orders in the app.
             </p>
-          </div>
-        )}
-
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-brand-green/25 bg-brand-sand/60 px-4 py-3 shadow-sm">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-green">
-              Review day (stock &amp; suggestions)
-            </p>
-            <p className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
-              {new Date(`${viewDate}T12:00:00`).toLocaleDateString("en-GB", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
-            <p className="mt-1 text-xs text-ink-soft">
-              Use Previous day to compare last week&apos;s counts and suggestions. Orders can only be sent on Today.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="date"
-              value={viewDate}
-              max={todayDateStr}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v && v <= todayDateStr) setViewDate(v);
-              }}
-              className="rounded-lg border border-brand-green/20 bg-surface px-2 py-1.5 text-xs font-medium text-ink"
-              aria-label="Jump to date"
-            />
-            <button
-              type="button"
-              onClick={() => setViewDate((d) => shiftCalendarDateString(d, -1))}
-              className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40"
-            >
-              Previous day
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewDate(todayDateStr)}
-              disabled={!isHistoricalView}
-              className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 disabled:opacity-40"
-            >
-              Today
-            </button>
-            <Link
-              href={`/ordering/history?date=${viewDate}`}
-              className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40"
-            >
-              Terugkijken
-            </Link>
-            <button
-              type="button"
-              onClick={() => setViewDate((d) => shiftCalendarDateString(d, 1))}
-              disabled={viewDate >= todayDateStr}
-              className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 disabled:opacity-40"
-            >
-              Next day
-            </button>
-          </div>
-        </div>
-
-        {isHistoricalView && (
-          <div className="mb-4 rounded-xl border border-accent-orange/30 bg-accent-orange/10 px-4 py-3 text-sm text-ink">
-            Viewing historical stock and order suggestions for {viewDate}. Sending orders is disabled — switch to Today to
-            place orders.
           </div>
         )}
 
