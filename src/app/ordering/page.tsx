@@ -26,6 +26,8 @@ import {
   applyOrderPackMultipleRounding,
   getRevenueMultiplier,
   coverWindowCalendarDates,
+  orderCoverWindowForRaw,
+  orderIntervalPlanningDays,
   type PrepItemIngredientRow,
 } from "@/lib/calculations";
 import { formatDecimal2, formatOrderAmount, formatPrepQuantity } from "@/lib/format";
@@ -579,6 +581,28 @@ function orderLineRowView(
   };
 }
 
+/**
+ * One line of the persisted order-suggestion snapshot: what the app advised for a raw
+ * ingredient on a given day, and the inputs the advice was computed from.
+ */
+type OrderSuggestionSnapshotLine = {
+  raw_ingredient_id: string;
+  name: string;
+  supplier_id: string | null;
+  /** Suggested amount in base units (same unit as recipes and stock). */
+  suggested_base_qty: number;
+  /** Suggested amount in supplier order units, after colli / MOQ rounding. */
+  suggested_packs: number;
+  /** Colli step the pack count was rounded to (1 = no rounding). */
+  pack_multiple: number;
+  /** Days of need the suggestion bridges, incl. pickling lead days. */
+  days_cover: number;
+  /** Stock on hand from the stocktake the suggestion was computed against. */
+  stock_at_count: number;
+  /** Baseline daily need at full capacity, in base units. */
+  daily_need: number;
+};
+
 export default function OrderingPage() {
   const pathname = usePathname();
   const { locationId, locationOptions, locations } = useLocation();
@@ -597,6 +621,14 @@ export default function OrderingPage() {
   /** True als een opgeslagen concept is hersteld bij het laden. */
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftSaveFailed, setDraftSaveFailed] = useState(false);
+  /** Lines of the current suggestion, persisted to order_suggestion_snapshots. */
+  const [suggestionSnapshotLines, setSuggestionSnapshotLines] = useState<
+    OrderSuggestionSnapshotLine[] | null
+  >(null);
+  const [snapshotSaveError, setSnapshotSaveError] = useState<string | null>(null);
+  /** True once an order exists for this location + date: the snapshot is frozen. */
+  const [snapshotFrozen, setSnapshotFrozen] = useState(false);
+  const snapshotSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** True while a debounced draft save is scheduled but has not fired yet. */
   const draftSavePendingRef = useRef(false);
@@ -782,6 +814,78 @@ export default function OrderingPage() {
     };
   }, []);
 
+  // The freeze flag and any save error belong to one location + date pair.
+  useEffect(() => {
+    setSnapshotFrozen(false);
+    setSnapshotSaveError(null);
+  }, [locationId, viewDate]);
+
+  /**
+   * Debounced upsert of the computed suggestion into order_suggestion_snapshots.
+   * Frozen once an order exists for this location + date: the snapshot has to keep
+   * showing what was advised at the moment of ordering, not what a later recompute
+   * (fresh counts, a new revenue target) would advise.
+   */
+  useEffect(() => {
+    if (!locationId) return;
+    if (snapshotFrozen) return;
+    // null = suggestion not computed yet; writing [] would blank a real snapshot.
+    if (suggestionSnapshotLines == null) return;
+    const loc = locationId;
+    const date = viewDate;
+    const lines = suggestionSnapshotLines;
+    if (snapshotSaveTimerRef.current) clearTimeout(snapshotSaveTimerRef.current);
+    let cancelled = false;
+    snapshotSaveTimerRef.current = setTimeout(() => {
+      snapshotSaveTimerRef.current = null;
+      void (async () => {
+        const supabase = createClient();
+        // Re-checked on every write, not once on load: an order can be placed while
+        // the page stays open.
+        const { count, error: ordersErr } = await supabase
+          .from("orders")
+          .select("id", { count: "exact", head: true })
+          .eq("location_id", loc)
+          .eq("order_date", date);
+        if (cancelled) return;
+        if (ordersErr) {
+          console.error("order_suggestion_snapshots freeze check failed:", ordersErr.message);
+          setSnapshotSaveError(
+            "Could not save the suggestion snapshot — check your connection or permissions."
+          );
+          return;
+        }
+        if ((count ?? 0) > 0) {
+          setSnapshotFrozen(true);
+          setSnapshotSaveError(null);
+          return;
+        }
+        // created_at is deliberately not written here: the row keeps the timestamp of
+        // the first capture for this location + date.
+        const { error } = await supabase
+          .from("order_suggestion_snapshots")
+          .upsert({ location_id: loc, date, lines }, { onConflict: "location_id,date" });
+        if (cancelled) return;
+        if (error) {
+          // Surface failures instead of failing silently (e.g. RLS denial).
+          console.error("order_suggestion_snapshots upsert failed:", error.message);
+          setSnapshotSaveError(
+            "Could not save the suggestion snapshot — check your connection or permissions."
+          );
+        } else {
+          setSnapshotSaveError(null);
+        }
+      })();
+    }, 1200);
+    return () => {
+      cancelled = true;
+      if (snapshotSaveTimerRef.current) {
+        clearTimeout(snapshotSaveTimerRef.current);
+        snapshotSaveTimerRef.current = null;
+      }
+    };
+  }, [locationId, viewDate, suggestionSnapshotLines, snapshotFrozen]);
+
   useEffect(() => {
     if (!locationId) {
       setSuppliers([]);
@@ -918,6 +1022,7 @@ export default function OrderingPage() {
       setSuggestionLoadError(null);
       setSuggestionInsight(null);
       setSupplementalPackSizes([]);
+      setSuggestionSnapshotLines(null);
       return;
     }
     const d = viewDate;
@@ -1634,7 +1739,42 @@ export default function OrderingPage() {
       }
       const dailyRawNeedSum = Object.values(dailyRawNeed).reduce((a, b) => a + b, 0);
       const baseOrderNeedSum = Object.values(baseSuggested).reduce((a, b) => a + b, 0);
+
+      // Snapshot of what the app advised today, with the inputs behind it. Built here
+      // (not from UI state) so it records the suggestion itself, before manual edits.
+      const snapshotRawIds = Array.from(
+        new Set([...Object.keys(baseSuggested), ...Object.keys(suggestedForUi)])
+      );
+      const snapshotLines: OrderSuggestionSnapshotLine[] = snapshotRawIds
+        .map((rawId) => {
+          const ing = rawIngredients.find((r) => r.id === rawId);
+          const { coverDates, picklingLeadDays } = orderCoverWindowForRaw({
+            rawId,
+            today: todayForCover,
+            intervalDays: orderIntervalPlanningDays(orderIntervalDaysByRawId[rawId]),
+            preferredSupplierId: preferredSupplierByRawId[rawId] ?? null,
+            schedulesBySupplierJs,
+            supplierNameById,
+            picklingLeadTimeRawIds,
+            picklingLeadTimeDays: PICKLING_LEAD_TIME_DAYS,
+          });
+          return {
+            raw_ingredient_id: rawId,
+            name: ing?.name ?? "",
+            supplier_id: preferredSupplierByRawId[rawId] ?? null,
+            suggested_base_qty: baseSuggested[rawId] ?? 0,
+            suggested_packs: suggestedForUi[rawId] ?? 0,
+            pack_multiple:
+              ing?.order_pack_multiple ?? orderPackByRawId[rawId]?.order_pack_multiple ?? 1,
+            days_cover: coverDates.length + picklingLeadDays,
+            stock_at_count: currentStock[rawId] ?? 0,
+            daily_need: dailyRawNeed[rawId] ?? 0,
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+
       if (!alive || requestLocationId !== locationId) return;
+      setSuggestionSnapshotLines(snapshotLines);
       setSupplementalPackSizes(supplementalPacks);
       setMediSaladNeedPrep(mediSaladNeedPrep);
       setBaseSuggestedByRaw(baseSuggested);
@@ -1685,6 +1825,7 @@ export default function OrderingPage() {
       setMediSaladNeedPrep(0);
       setSuggestionLoadError("Could not load order suggestion.");
       setSuggestionInsight(null);
+      setSuggestionSnapshotLines(null);
       recalculateRequestedRef.current = false;
       setRecalculateFeedback("Could not refresh from stocktake. Check your connection and try again.");
       setSuggestionRefreshing(false);
@@ -2919,6 +3060,11 @@ export default function OrderingPage() {
               {draftSaveFailed && (
                 <span className="text-xs text-accent-terracotta font-medium">
                   Could not save your draft — check your connection or permissions.
+                </span>
+              )}
+              {snapshotSaveError && (
+                <span className="text-xs text-accent-terracotta font-medium">
+                  {snapshotSaveError}
                 </span>
               )}
             </div>

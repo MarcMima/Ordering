@@ -450,6 +450,59 @@ function intervalPlanningDays(rawInterval: number | null | undefined): number {
 }
 
 /**
+ * Cover window for one raw ingredient: the calendar dates its suggested quantity must
+ * bridge, plus any pickling lead days added on top as extra full days.
+ *
+ * Shared by `suggestOrderBaseQuantities` (which scales the daily need across these
+ * dates) and by callers that need to report the coverage, so the reported number of
+ * days can never drift from the number the quantity was actually computed against.
+ */
+export function orderCoverWindowForRaw(params: {
+  rawId: string;
+  today: Date;
+  /** Planning interval in days, already normalised via the raw's order_interval_days. */
+  intervalDays: number;
+  preferredSupplierId: string | null;
+  schedulesBySupplierJs: Record<string, number[]>;
+  supplierNameById?: Record<string, string>;
+  picklingLeadTimeRawIds?: ReadonlySet<string>;
+  picklingLeadTimeDays?: number;
+}): { coverDates: string[]; picklingLeadDays: number } {
+  const {
+    rawId,
+    today,
+    intervalDays,
+    preferredSupplierId,
+    schedulesBySupplierJs,
+    supplierNameById,
+    picklingLeadTimeRawIds,
+    picklingLeadTimeDays = 0,
+  } = params;
+  const sched = preferredSupplierId ? (schedulesBySupplierJs[preferredSupplierId] ?? []) : [];
+  const supplierName = preferredSupplierId ? supplierNameById?.[preferredSupplierId] : undefined;
+  const dailyReorder = supplierName != null && isDailyReorderSupplierName(supplierName);
+  let coverDates =
+    sched.length > 0
+      ? coverWindowCalendarDates({ today, deliveryDaysJs: sched })
+      : fallbackCoverCalendarDates(today, Math.max(intervalDays, 1));
+  if (dailyReorder) {
+    coverDates = fallbackCoverCalendarDates(today, 1);
+  } else if (coverDates.length < intervalDays) {
+    coverDates = fallbackCoverCalendarDates(today, intervalDays);
+  }
+  const picklingLeadDays =
+    !dailyReorder && picklingLeadTimeRawIds?.has(rawId) && picklingLeadTimeDays > 0
+      ? picklingLeadTimeDays
+      : 0;
+  return { coverDates, picklingLeadDays };
+}
+
+/** Planning interval in days for a raw ingredient (order_interval_days, min 1). */
+export function orderIntervalPlanningDays(rawInterval: number | null | undefined): number {
+  return intervalPlanningDays(rawInterval);
+}
+
+/**
  * Suggested order quantity in **base units** per raw ingredient:
  * sum over cover days of (baseline daily need × that day's revenue ratio) + evening slice − stock.
  * Baseline daily need is at €4.500; each day's target scales linearly (€2.250 → half, €9.000 → double).
@@ -494,26 +547,16 @@ export function suggestOrderBaseQuantities(params: {
     if (dailyNeed <= 0) continue;
     const stock = currentRawStock[rawId] ?? 0;
     const intervalDays = intervalPlanningDays(orderIntervalDaysByRawId[rawId]);
-    const supplierId = preferredSupplierByRawId[rawId] ?? null;
-    const sched = supplierId ? (schedulesBySupplierJs[supplierId] ?? []) : [];
-    const supplierName = supplierId ? supplierNameById?.[supplierId] : undefined;
-    const dailyReorder =
-      supplierName != null && isDailyReorderSupplierName(supplierName);
-    let coverDates =
-      sched.length > 0
-        ? coverWindowCalendarDates({ today, deliveryDaysJs: sched })
-        : fallbackCoverCalendarDates(today, Math.max(intervalDays, 1));
-    if (dailyReorder) {
-      coverDates = fallbackCoverCalendarDates(today, 1);
-    } else if (coverDates.length < intervalDays) {
-      coverDates = fallbackCoverCalendarDates(today, intervalDays);
-    }
-    const picklingLead =
-      !dailyReorder &&
-      picklingLeadTimeRawIds?.has(rawId) &&
-      picklingLeadTimeDays > 0
-        ? picklingLeadTimeDays
-        : 0;
+    const { coverDates, picklingLeadDays: picklingLead } = orderCoverWindowForRaw({
+      rawId,
+      today,
+      intervalDays,
+      preferredSupplierId: preferredSupplierByRawId[rawId] ?? null,
+      schedulesBySupplierJs,
+      supplierNameById,
+      picklingLeadTimeRawIds,
+      picklingLeadTimeDays,
+    });
     const scaledNeed = calcScaledNeedOverOrderWindow({
       dailyNeedAtFullCapacity: dailyNeed,
       coverDates,
