@@ -103,6 +103,17 @@ type DispatchStatus = {
 
 type SuggestionOrderKind = "pack" | "stocktake" | "recipe";
 
+/** Incidentele redenen voor een afwijking; leeg = structureel signaal (zie migratie 208). */
+const ADJUSTMENT_REASONS = [
+  { value: "promo", label: "Promotie/actie" },
+  { value: "event", label: "Evenement/feest" },
+  { value: "weather", label: "Weer" },
+  { value: "delivery_issue", label: "Leverprobleem/kwaliteit" },
+  { value: "other", label: "Anders…" },
+] as const;
+
+type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]["value"];
+
 type OrderLine = {
   raw_ingredient_id: string;
   raw_ingredient_name: string;
@@ -112,6 +123,11 @@ type OrderLine = {
   size_unit: string;
   price_cents: number | null;
   quantity: number;
+  /** Wat het systeem adviseerde in base units, vastgelegd bij het opbouwen van de regel. */
+  suggested_base_qty?: number | null;
+  /** Optionele incidentele reden dat deze regel afwijkt van de suggestie. */
+  adjustment_reason?: AdjustmentReason | null;
+  adjustment_note?: string | null;
 };
 
 function normIngredientName(name: string | null | undefined): string {
@@ -350,6 +366,9 @@ function buildOrderLinesFromSuggestion(
     if (!supplierId) continue;
     const ing = rawIngredients.find((r) => r.id === rawId);
     if (!ing) continue;
+    // Vastgelegd op de regel (en dus ook in het bewaarde concept), zodat een later
+    // hersteld concept nog steeds toont wat het systeem oorspronkelijk adviseerde.
+    const suggestedBaseQty = baseSuggestedByRaw?.[rawId] ?? null;
     const allPacks = packSizesByIngredient[rawId] ?? [];
     const packs = packsForOrder(allPacks);
     // Same pack picker as the quantity math (page suggestion pipeline) — the
@@ -378,6 +397,7 @@ function buildOrderLinesFromSuggestion(
           size_unit: pack.size_unit,
           price_cents: pack.price_cents ?? null,
           quantity,
+          suggested_base_qty: suggestedBaseQty,
         };
         if (!next[supplierId]) next[supplierId] = [];
         next[supplierId].push(line);
@@ -401,6 +421,7 @@ function buildOrderLinesFromSuggestion(
         size_unit: best?.size_unit ?? ing.unit ?? "",
         price_cents: best?.price_cents ?? null,
         quantity: qty,
+        suggested_base_qty: suggestedBaseQty,
       };
       if (!next[supplierId]) next[supplierId] = [];
       next[supplierId].push(line);
@@ -419,6 +440,7 @@ function buildOrderLinesFromSuggestion(
         size_unit: best?.size_unit ?? ing.unit ?? "",
         price_cents: best?.price_cents ?? null,
         quantity: qty,
+        suggested_base_qty: suggestedBaseQty,
       };
       if (!next[supplierId]) next[supplierId] = [];
       next[supplierId].push(line);
@@ -434,6 +456,7 @@ function buildOrderLinesFromSuggestion(
       size_unit: best?.size_unit ?? "",
       price_cents: best?.price_cents ?? null,
       quantity: qty,
+      suggested_base_qty: suggestedBaseQty,
     };
     if (!next[supplierId]) next[supplierId] = [];
     next[supplierId].push(line);
@@ -2309,9 +2332,54 @@ export default function OrderingPage() {
       const list = [...(base[supplierId] ?? [])];
       const index = list.findIndex((l) => orderLineKey(l) === lineKey);
       if (index < 0) return base;
-      list[index] = { ...list[index], quantity: qty };
+      // Terug op de gesuggereerde hoeveelheid = geen afwijking meer, dus ook geen reden:
+      // anders zou een reden meegestuurd worden bij een regel die niet meer afwijkt.
+      const suggestedQty =
+        (autoOrderBySupplierRef.current[supplierId] ?? []).find(
+          (l) => orderLineKey(l) === lineKey
+        )?.quantity ?? 0;
+      const clearReason = qty === suggestedQty;
+      list[index] = {
+        ...list[index],
+        quantity: qty,
+        adjustment_reason: clearReason ? null : list[index].adjustment_reason ?? null,
+        adjustment_note: clearReason ? null : list[index].adjustment_note ?? null,
+      };
       return { ...base, [supplierId]: list };
     });
+  };
+
+  /**
+   * Zet (of wist) de incidentele reden op een orderregel. Nooit verplicht: leeg laten
+   * is een geldige — en voor de patroondetectie juist betekenisvolle — uitkomst.
+   */
+  const updateLineAdjustment = (
+    supplierId: string,
+    lineKey: string,
+    patch: { reason?: AdjustmentReason | null; note?: string | null }
+  ) => {
+    setManualOrderOverrides((prev) => {
+      const base = { ...(prev ?? autoOrderBySupplierRef.current) };
+      const list = [...(base[supplierId] ?? [])];
+      const index = list.findIndex((l) => orderLineKey(l) === lineKey);
+      if (index < 0) return base;
+      const current = list[index];
+      const reason = patch.reason !== undefined ? patch.reason : current.adjustment_reason ?? null;
+      const note = patch.note !== undefined ? patch.note : current.adjustment_note ?? null;
+      list[index] = {
+        ...current,
+        adjustment_reason: reason,
+        // Een vrije toelichting hoort bij "Anders…"; bij een andere of lege keuze vervalt hij.
+        adjustment_note: reason === "other" ? note : null,
+      };
+      return { ...base, [supplierId]: list };
+    });
+  };
+
+  /** Aantal dat de suggestie voorstelde voor deze regel (0 = handmatig toegevoegd). */
+  const suggestedQuantityForLine = (supplierId: string, lineKey: string): number => {
+    const suggestedLines = autoOrderBySupplier[supplierId] ?? [];
+    return suggestedLines.find((l) => orderLineKey(l) === lineKey)?.quantity ?? 0;
   };
 
   const snapLineQuantityToColi = (supplierId: string, line: OrderLine) => {
@@ -2420,6 +2488,13 @@ export default function OrderingPage() {
         raw_ingredient_id: line.raw_ingredient_id,
         pack_size_id: line.pack_size_id,
         quantity: line.quantity,
+        // Wat het systeem adviseerde op verstuurmoment, plus de eventuele reden dat de
+        // manager daarvan afweek. Valt terug op de actuele suggestie voor regels die
+        // uit een ouder concept komen (toen nog zonder dit veld).
+        suggested_base_qty:
+          line.suggested_base_qty ?? baseSuggestedByRaw[line.raw_ingredient_id] ?? null,
+        adjustment_reason: line.adjustment_reason ?? null,
+        adjustment_note: line.adjustment_note ?? null,
       });
       if (lineErr) throw lineErr;
     }
@@ -2815,6 +2890,54 @@ export default function OrderingPage() {
                       Remove
                     </button>
                   )}
+                  {!isPlanning && (() => {
+                    // Chips verschijnen pas als het aantal afwijkt van de suggestie, en
+                    // blokkeren niets: bestellen kan gewoon zonder een reden te kiezen.
+                    const suggestedQty = suggestedQuantityForLine(sup.id, lineKey);
+                    if (line.quantity === suggestedQty) return null;
+                    const reason = line.adjustment_reason ?? null;
+                    return (
+                      <div className="mt-1 flex w-full basis-full flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-ink-soft/70">
+                          Waarom anders? (optioneel)
+                        </span>
+                        {ADJUSTMENT_REASONS.map((opt) => {
+                          const active = reason === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() =>
+                                updateLineAdjustment(sup.id, lineKey, {
+                                  reason: active ? null : opt.value,
+                                })
+                              }
+                              className={
+                                active
+                                  ? "rounded-full border border-brand-green bg-brand-green/10 px-2 py-0.5 text-xs font-medium text-brand-green"
+                                  : "rounded-full border border-brand-green/20 bg-surface px-2 py-0.5 text-xs text-ink-soft hover:bg-brand-sand/40"
+                              }
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                        {reason === "other" && (
+                          <input
+                            type="text"
+                            value={line.adjustment_note ?? ""}
+                            onChange={(e) =>
+                              updateLineAdjustment(sup.id, lineKey, { note: e.target.value })
+                            }
+                            placeholder="Toelichting"
+                            aria-label={`Toelichting voor ${row.product}`}
+                            className="min-w-[10rem] flex-1 rounded border border-brand-green/15 bg-surface px-2 py-0.5 text-xs text-ink"
+                          />
+                        )}
+                      </div>
+                    );
+                  })()}
                 </li>
               );
             })}
