@@ -121,6 +121,8 @@ Deno.serve(async (req) => {
       inactive: result.inactive,
       not_in_file: result.notInFile,
       price_changes: result.priceChanges,
+      pack_changes: result.packChanges,
+      prices_added: result.pricesAdded,
       price_notes: result.priceNotes,
       errors: result.errors,
       report_email: !sendReport

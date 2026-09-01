@@ -4,8 +4,13 @@ import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 export type AssortmentRow = {
   artnum: string;
   uom: string;
+  uomDescription: string;
   description: string;
   contentDescription: string;
+  salesFactor: number;
+  standardUnit: string;
+  netWeightGrams: number;
+  depositCents: number;
   voorraadcode: string;
   voorraadDesc: string;
   netPriceCents: number;
@@ -45,7 +50,11 @@ export type PriceChange = {
   uom: string;
   oldCents: number;
   newCents: number;
+  // Percentage is the move in cost per gram, so a corrected pack size does not
+  // register as a price jump. Pack fields are set only when the pack changed.
   pct: number;
+  oldGrams?: number;
+  newGrams?: number;
 };
 
 export type PriceNote = {
@@ -54,6 +63,25 @@ export type PriceNote = {
   code: string;
   newCents: number;
   reason: string;
+};
+
+export type PackChange = {
+  ingredient: string;
+  location: string;
+  code: string;
+  oldGrams: number;
+  newGrams: number;
+  label: string;
+};
+
+export type PriceAdded = {
+  ingredient: string;
+  location: string;
+  code: string;
+  cents: number;
+  packGrams: number;
+  label: string;
+  depositCents: number;
 };
 
 export type SyncResult = {
@@ -67,12 +95,34 @@ export type SyncResult = {
   notInFile: number;
   priceChanges: PriceChange[];
   priceNotes: PriceNote[];
+  packChanges: PackChange[];
+  pricesAdded: PriceAdded[];
   lines: SyncLineResult[];
   errors: string[];
 };
 
-// A weekly price move larger than this is reported but NOT written automatically.
+// A move in cost PER GRAM larger than this is reported but NOT written
+// automatically. Judging per gram (not per ordered unit) means a corrected pack
+// size does not by itself look like a price explosion.
 const PRICE_JUMP_LIMIT_PCT = 50;
+
+// Pack sizes closer than this are treated as the same; Bidfood rounds.
+const PACK_TOLERANCE_PCT = 2;
+
+// A label like "uitlekgewicht 2,7 kg" means someone deliberately recorded the
+// drained weight, which is lower than the file's gross net weight. Never
+// overwrite those.
+function isDeliberatePackSize(label: string | null): boolean {
+  return /uitlek|drained|afgegoten|netto\s*gewicht/i.test(label ?? "");
+}
+
+function packLabel(row: AssortmentRow): string {
+  const parts = [row.uomDescription || row.uom];
+  if (row.salesFactor > 1) parts.push(`${row.salesFactor} x ${row.contentDescription}`);
+  else if (row.contentDescription) parts.push(row.contentDescription);
+  if (row.netWeightGrams > 0) parts.push(`(${(row.netWeightGrams / 1000).toFixed(2)} kg)`);
+  return parts.join(" ");
+}
 
 type LatestPrice = {
   price_cents: number;
@@ -88,6 +138,12 @@ function parsePrice(raw: unknown): number {
     .replace(",", ".");
   const n = parseFloat(s);
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+function parseNumber(raw: unknown): number {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0;
+  const n = parseFloat(String(raw ?? "").trim().replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function padArt(v: unknown): string {
@@ -132,8 +188,15 @@ export function parseBidfoodType03Xlsx(bytes: Uint8Array): AssortmentRow[] {
     rows.push({
       artnum,
       uom,
+      uomDescription: String(cols[2] ?? "").trim(),
       description: String(cols[4] ?? "").trim(),
       contentDescription: String(cols[5] ?? "").trim(),
+      salesFactor: parseNumber(cols[6]),
+      standardUnit: normUom(cols[7]),
+      // Column 76 "Netto Gewicht" is the net weight of the sales unit in kg —
+      // the authority on what one ordered unit actually contains.
+      netWeightGrams: Math.round(parseNumber(cols[76]) * 1000),
+      depositCents: Math.round(parseNumber(cols[78]) * 100),
       voorraadcode: String(cols[11] ?? "").trim(),
       voorraadDesc: String(cols[12] ?? "").trim(),
       netPriceCents: parsePrice(cols[14]),
@@ -200,6 +263,8 @@ export async function runBidfoodAssortmentSync(params: {
       notInFile: 0,
       priceChanges: [],
       priceNotes: [],
+      packChanges: [],
+      pricesAdded: [],
       lines: [],
       errors: ["No Bidfood supplier found in database."],
     };
@@ -219,9 +284,8 @@ export async function runBidfoodAssortmentSync(params: {
 
   const allMappings = (mappings as MappingRow[]) ?? [];
 
-  // Latest known price per (ingredient, supplier). Used as the baseline for the
-  // weekly price refresh: we only refresh the AMOUNT and inherit the pack size
-  // from the existing row, so cost-per-gram calculations stay correct.
+  // Latest known price per (ingredient, supplier). This is the baseline the
+  // weekly refresh compares against: cost per gram before versus after.
   const { data: priceRows } = await supabase
     .from("ingredient_prices")
     .select(
@@ -268,6 +332,8 @@ export async function runBidfoodAssortmentSync(params: {
   let notInFile = 0;
   const priceChanges: PriceChange[] = [];
   const priceNotes: PriceNote[] = [];
+  const packChanges: PackChange[] = [];
+  const pricesAdded: PriceAdded[] = [];
   const priceInserts: Record<string, unknown>[] = [];
   const today = new Date().toISOString().slice(0, 10);
   const fileLabel = fileName ?? today;
@@ -390,45 +456,125 @@ export async function runBidfoodAssortmentSync(params: {
     mappingsUpdated++;
 
     // ── Weekly price refresh ────────────────────────────────────────────────
-    // Bidfood's net price is per verkoopeenheid (VE). We only write it when the
-    // article + UOM are unchanged, so the pack size of the existing price row
-    // still describes what this price buys.
+    // Bidfood's net price is per verkoopeenheid (VE) and column "Netto Gewicht"
+    // says what that unit contains, so price and pack size come from the same
+    // row. Judgement is made on cost per gram, never on the price per unit.
     const newPriceCents = row.netPriceCents;
+    const filePackGrams = row.netWeightGrams;
+
     if (newPriceCents > 0) {
       const priceKey = `${m.raw_ingredient_id}|${m.supplier_id}`;
       const base = latestPrices.get(priceKey);
+
       if (!base) {
-        priceNotes.push({
-          ingredient: ing,
-          location: loc,
-          code: effectiveCode,
-          newCents: newPriceCents,
-          reason: "No price on file yet — pack size unknown, add the first price manually",
-        });
-      } else if (base.price_cents !== newPriceCents) {
-        const pct =
+        if (filePackGrams > 0) {
+          const label = packLabel(row);
+          priceInserts.push({
+            raw_ingredient_id: m.raw_ingredient_id,
+            supplier_id: m.supplier_id,
+            pack_size_grams: filePackGrams,
+            pack_size_label: label,
+            price_cents: newPriceCents,
+            price_includes_vat: false,
+            effective_date: today,
+            source: "bidfood_weekly_sync",
+            notes: `Bidfood assortiment ${fileLabel} | art ${effectiveCode}${effectiveUom} | first price from file${
+              row.depositCents > 0 ? `; deposit EUR ${(row.depositCents / 100).toFixed(2)} not included` : ""
+            }`,
+          });
+          pricesAdded.push({
+            ingredient: ing,
+            location: loc,
+            code: effectiveCode,
+            cents: newPriceCents,
+            packGrams: filePackGrams,
+            label,
+            depositCents: row.depositCents,
+          });
+          latestPrices.set(priceKey, {
+            price_cents: newPriceCents,
+            pack_size_grams: filePackGrams,
+            pack_size_label: label,
+            price_includes_vat: false,
+          });
+        } else {
+          priceNotes.push({
+            ingredient: ing,
+            location: loc,
+            code: effectiveCode,
+            newCents: newPriceCents,
+            reason: "No price on file yet and the file gives no net weight — add the first price manually",
+          });
+        }
+      } else {
+        const basePack = Number(base.pack_size_grams) || 0;
+        // Some rows store a COUNT in the grams column (e.g. 24 cans per tray).
+        // Recognise those by the sales factor and leave them alone.
+        const countBased =
+          basePack > 0 && basePack < 200 && Math.abs(basePack - row.salesFactor) < 0.01;
+        const packDiffPct =
+          basePack > 0 && filePackGrams > 0
+            ? (Math.abs(filePackGrams - basePack) / basePack) * 100
+            : 0;
+
+        let effectivePack = basePack;
+        let packCorrected = false;
+        if (!countBased && filePackGrams > 0 && packDiffPct > PACK_TOLERANCE_PCT) {
+          if (isDeliberatePackSize(base.pack_size_label)) {
+            priceNotes.push({
+              ingredient: ing,
+              location: loc,
+              code: effectiveCode,
+              newCents: newPriceCents,
+              reason: `File says this unit is ${(filePackGrams / 1000).toFixed(2)} kg, the price is kept on ${(
+                basePack / 1000
+              ).toFixed(2)} kg (${base.pack_size_label}) — left untouched on purpose`,
+            });
+          } else {
+            effectivePack = filePackGrams;
+            packCorrected = true;
+          }
+        }
+
+        const oldPerGram = basePack > 0 ? base.price_cents / basePack : 0;
+        const newPerGram = effectivePack > 0 ? newPriceCents / effectivePack : 0;
+        const pctPerGram =
+          oldPerGram > 0 ? ((newPerGram - oldPerGram) / oldPerGram) * 100 : 0;
+        // When the pack size itself was wrong, the jump in cost per gram is the
+        // correction, not a price move — judge the guard on the unit price then.
+        const pctUnit =
           base.price_cents > 0
             ? ((newPriceCents - base.price_cents) / base.price_cents) * 100
             : 0;
-        if (replacementApplied) {
+        const guardPct = packCorrected ? pctUnit : pctPerGram;
+        const nothingChanged = base.price_cents === newPriceCents && !packCorrected;
+
+        if (nothingChanged) {
+          // price and pack still match the file
+        } else if (replacementApplied) {
           priceNotes.push({
             ingredient: ing,
             location: loc,
             code: effectiveCode,
             newCents: newPriceCents,
-            reason: `Article was auto-replaced (${oldCode} → ${effectiveCode}); price not applied because the pack size may differ`,
+            reason: `Article was auto-replaced (${oldCode} → ${effectiveCode}); price not applied because the pack may differ`,
           });
-        } else if (Math.abs(pct) > PRICE_JUMP_LIMIT_PCT) {
+        } else if (oldPerGram > 0 && Math.abs(guardPct) > PRICE_JUMP_LIMIT_PCT) {
           priceNotes.push({
             ingredient: ing,
             location: loc,
             code: effectiveCode,
             newCents: newPriceCents,
-            reason: `Change of ${pct > 0 ? "+" : ""}${pct.toFixed(0)}% vs EUR ${(
-              base.price_cents / 100
-            ).toFixed(2)} — too large to apply automatically, check the pack size`,
+            reason: `Cost per kg moves ${pctPerGram > 0 ? "+" : ""}${pctPerGram.toFixed(
+              0
+            )}% (EUR ${(oldPerGram * 10).toFixed(2)} -> EUR ${(newPerGram * 10).toFixed(
+              2
+            )} per kg${packCorrected ? `, pack ${(basePack / 1000).toFixed(2)} -> ${(
+              effectivePack / 1000
+            ).toFixed(2)} kg` : ""}) — too large to apply automatically`,
           });
         } else {
+          const label = packCorrected ? packLabel(row) : base.pack_size_label;
           priceChanges.push({
             ingredient: ing,
             location: loc,
@@ -436,22 +582,43 @@ export async function runBidfoodAssortmentSync(params: {
             uom: effectiveUom,
             oldCents: base.price_cents,
             newCents: newPriceCents,
-            pct,
+            pct: pctPerGram,
+            oldGrams: packCorrected ? basePack : undefined,
+            newGrams: packCorrected ? effectivePack : undefined,
           });
+          if (packCorrected) {
+            packChanges.push({
+              ingredient: ing,
+              location: loc,
+              code: effectiveCode,
+              oldGrams: basePack,
+              newGrams: effectivePack,
+              label: label ?? "",
+            });
+          }
           priceInserts.push({
             raw_ingredient_id: m.raw_ingredient_id,
             supplier_id: m.supplier_id,
-            pack_size_grams: base.pack_size_grams,
-            pack_size_label: base.pack_size_label,
+            pack_size_grams: effectivePack,
+            pack_size_label: label,
             price_cents: newPriceCents,
             price_includes_vat: base.price_includes_vat,
             effective_date: today,
             source: "bidfood_weekly_sync",
             notes: `Bidfood assortiment ${fileLabel} | art ${effectiveCode}${effectiveUom} | was EUR ${(
               base.price_cents / 100
-            ).toFixed(2)}`,
+            ).toFixed(2)}${
+              packCorrected
+                ? ` on ${(basePack / 1000).toFixed(2)} kg, pack corrected from the file`
+                : ""
+            }`,
           });
-          latestPrices.set(priceKey, { ...base, price_cents: newPriceCents });
+          latestPrices.set(priceKey, {
+            price_cents: newPriceCents,
+            pack_size_grams: effectivePack,
+            pack_size_label: label,
+            price_includes_vat: base.price_includes_vat,
+          });
         }
       }
     }
@@ -489,6 +656,8 @@ export async function runBidfoodAssortmentSync(params: {
     notInFile,
     priceChanges,
     priceNotes,
+    packChanges,
+    pricesAdded,
     lines,
     errors,
   };
@@ -510,6 +679,8 @@ export async function runBidfoodAssortmentSync(params: {
         not_in_file: lines.filter((l) => l.action === "not_in_file"),
         price_changes: priceChanges,
         price_notes: priceNotes,
+        pack_changes: packChanges,
+        prices_added: pricesAdded,
       },
     });
   }
@@ -524,6 +695,8 @@ export function needsAttention(result: SyncResult): boolean {
     result.notInFile > 0 ||
     result.priceChanges.length > 0 ||
     result.priceNotes.length > 0 ||
+    result.packChanges.length > 0 ||
+    result.pricesAdded.length > 0 ||
     !result.ok
   );
 }
@@ -554,6 +727,8 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
   const parts: string[] = [];
   if (issues.length > 0) parts.push(`${issues.length} attention`);
   if (result.priceChanges.length > 0) parts.push(`${result.priceChanges.length} price changes`);
+  if (result.packChanges.length > 0) parts.push(`${result.packChanges.length} pack fixes`);
+  if (result.pricesAdded.length > 0) parts.push(`${result.pricesAdded.length} new prices`);
   if (result.priceNotes.length > 0) parts.push(`${result.priceNotes.length} prices to check`);
   const subject = `Bidfood assortment sync${result.dryRun ? " (dry run)" : ""} — ${
     parts.length > 0 ? parts.join(", ") : "all OK"
@@ -570,6 +745,8 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     `Inactive (needs manual fix): ${result.inactive}`,
     `Not in assortment file: ${result.notInFile}`,
     `Prices refreshed: ${result.priceChanges.length}`,
+    `Pack sizes corrected: ${result.packChanges.length}`,
+    `First prices added: ${result.pricesAdded.length}`,
     `Prices needing a look: ${result.priceNotes.length}`,
     "",
   ];
@@ -617,10 +794,45 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     ).sort((a, b) => Math.abs(b.row.pct) - Math.abs(a.row.pct));
     lines.push(`Prices refreshed${result.dryRun ? " (would be)" : ""}:`);
     for (const { row: p, count } of collapsed) {
+      const move = `${p.pct > 0 ? "+" : ""}${p.pct.toFixed(1)}% per kg`;
+      const body =
+        p.oldGrams && p.newGrams
+          ? `${euro(p.oldCents)} / ${(p.oldGrams / 1000).toFixed(2)} kg -> ${euro(
+              p.newCents
+            )} / ${(p.newGrams / 1000).toFixed(2)} kg (${move}, pack corrected)`
+          : `${euro(p.oldCents)} -> ${euro(p.newCents)} (${move})`;
+      lines.push(`- ${p.ingredient}: ${body} — art ${p.code}${p.uom}${times(count)}`);
+    }
+    lines.push("");
+  }
+
+  if (result.pricesAdded.length > 0) {
+    const collapsed = collapse(
+      result.pricesAdded,
+      (p) => `${p.ingredient}|${p.code}|${p.cents}|${p.packGrams}`
+    );
+    lines.push("First price taken from the file (no price was on record):");
+    for (const { row: p, count } of collapsed) {
       lines.push(
-        `- ${p.ingredient}: ${euro(p.oldCents)} -> ${euro(p.newCents)} (${
-          p.pct > 0 ? "+" : ""
-        }${p.pct.toFixed(1)}%) — art ${p.code}${p.uom}${times(count)}`
+        `- ${p.ingredient}: ${euro(p.cents)} per ${p.label} — art ${p.code}${
+          p.depositCents > 0 ? `, deposit ${euro(p.depositCents)} not included` : ""
+        }${times(count)}`
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.packChanges.length > 0) {
+    const collapsed = collapse(
+      result.packChanges,
+      (p) => `${p.ingredient}|${p.code}|${p.oldGrams}|${p.newGrams}`
+    );
+    lines.push("Pack sizes corrected from the file (this moves cost per kg):");
+    for (const { row: p, count } of collapsed) {
+      lines.push(
+        `- ${p.ingredient}: ${(p.oldGrams / 1000).toFixed(2)} kg -> ${(
+          p.newGrams / 1000
+        ).toFixed(2)} kg — ${p.label}${times(count)}`
       );
     }
     lines.push("");

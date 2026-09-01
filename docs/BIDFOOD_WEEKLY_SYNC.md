@@ -106,3 +106,31 @@ computed cost per menu item for a date, the pg_cron job
 `weekly_food_cost_snapshot` runs it every Monday, and the report compares
 today's snapshot with the newest one at least 20 days old. The first report has
 no baseline and says so.
+
+## Pack sizes come from the file too (02-09-2026)
+
+The first real check of the file exposed the actual problem: prices were being
+refreshed onto pack sizes inherited from the November 2025 cost model, and
+several of those were wrong (20 kg for a 15 L box of oil, 25 kg for a 13,6 kg
+box of rice flour, 600 g for a box of 12 × 600 g brown sugar). Column 76
+"Netto Gewicht" gives the net weight of the sales unit, so price and pack now
+come from the same row.
+
+Rules:
+
+- Pack differs more than 2% from the file → corrected, and listed in the mail
+  under "Pack sizes corrected", because it moves cost per kg.
+- The stored value is a COUNT, recognised by matching the sales factor and
+  being under 200 (a tray of 24 cans) → left alone.
+- The stored label mentions a drained weight ("uitlekgewicht", "drained") →
+  left alone; that is a deliberate, lower figure (Kalamata olives: 5,2 kg gross,
+  2,7 kg drained).
+- No price on record yet and the file has a net weight → the file's price and
+  pack are written as the first price, listed under "First price taken from the
+  file". Deposit (statiegeld, column 78) is never part of the price; when it
+  applies the amount is named in the mail.
+
+The ±50% guard now judges cost per kg instead of the price per ordered unit —
+except when the pack was corrected, where it judges the unit price, since the
+per-kg jump is the correction itself. Anything over the limit is reported and
+not written.
