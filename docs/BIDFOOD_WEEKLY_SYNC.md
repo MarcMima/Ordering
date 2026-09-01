@@ -74,7 +74,7 @@ full snapshot, so nothing is lost by skipping one.
 
 `bidfood-gmail-sync` is deployed with `--no-verify-jwt` and authenticates on a
 shared token: the SHA-256 hash lives in `public.integration_tokens`
-(name `bidfood_gmail_sync`, migration 212), the plain token sits in the Apps
+(name `bidfood_gmail_sync`, migration 214), the plain token sits in the Apps
 Script. To rotate: generate a new token, update both the hash in the table and
 the constant in the script.
 
@@ -89,7 +89,7 @@ needs MX records for a receiving domain — the Gmail route above replaced it.
 `ingredient_prices` was already a full history table; the weekly sync is what
 starts filling it. Two things sit on top of it:
 
-- **`ingredient_price_stats`** (migration 213) — per ingredient x supplier: the
+- **`ingredient_price_stats`** (migration 215) — per ingredient x supplier: the
   current price, 4/12/52-week averages in cents per kg, the 52-week range, and
   the change versus a month ago. Averages are the mean of the recorded price
   points in the window, not time-weighted. Normalising to cents per kg keeps the
