@@ -83,3 +83,26 @@ the constant in the script.
 `docs/BIDFOOD_INBOUND_SETUP.md` describes a Resend inbound-mail route to
 `bidfood-inbound-email`. That function is still deployed and still works, but it
 needs MX records for a receiving domain — the Gmail route above replaced it.
+
+## Price history and the monthly report (added 01-09-2026)
+
+`ingredient_prices` was already a full history table; the weekly sync is what
+starts filling it. Two things sit on top of it:
+
+- **`ingredient_price_stats`** (migration 213) — per ingredient x supplier: the
+  current price, 4/12/52-week averages in cents per kg, the 52-week range, and
+  the change versus a month ago. Averages are the mean of the recorded price
+  points in the window, not time-weighted. Normalising to cents per kg keeps the
+  comparison honest when a pack size changes.
+- **`price-change-report`** — edge function, mailed monthly on the 1st at 06:00
+  UTC by the pg_cron job `monthly_price_report` (token from Supabase Vault,
+  hash in `integration_tokens` under `monthly_price_report`). It covers all
+  suppliers, including manually entered prices: biggest risers and fallers,
+  the products furthest from their 12-week average, and the effect on dish food
+  cost.
+
+Dish impact works off `food_cost_snapshots`: `snapshot_food_costs()` writes the
+computed cost per menu item for a date, the pg_cron job
+`weekly_food_cost_snapshot` runs it every Monday, and the report compares
+today's snapshot with the newest one at least 20 days old. The first report has
+no baseline and says so.
