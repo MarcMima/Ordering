@@ -1,6 +1,7 @@
 import {
   createServiceClient,
   formatSyncReportEmail,
+  needsAttention,
   runBidfoodAssortmentSync,
   sendReportEmail,
 } from "./bidfoodAssortment.ts";
@@ -64,12 +65,8 @@ Deno.serve(async (req) => {
     });
 
     let reportEmail: string | null = null;
-    const needsAttention =
-      result.errors.length > 0 ||
-      result.inactive > 0 ||
-      result.notInFile > 0 ||
-      !result.ok;
-    if (send_report && needsAttention) {
+    const attention = needsAttention(result);
+    if (send_report && attention) {
       const { subject, text } = formatSyncReportEmail(result, file_name);
       reportEmail = await sendReportEmail({ subject, text });
     } else if (send_report) {

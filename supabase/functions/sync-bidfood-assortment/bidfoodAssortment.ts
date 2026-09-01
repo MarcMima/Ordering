@@ -22,6 +22,7 @@ export type MappingRow = {
   supplier_article_code: string | null;
   order_unit: string | null;
   supplier_article_name: string | null;
+  ean_code: string | null;
   raw_ingredient: { name: string } | null;
   supplier: { name: string; location_id: string } | null;
 };
@@ -37,6 +38,24 @@ export type SyncLineResult = {
   newUom?: string;
 };
 
+export type PriceChange = {
+  ingredient: string;
+  location: string;
+  code: string;
+  uom: string;
+  oldCents: number;
+  newCents: number;
+  pct: number;
+};
+
+export type PriceNote = {
+  ingredient: string;
+  location: string;
+  code: string;
+  newCents: number;
+  reason: string;
+};
+
 export type SyncResult = {
   ok: boolean;
   dryRun: boolean;
@@ -46,8 +65,20 @@ export type SyncResult = {
   autoReplaced: number;
   inactive: number;
   notInFile: number;
+  priceChanges: PriceChange[];
+  priceNotes: PriceNote[];
   lines: SyncLineResult[];
   errors: string[];
+};
+
+// A weekly price move larger than this is reported but NOT written automatically.
+const PRICE_JUMP_LIMIT_PCT = 50;
+
+type LatestPrice = {
+  price_cents: number;
+  pack_size_grams: number | string;
+  pack_size_label: string | null;
+  price_includes_vat: boolean;
 };
 
 function parsePrice(raw: unknown): number {
@@ -167,6 +198,8 @@ export async function runBidfoodAssortmentSync(params: {
       autoReplaced: 0,
       inactive: 0,
       notInFile: 0,
+      priceChanges: [],
+      priceNotes: [],
       lines: [],
       errors: ["No Bidfood supplier found in database."],
     };
@@ -175,7 +208,7 @@ export async function runBidfoodAssortmentSync(params: {
   const { data: mappings, error: mapErr } = await supabase
     .from("supplier_ingredients")
     .select(
-      `id, supplier_id, raw_ingredient_id, supplier_article_code, order_unit, supplier_article_name,
+      `id, supplier_id, raw_ingredient_id, supplier_article_code, order_unit, supplier_article_name, ean_code,
        raw_ingredient:raw_ingredients(name),
        supplier:suppliers(name, location_id)`
     )
@@ -185,6 +218,30 @@ export async function runBidfoodAssortmentSync(params: {
   if (mapErr) throw new Error(mapErr.message);
 
   const allMappings = (mappings as MappingRow[]) ?? [];
+
+  // Latest known price per (ingredient, supplier). Used as the baseline for the
+  // weekly price refresh: we only refresh the AMOUNT and inherit the pack size
+  // from the existing row, so cost-per-gram calculations stay correct.
+  const { data: priceRows } = await supabase
+    .from("ingredient_prices")
+    .select(
+      "raw_ingredient_id, supplier_id, price_cents, pack_size_grams, pack_size_label, price_includes_vat, effective_date, created_at"
+    )
+    .in("supplier_id", supplierIds)
+    .order("effective_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  const latestPrices = new Map<string, LatestPrice>();
+  for (const r of (priceRows ?? []) as Record<string, unknown>[]) {
+    const key = `${r.raw_ingredient_id}|${r.supplier_id}`;
+    if (latestPrices.has(key)) continue;
+    latestPrices.set(key, {
+      price_cents: Number(r.price_cents),
+      pack_size_grams: r.pack_size_grams as number | string,
+      pack_size_label: (r.pack_size_label as string) ?? null,
+      price_includes_vat: Boolean(r.price_includes_vat),
+    });
+  }
 
   // Safety check: if >50% of mappings would be "not in file", the assortment
   // file is likely incomplete or mis-parsed. Abort to prevent mass deactivation.
@@ -209,6 +266,11 @@ export async function runBidfoodAssortmentSync(params: {
   let autoReplaced = 0;
   let inactive = 0;
   let notInFile = 0;
+  const priceChanges: PriceChange[] = [];
+  const priceNotes: PriceNote[] = [];
+  const priceInserts: Record<string, unknown>[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const fileLabel = fileName ?? today;
 
   for (const m of allMappings) {
     const ing = m.raw_ingredient?.name ?? m.raw_ingredient_id;
@@ -326,6 +388,74 @@ export async function runBidfoodAssortmentSync(params: {
     }
 
     mappingsUpdated++;
+
+    // ── Weekly price refresh ────────────────────────────────────────────────
+    // Bidfood's net price is per verkoopeenheid (VE). We only write it when the
+    // article + UOM are unchanged, so the pack size of the existing price row
+    // still describes what this price buys.
+    const newPriceCents = row.netPriceCents;
+    if (newPriceCents > 0) {
+      const priceKey = `${m.raw_ingredient_id}|${m.supplier_id}`;
+      const base = latestPrices.get(priceKey);
+      if (!base) {
+        priceNotes.push({
+          ingredient: ing,
+          location: loc,
+          code: effectiveCode,
+          newCents: newPriceCents,
+          reason: "No price on file yet — pack size unknown, add the first price manually",
+        });
+      } else if (base.price_cents !== newPriceCents) {
+        const pct =
+          base.price_cents > 0
+            ? ((newPriceCents - base.price_cents) / base.price_cents) * 100
+            : 0;
+        if (replacementApplied) {
+          priceNotes.push({
+            ingredient: ing,
+            location: loc,
+            code: effectiveCode,
+            newCents: newPriceCents,
+            reason: `Article was auto-replaced (${oldCode} → ${effectiveCode}); price not applied because the pack size may differ`,
+          });
+        } else if (Math.abs(pct) > PRICE_JUMP_LIMIT_PCT) {
+          priceNotes.push({
+            ingredient: ing,
+            location: loc,
+            code: effectiveCode,
+            newCents: newPriceCents,
+            reason: `Change of ${pct > 0 ? "+" : ""}${pct.toFixed(0)}% vs EUR ${(
+              base.price_cents / 100
+            ).toFixed(2)} — too large to apply automatically, check the pack size`,
+          });
+        } else {
+          priceChanges.push({
+            ingredient: ing,
+            location: loc,
+            code: effectiveCode,
+            uom: effectiveUom,
+            oldCents: base.price_cents,
+            newCents: newPriceCents,
+            pct,
+          });
+          priceInserts.push({
+            raw_ingredient_id: m.raw_ingredient_id,
+            supplier_id: m.supplier_id,
+            pack_size_grams: base.pack_size_grams,
+            pack_size_label: base.pack_size_label,
+            price_cents: newPriceCents,
+            price_includes_vat: base.price_includes_vat,
+            effective_date: today,
+            source: "bidfood_weekly_sync",
+            notes: `Bidfood assortiment ${fileLabel} | art ${effectiveCode}${effectiveUom} | was EUR ${(
+              base.price_cents / 100
+            ).toFixed(2)}`,
+          });
+          latestPrices.set(priceKey, { ...base, price_cents: newPriceCents });
+        }
+      }
+    }
+
     if (action === "ok" && (effectiveCode !== oldCode || articleName !== m.supplier_article_name)) {
       action = "updated";
       detail = "Metadata refreshed from assortment file";
@@ -343,6 +473,11 @@ export async function runBidfoodAssortmentSync(params: {
     });
   }
 
+  if (!dryRun && priceInserts.length > 0) {
+    const { error: priceErr } = await supabase.from("ingredient_prices").insert(priceInserts);
+    if (priceErr) errors.push(`Price refresh failed: ${priceErr.message}`);
+  }
+
   const result: SyncResult = {
     ok: errors.length === 0,
     dryRun,
@@ -352,6 +487,8 @@ export async function runBidfoodAssortmentSync(params: {
     autoReplaced,
     inactive,
     notInFile,
+    priceChanges,
+    priceNotes,
     lines,
     errors,
   };
@@ -371,6 +508,8 @@ export async function runBidfoodAssortmentSync(params: {
         inactive: lines.filter((l) => l.action === "inactive"),
         auto_replaced: lines.filter((l) => l.action === "auto_replaced"),
         not_in_file: lines.filter((l) => l.action === "not_in_file"),
+        price_changes: priceChanges,
+        price_notes: priceNotes,
       },
     });
   }
@@ -378,10 +517,29 @@ export async function runBidfoodAssortmentSync(params: {
   return result;
 }
 
+export function needsAttention(result: SyncResult): boolean {
+  return (
+    result.errors.length > 0 ||
+    result.inactive > 0 ||
+    result.notInFile > 0 ||
+    result.priceChanges.length > 0 ||
+    result.priceNotes.length > 0 ||
+    !result.ok
+  );
+}
+
+function euro(cents: number): string {
+  return `EUR ${(cents / 100).toFixed(2)}`;
+}
+
 export function formatSyncReportEmail(result: SyncResult, fileName?: string): { subject: string; text: string } {
   const issues = result.lines.filter((l) => l.action !== "ok" && l.action !== "updated");
+  const parts: string[] = [];
+  if (issues.length > 0) parts.push(`${issues.length} attention`);
+  if (result.priceChanges.length > 0) parts.push(`${result.priceChanges.length} price changes`);
+  if (result.priceNotes.length > 0) parts.push(`${result.priceNotes.length} prices to check`);
   const subject = `Bidfood assortment sync${result.dryRun ? " (dry run)" : ""} — ${
-    issues.length > 0 ? `${issues.length} attention` : "all OK"
+    parts.length > 0 ? parts.join(", ") : "all OK"
   }`;
 
   const lines: string[] = [
@@ -394,6 +552,8 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     `Auto-replaced: ${result.autoReplaced}`,
     `Inactive (needs manual fix): ${result.inactive}`,
     `Not in assortment file: ${result.notInFile}`,
+    `Prices refreshed: ${result.priceChanges.length}`,
+    `Prices needing a look: ${result.priceNotes.length}`,
     "",
   ];
 
@@ -421,6 +581,29 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     lines.push("");
   }
 
+  if (result.priceChanges.length > 0) {
+    lines.push(`Prices refreshed${result.dryRun ? " (would be)" : ""}:`);
+    const sorted = [...result.priceChanges].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+    for (const p of sorted) {
+      lines.push(
+        `- ${p.ingredient} (${p.location}): ${euro(p.oldCents)} -> ${euro(p.newCents)} (${
+          p.pct > 0 ? "+" : ""
+        }${p.pct.toFixed(1)}%) — art ${p.code}${p.uom}`
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.priceNotes.length > 0) {
+    lines.push("Prices NOT applied automatically — check these:");
+    for (const p of result.priceNotes) {
+      lines.push(
+        `- ${p.ingredient} (${p.location}): file says ${euro(p.newCents)} for art ${p.code} — ${p.reason}`
+      );
+    }
+    lines.push("");
+  }
+
   if (result.errors.length > 0) {
     lines.push("Errors:");
     for (const e of result.errors) lines.push(`- ${e}`);
@@ -438,7 +621,7 @@ export async function sendReportEmail(params: {
   const fromEmail = Deno.env.get("FROM_EMAIL") ?? "ordering@mimafood.nl";
   const to =
     params.to ??
-    (Deno.env.get("BIDFOOD_SYNC_REPORT_TO") ?? "abdulhadi@mimafood.nl")
+    (Deno.env.get("BIDFOOD_SYNC_REPORT_TO") ?? "marc@mimafood.nl")
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
