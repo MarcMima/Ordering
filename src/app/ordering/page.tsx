@@ -31,6 +31,7 @@ import {
   type PrepItemIngredientRow,
 } from "@/lib/calculations";
 import { formatDecimal2, formatOrderAmount, formatPrepQuantity } from "@/lib/format";
+import { ADJUSTMENT_REASONS, type AdjustmentReason } from "@/lib/orderAdjustments";
 import { localCalendarDateString, shiftCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
 import {
@@ -102,17 +103,6 @@ type DispatchStatus = {
 };
 
 type SuggestionOrderKind = "pack" | "stocktake" | "recipe";
-
-/** Incidentele redenen voor een afwijking; leeg = structureel signaal (zie migratie 208). */
-const ADJUSTMENT_REASONS = [
-  { value: "promo", label: "Promotie/actie" },
-  { value: "event", label: "Evenement/feest" },
-  { value: "weather", label: "Weer" },
-  { value: "delivery_issue", label: "Leverprobleem/kwaliteit" },
-  { value: "other", label: "Anders…" },
-] as const;
-
-type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]["value"];
 
 type OrderLine = {
   raw_ingredient_id: string;
@@ -3136,6 +3126,12 @@ export default function OrderingPage() {
             >
               Today
             </button>
+            <Link
+              href={`/ordering/history?date=${viewDate}`}
+              className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40"
+            >
+              Terugkijken
+            </Link>
             <button
               type="button"
               onClick={() => setViewDate((d) => shiftCalendarDateString(d, 1))}
