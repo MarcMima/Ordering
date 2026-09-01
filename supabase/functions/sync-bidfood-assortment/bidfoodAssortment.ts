@@ -55,6 +55,7 @@ export type PriceChange = {
   pct: number;
   oldGrams?: number;
   newGrams?: number;
+  depositCents?: number;
 };
 
 export type PriceNote = {
@@ -459,7 +460,9 @@ export async function runBidfoodAssortmentSync(params: {
     // Bidfood's net price is per verkoopeenheid (VE) and column "Netto Gewicht"
     // says what that unit contains, so price and pack size come from the same
     // row. Judgement is made on cost per gram, never on the price per unit.
-    const newPriceCents = row.netPriceCents;
+    // Deposit (statiegeld) is added on top: Mima does not return the empties,
+    // so that money never comes back and it is a real cost.
+    const newPriceCents = row.netPriceCents + row.depositCents;
     const filePackGrams = row.netWeightGrams;
 
     if (newPriceCents > 0) {
@@ -479,7 +482,9 @@ export async function runBidfoodAssortmentSync(params: {
             effective_date: today,
             source: "bidfood_weekly_sync",
             notes: `Bidfood assortiment ${fileLabel} | art ${effectiveCode}${effectiveUom} | first price from file${
-              row.depositCents > 0 ? `; deposit EUR ${(row.depositCents / 100).toFixed(2)} not included` : ""
+              row.depositCents > 0
+                ? `, incl. deposit EUR ${(row.depositCents / 100).toFixed(2)}`
+                : ""
             }`,
           });
           pricesAdded.push({
@@ -585,6 +590,7 @@ export async function runBidfoodAssortmentSync(params: {
             pct: pctPerGram,
             oldGrams: packCorrected ? basePack : undefined,
             newGrams: packCorrected ? effectivePack : undefined,
+            depositCents: row.depositCents > 0 ? row.depositCents : undefined,
           });
           if (packCorrected) {
             packChanges.push({
@@ -610,6 +616,10 @@ export async function runBidfoodAssortmentSync(params: {
             ).toFixed(2)}${
               packCorrected
                 ? ` on ${(basePack / 1000).toFixed(2)} kg, pack corrected from the file`
+                : ""
+            }${
+              row.depositCents > 0
+                ? `, incl. deposit EUR ${(row.depositCents / 100).toFixed(2)}`
                 : ""
             }`,
           });
@@ -801,7 +811,8 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
               p.newCents
             )} / ${(p.newGrams / 1000).toFixed(2)} kg (${move}, pack corrected)`
           : `${euro(p.oldCents)} -> ${euro(p.newCents)} (${move})`;
-      lines.push(`- ${p.ingredient}: ${body} — art ${p.code}${p.uom}${times(count)}`);
+      const deposit = p.depositCents ? ` incl. deposit ${euro(p.depositCents)}` : "";
+      lines.push(`- ${p.ingredient}: ${body}${deposit} — art ${p.code}${p.uom}${times(count)}`);
     }
     lines.push("");
   }
@@ -815,7 +826,7 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
     for (const { row: p, count } of collapsed) {
       lines.push(
         `- ${p.ingredient}: ${euro(p.cents)} per ${p.label} — art ${p.code}${
-          p.depositCents > 0 ? `, deposit ${euro(p.depositCents)} not included` : ""
+          p.depositCents > 0 ? `, incl. deposit ${euro(p.depositCents)}` : ""
         }${times(count)}`
       );
     }

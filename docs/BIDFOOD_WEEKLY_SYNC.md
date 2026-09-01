@@ -127,8 +127,11 @@ Rules:
   2,7 kg drained).
 - No price on record yet and the file has a net weight → the file's price and
   pack are written as the first price, listed under "First price taken from the
-  file". Deposit (statiegeld, column 78) is never part of the price; when it
-  applies the amount is named in the mail.
+  file".
+- Deposit (statiegeld, column 78 "Emballagebedrag totaal") is ADDED to the
+  price: Mima does not return the empties, so it never comes back and is part of
+  the cost. A tray of 24 cola cans is EUR 18.06 + EUR 3.60 = EUR 21.66. The mail
+  names the deposit on every line that carries one.
 
 The ±50% guard now judges cost per kg instead of the price per ordered unit —
 except when the pack was corrected, where it judges the unit price, since the
