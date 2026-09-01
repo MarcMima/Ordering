@@ -20,3 +20,17 @@ ALTER TABLE order_suggestion_snapshots ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS order_suggestion_snapshots_anon_all ON order_suggestion_snapshots;
 CREATE POLICY order_suggestion_snapshots_anon_all ON order_suggestion_snapshots
   FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- Productie draait met logins (authenticated). Zonder deze policies zou RLS het
+-- wegschrijven van het snapshot weigeren — precies de fout die migratie 200 voor
+-- order_drafts moest repareren. Spiegelt daily_stock_counts (migratie 088).
+DROP POLICY IF EXISTS order_suggestion_snapshots_select_authenticated ON order_suggestion_snapshots;
+CREATE POLICY order_suggestion_snapshots_select_authenticated ON order_suggestion_snapshots
+  FOR SELECT TO authenticated
+  USING (public.has_location_access(location_id));
+
+DROP POLICY IF EXISTS order_suggestion_snapshots_manage_authenticated ON order_suggestion_snapshots;
+CREATE POLICY order_suggestion_snapshots_manage_authenticated ON order_suggestion_snapshots
+  FOR ALL TO authenticated
+  USING (public.has_permission('operations.manage') AND public.has_location_access(location_id))
+  WITH CHECK (public.has_permission('operations.manage') AND public.has_location_access(location_id));

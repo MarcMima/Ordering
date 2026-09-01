@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocation } from "@/contexts/LocationContext";
 import { useCan, PERMISSIONS } from "@/hooks/useCan";
 import { createClient } from "@/lib/supabase";
+import { FeedbackButton } from "@/components/FeedbackButton";
 
 export function TopNav() {
   const router = useRouter();
@@ -47,6 +48,7 @@ export function TopNav() {
           >
             {currentName}
           </Link>
+          <FeedbackButton />
           <button type="button" onClick={() => void handleSignOut()} className="btn-ghost shrink-0">
             Sign out
           </button>
@@ -87,6 +89,7 @@ export function TopNav() {
               Admin
             </Link>
           )}
+          <FeedbackButton />
           <button type="button" onClick={() => void handleSignOut()} className="btn-ghost">
             Sign out
           </button>
