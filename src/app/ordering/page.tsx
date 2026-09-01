@@ -24,6 +24,7 @@ import { formatDecimal2, formatOrderAmount } from "@/lib/format";
 import { ADJUSTMENT_REASONS, type AdjustmentReason } from "@/lib/orderAdjustments";
 import {
   computeOrderSuggestion,
+  loadRawIngredientsWithPacks,
   normSupplierName,
   normalizePackRow,
   packsForOrder,
@@ -104,57 +105,6 @@ function orderingDraftFingerprint(params: {
 }
 
 
-
-const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
-
-type RawWithNestedPacks = RawIngredient & {
-  ingredient_pack_sizes?: IngredientPackSize[] | IngredientPackSize | null;
-};
-
-async function loadRawIngredientsWithPacks(
-  supabase: ReturnType<typeof createClient>,
-  locationId: string
-): Promise<{ rawList: RawIngredient[]; packList: IngredientPackSize[] }> {
-  const rRes = await supabase
-    .from("raw_ingredients")
-    .select(RAW_INGREDIENTS_WITH_PACKS_SELECT)
-    .eq("location_id", locationId)
-    .order("name");
-  if (rRes.error) throw rRes.error;
-
-  const rawRows = (rRes.data as RawWithNestedPacks[]) ?? [];
-  const rawList: RawIngredient[] = [];
-  const packList: IngredientPackSize[] = [];
-  for (const row of rawRows) {
-    const { ingredient_pack_sizes: nested, ...ing } = row;
-    rawList.push(ing);
-    const list = Array.isArray(nested) ? nested : nested != null ? [nested] : [];
-    for (const p of list) packList.push(p);
-  }
-
-  const dedupe = new Map<string, IngredientPackSize>();
-  for (const p of packList) {
-    dedupe.set(p.id, normalizePackRow(p));
-  }
-  const rawIds = rawList.map((r) => r.id);
-  const packChunk = 100;
-  for (let i = 0; i < rawIds.length; i += packChunk) {
-    const chunk = rawIds.slice(i, i + packChunk);
-    const pr = await supabase
-      .from("ingredient_pack_sizes")
-      .select(
-        "id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple"
-      )
-      .in("raw_ingredient_id", chunk);
-    if (pr.error) throw pr.error;
-    const rows = ((pr.data as IngredientPackSize[]) ?? []).map(normalizePackRow);
-    for (const p of rows) {
-      if (!dedupe.has(p.id)) dedupe.set(p.id, p);
-    }
-  }
-
-  return { rawList, packList: Array.from(dedupe.values()) };
-}
 
 /** Card order: Java bakery → Van Gelder → Bidfood → others (A–Z). */
 const SUPPLIER_CARD_PRIORITY = [

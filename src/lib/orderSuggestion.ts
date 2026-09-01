@@ -170,6 +170,103 @@ export function normSupplierName(name: string): string {
   return (name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+export const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
+
+type RawWithNestedPacks = RawIngredient & {
+  ingredient_pack_sizes?: IngredientPackSize[] | IngredientPackSize | null;
+};
+
+export async function loadRawIngredientsWithPacks(
+  supabase: SupabaseClient,
+  locationId: string
+): Promise<{ rawList: RawIngredient[]; packList: IngredientPackSize[] }> {
+  const rRes = await supabase
+    .from("raw_ingredients")
+    .select(RAW_INGREDIENTS_WITH_PACKS_SELECT)
+    .eq("location_id", locationId)
+    .order("name");
+  if (rRes.error) throw rRes.error;
+
+  const rawRows = (rRes.data as RawWithNestedPacks[]) ?? [];
+  const rawList: RawIngredient[] = [];
+  const packList: IngredientPackSize[] = [];
+  for (const row of rawRows) {
+    const { ingredient_pack_sizes: nested, ...ing } = row;
+    rawList.push(ing);
+    const list = Array.isArray(nested) ? nested : nested != null ? [nested] : [];
+    for (const p of list) packList.push(p);
+  }
+
+  const dedupe = new Map<string, IngredientPackSize>();
+  for (const p of packList) {
+    dedupe.set(p.id, normalizePackRow(p));
+  }
+  const rawIds = rawList.map((r) => r.id);
+  const packChunk = 100;
+  for (let i = 0; i < rawIds.length; i += packChunk) {
+    const chunk = rawIds.slice(i, i + packChunk);
+    const pr = await supabase
+      .from("ingredient_pack_sizes")
+      .select(
+        "id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple"
+      )
+      .in("raw_ingredient_id", chunk);
+    if (pr.error) throw pr.error;
+    const rows = ((pr.data as IngredientPackSize[]) ?? []).map(normalizePackRow);
+    for (const p of rows) {
+      if (!dedupe.has(p.id)) dedupe.set(p.id, p);
+    }
+  }
+
+  return { rawList, packList: Array.from(dedupe.values()) };
+}
+
+/**
+ * Alle configuratie die computeOrderSuggestion nodig heeft naast de datum: leveranciers,
+ * leverschema's, grondstoffen met packs en de per-locatie ordering-overrides. Dit is wat
+ * de bestelpagina bij het laden in state zet — de History-pagina heeft het los nodig om
+ * een dag uit het verleden door de huidige parameters te halen.
+ */
+export async function loadOrderSuggestionConfig(
+  supabase: SupabaseClient,
+  locationId: string
+): Promise<{
+  suppliers: Supplier[];
+  schedules: DeliverySchedule[];
+  rawIngredients: RawIngredient[];
+  packSizes: IngredientPackSize[];
+  locationOrderingByRawId: Record<string, RawIngredientLocationOrdering>;
+}> {
+  const [supRes, schRes, rawPacks, loRes] = await Promise.all([
+    supabase.from("suppliers").select("id, name, location_id").eq("location_id", locationId).order("name"),
+    supabase
+      .from("supplier_delivery_schedules")
+      .select("supplier_id, day_of_week")
+      .eq("location_id", locationId),
+    loadRawIngredientsWithPacks(supabase, locationId),
+    supabase
+      .from("raw_ingredient_location_ordering")
+      .select("id, raw_ingredient_id, location_id, daily_need_multiplier, standing_order_packs")
+      .eq("location_id", locationId),
+  ]);
+  if (supRes.error) throw supRes.error;
+  if (schRes.error) throw schRes.error;
+  if (loRes.error) throw loRes.error;
+
+  const locationOrderingByRawId: Record<string, RawIngredientLocationOrdering> = {};
+  for (const row of (loRes.data as RawIngredientLocationOrdering[]) ?? []) {
+    locationOrderingByRawId[row.raw_ingredient_id] = row;
+  }
+
+  return {
+    suppliers: (supRes.data as Supplier[]) ?? [],
+    schedules: (schRes.data as DeliverySchedule[]) ?? [],
+    rawIngredients: rawPacks.rawList,
+    packSizes: rawPacks.packList,
+    locationOrderingByRawId,
+  };
+}
+
 /**
  * De volledige bestelsuggestie voor één locatie op één dag.
  *

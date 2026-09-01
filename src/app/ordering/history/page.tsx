@@ -9,6 +9,9 @@ import { createClient } from "@/lib/supabase";
 import { localCalendarDateString } from "@/lib/date";
 import { formatDecimal2 } from "@/lib/format";
 import { adjustmentReasonLabel } from "@/lib/orderAdjustments";
+import { isAuthDisabled } from "@/lib/authMode";
+import { useCan, PERMISSIONS } from "@/hooks/useCan";
+import { computeOrderSuggestion, loadOrderSuggestionConfig } from "@/lib/orderSuggestion";
 
 /**
  * Terugkijkweergave per datum: de telling, de bestelsuggestie zoals die er tóen stond,
@@ -76,6 +79,18 @@ function OrderingHistory() {
   const [data, setData] = useState<HistoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * De kolom "With current settings" draait dezelfde tellingen van die dag opnieuw door de
+   * huidige parameters. Alleen voor ingelogde admins: in kitchen-mode geeft useCan iedereen
+   * alle rechten (AUTH_DISABLED_AUTHZ in useAuthz), dus de auth-check alleen is hier niet
+   * genoeg — vandaar de expliciete uitsluiting van anon/kitchen-mode.
+   */
+  const { allowed: canManageSettings } = useCan(PERMISSIONS.settingsManage);
+  const showRecomputed = canManageSettings && !isAuthDisabled();
+  const [recomputed, setRecomputed] = useState<Record<string, number> | null>(null);
+  const [recomputeError, setRecomputeError] = useState<string | null>(null);
+  const [recomputing, setRecomputing] = useState(false);
 
   const setDate = useCallback(
     (next: string) => {
@@ -167,6 +182,56 @@ function OrderingHistory() {
     };
   }, [locationId, date]);
 
+  /**
+   * Herberekening met de configuratie van nu. Bewust een aparte, tweede query-ronde: de
+   * snapshotkolom moet blijven tonen wat er tóen stond, ook als deze berekening faalt.
+   *
+   * Read-only. computeOrderSuggestion raakt de database alleen aan via
+   * ensureEffectiveDailyRevenueTargetCents, en die schrijft per eigen guard nooit voor een
+   * datum in het verleden — die guard moet blijven staan.
+   */
+  useEffect(() => {
+    if (!locationId || !showRecomputed) {
+      setRecomputed(null);
+      setRecomputeError(null);
+      return;
+    }
+    let alive = true;
+    setRecomputing(true);
+    setRecomputeError(null);
+
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const config = await loadOrderSuggestionConfig(supabase, locationId);
+        if (!alive) return;
+        const result = await computeOrderSuggestion({
+          supabase,
+          locationId,
+          date,
+          ...config,
+        });
+        if (!alive) return;
+        if (!result.ok) {
+          setRecomputed(null);
+          setRecomputeError(result.message);
+          return;
+        }
+        setRecomputed(result.suggestedOrder);
+      } catch (e) {
+        if (!alive) return;
+        setRecomputed(null);
+        setRecomputeError(e instanceof Error ? e.message : "Recalculation failed.");
+      } finally {
+        if (alive) setRecomputing(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [locationId, date, showRecomputed]);
+
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
   const isPast = date < today;
 
@@ -197,6 +262,8 @@ function OrderingHistory() {
     const rawIds = new Set<string>([
       ...(data.snapshotLines ?? []).map((l) => l.raw_ingredient_id),
       ...Object.keys(orderedByRaw),
+      // Ook regels die de huidige parameters wél adviseren maar die er toen niet waren.
+      ...Object.keys(recomputed ?? {}),
     ]);
 
     return Array.from(rawIds)
@@ -219,12 +286,13 @@ function OrderingHistory() {
           stockAtCount: snap?.stock_at_count ?? null,
           dailyNeed: snap?.daily_need ?? null,
           orderedQuantity: ordered?.quantity ?? null,
+          recomputedQuantity: recomputed ? (recomputed[rawId] ?? 0) : null,
           reason: adjustmentReasonLabel(ordered?.reason),
           note: ordered?.note ?? null,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
-  }, [data]);
+  }, [data, recomputed]);
 
   const prepCountRows = useMemo(() => {
     if (!data) return [];
@@ -308,6 +376,15 @@ function OrderingHistory() {
                   {new Date(data.snapshotCreatedAt).toLocaleString("en-GB")}.
                 </p>
               )}
+              {showRecomputed && (
+                <p className="help-text mt-1">
+                  {recomputeError
+                    ? `Could not recalculate with current settings: ${recomputeError}`
+                    : recomputing
+                      ? "Recalculating with current settings…"
+                      : "\u201cWith current settings\u201d re-runs that day\u2019s counts through today\u2019s parameters. Admin only."}
+                </p>
+              )}
               {comparison.length === 0 ? (
                 <p className="help-text mt-2">Nothing suggested and nothing ordered on this day.</p>
               ) : (
@@ -319,6 +396,11 @@ function OrderingHistory() {
                         <th className="py-1.5 pr-2 font-medium">Supplier</th>
                         <th className="py-1.5 pr-2 text-right font-medium">Suggested</th>
                         <th className="py-1.5 pr-2 text-right font-medium">Ordered</th>
+                        {showRecomputed && (
+                          <th className="py-1.5 pr-2 text-right font-medium">
+                            With current settings
+                          </th>
+                        )}
                         <th className="py-1.5 pr-2 font-medium">Reason</th>
                         <th className="py-1.5 pr-2 text-right font-medium">Stock</th>
                         <th className="py-1.5 pr-2 text-right font-medium">Need/day</th>
@@ -352,6 +434,15 @@ function OrderingHistory() {
                             >
                               {row.orderedQuantity ?? "—"}
                             </td>
+                            {showRecomputed && (
+                              <td className="py-1.5 pr-2 text-right tabular-nums text-ink-soft">
+                                {recomputing
+                                  ? "…"
+                                  : row.recomputedQuantity == null
+                                    ? "—"
+                                    : row.recomputedQuantity}
+                              </td>
+                            )}
                             <td className="py-1.5 pr-2 text-xs text-ink-soft">
                               {row.reason ?? (deviates ? "no reason given" : "—")}
                               {row.note ? ` — ${row.note}` : ""}
