@@ -9,7 +9,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import { localCalendarDateString } from "@/lib/date";
 import { ensureEffectiveDailyRevenueTargetCents } from "@/lib/revenueTarget";
-import type { Location, PrepItem } from "@/lib/types";
+import type { Location, PrepItem, PrepListAdjustment } from "@/lib/types";
 import {
   getRevenueMultiplier,
   calcNeededQuantity,
@@ -56,6 +56,53 @@ function setStoredDone(locationId: string, date: string, done: Record<string, bo
   } catch {}
 }
 
+function parseQty(raw: string): number | null {
+  const n = Number(String(raw).replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Number input that commits on blur / Enter; keeps typing local. */
+function MakeInput({
+  value,
+  onCommit,
+  label,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  label: string;
+}) {
+  const [text, setText] = useState(String(value));
+  const [lastValue, setLastValue] = useState(value);
+  if (lastValue !== value) {
+    setLastValue(value);
+    setText(String(value));
+  }
+  const commit = () => {
+    const n = parseQty(text);
+    if (n == null) {
+      setText(String(value));
+      return;
+    }
+    if (n !== value) onCommit(n);
+  };
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      min={0}
+      step="any"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      className="input h-10 w-24 text-center"
+      aria-label={label}
+    />
+  );
+}
+
 export default function PrepListPage() {
   const { locationId, locationOptions } = useLocation();
   const [date] = useState(() => localCalendarDateString());
@@ -66,6 +113,13 @@ export default function PrepListPage() {
   const [revenueTargetCents, setRevenueTargetCents] = useState<number | null>(null);
   const [locationDetails, setLocationDetails] = useState<Location | null>(null);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
+  const [adjustments, setAdjustments] = useState<PrepListAdjustment[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [addItemId, setAddItemId] = useState<string>("");
+  const [addName, setAddName] = useState("");
+  const [addUnit, setAddUnit] = useState("");
+  const [addQty, setAddQty] = useState("1");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +133,7 @@ export default function PrepListPage() {
       setLocationDetails(null);
       setLoading(false);
       setCompleted({});
+      setAdjustments([]);
       return;
     }
     setLoading(true);
@@ -87,7 +142,7 @@ export default function PrepListPage() {
 
     void (async () => {
       const revCents = await ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d);
-      const [lpiRes, countRes, rawStockRes, rawRes, locRes] = await Promise.all([
+      const [lpiRes, countRes, rawStockRes, rawRes, locRes, adjRes] = await Promise.all([
         supabase
           .from("location_prep_items")
           .select("id, location_id, prep_item_id, base_quantity, display_order, prep_items(*)")
@@ -110,6 +165,12 @@ export default function PrepListPage() {
           .select("full_capacity_revenue")
           .eq("id", locationId)
           .single(),
+        supabase
+          .from("prep_list_adjustments")
+          .select("*")
+          .eq("location_id", locationId)
+          .eq("date", d)
+          .order("created_at"),
       ]);
       try {
         if (lpiRes.error) throw new Error(lpiRes.error.message);
@@ -117,6 +178,7 @@ export default function PrepListPage() {
         if (rawStockRes.error) throw new Error(rawStockRes.error.message);
         if (rawRes.error) throw new Error(rawRes.error.message);
         if (locRes.error) throw new Error(locRes.error.message);
+        if (adjRes.error) throw new Error(adjRes.error.message);
 
         const raw = (lpiRes.data as (Omit<LocationPrepItemRow, "prep_items"> & { prep_items: PrepItem | PrepItem[] | null })[]) ?? [];
         const items: LocationPrepItemRow[] = raw.map((row) => ({
@@ -138,6 +200,7 @@ export default function PrepListPage() {
         setRawIngredients(rawList);
         setRevenueTargetCents(revCents);
         setLocationDetails(loc ?? null);
+        setAdjustments((adjRes.data as PrepListAdjustment[]) ?? []);
         setCompleted(getStoredDone(locationId, d));
         setError(null);
       } catch (e) {
@@ -167,9 +230,22 @@ export default function PrepListPage() {
     toMake: number;
     priority: PrepPriority;
     currentStock: number;
+    /** Kitchen override of the calculated quantity (edit mode). */
+    override: PrepListAdjustment | null;
   };
 
-  const { todayRows, tomorrowRows } = useMemo(() => {
+  const adjustmentByPrepId = useMemo(() => {
+    const map: Record<string, PrepListAdjustment> = {};
+    for (const a of adjustments) if (a.prep_item_id) map[a.prep_item_id] = a;
+    return map;
+  }, [adjustments]);
+  const customTasks = useMemo(
+    () => adjustments.filter((a) => !a.prep_item_id && !a.removed),
+    [adjustments]
+  );
+  const removedAdjustments = useMemo(() => adjustments.filter((a) => a.removed), [adjustments]);
+
+  const { todayRows, tomorrowRows, hiddenRows } = useMemo(() => {
     const prepItemsById = Object.fromEntries(
       locationPrepItems.map((row) => [row.prep_item_id, row.prep_items])
     );
@@ -201,6 +277,7 @@ export default function PrepListPage() {
     });
 
     const list: PrepRow[] = [];
+    const hidden: PrepRow[] = [];
     for (const row of locationPrepItems) {
       const item = row.prep_items;
       if (!item) continue;
@@ -231,15 +308,27 @@ export default function PrepListPage() {
         if (rawToPrep > 0) toMake = Math.max(toMake, rawToPrep);
         needed = Math.max(needed, pitaStock.wholewheatRawBoxes);
       }
-      const priority = resolvePrepListPriority({
+      let priority = resolvePrepListPriority({
         prepName: item.name,
         currentStock,
         needed,
         toMake,
         prepTimeHours: item.prep_time_hours ?? null,
       });
-      if (priority === "hidden") continue;
-      list.push({ row, needed, toMake, priority, currentStock });
+      const adj = adjustmentByPrepId[row.prep_item_id] ?? null;
+      if (adj?.removed) {
+        hidden.push({ row, needed, toMake, priority, currentStock, override: adj });
+        continue;
+      }
+      if (adj && adj.make_override != null) {
+        toMake = Number(adj.make_override);
+        if (priority === "hidden") priority = 3;
+      }
+      if (priority === "hidden") {
+        hidden.push({ row, needed, toMake, priority, currentStock, override: adj });
+        continue;
+      }
+      list.push({ row, needed, toMake, priority, currentStock, override: adj });
     }
     list.sort((a, b) => {
       const order: PrepPriority[] = [1, 2, 3, "hidden"];
@@ -254,8 +343,13 @@ export default function PrepListPage() {
     });
     const todayRows = list.filter((r) => !r.row.prep_items?.requires_overnight);
     const tomorrowRows = list.filter((r) => r.row.prep_items?.requires_overnight);
-    return { todayRows, tomorrowRows };
-  }, [locationPrepItems, todayCounts, rawStockCounts, rawIngredients, revenueMultiplier]);
+    hidden.sort((a, b) =>
+      (a.row.prep_items?.name || "").localeCompare(b.row.prep_items?.name || "", undefined, {
+        sensitivity: "base",
+      })
+    );
+    return { todayRows, tomorrowRows, hiddenRows: hidden };
+  }, [locationPrepItems, todayCounts, rawStockCounts, rawIngredients, revenueMultiplier, adjustmentByPrepId]);
 
   const soakDryChickpeasKg = useMemo(() => {
     return soakDryChickpeasKgFromPrepState({
@@ -279,6 +373,108 @@ export default function PrepListPage() {
   };
 
   const handlePrint = () => window.print();
+
+  const runSave = async (fn: () => Promise<void>) => {
+    setSaving(true);
+    try {
+      await fn();
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** Insert or update the adjustment row for an existing prep item. */
+  const upsertItemAdjustment = (
+    prepItemId: string,
+    patch: { make_override?: number | null; removed?: boolean }
+  ) =>
+    runSave(async () => {
+      if (!locationId) return;
+      const supabase = createClient();
+      const existing = adjustmentByPrepId[prepItemId];
+      const payload = {
+        location_id: locationId,
+        date,
+        prep_item_id: prepItemId,
+        make_override: patch.make_override ?? existing?.make_override ?? null,
+        removed: patch.removed ?? existing?.removed ?? false,
+        updated_at: new Date().toISOString(),
+      };
+      const { data, error: err } = await supabase
+        .from("prep_list_adjustments")
+        .upsert(payload, { onConflict: "location_id,date,prep_item_id" })
+        .select("*")
+        .single();
+      if (err) throw new Error(err.message);
+      const saved = data as PrepListAdjustment;
+      setAdjustments((prev) => [...prev.filter((a) => a.id !== saved.id), saved]);
+    });
+
+  const deleteAdjustment = (id: string) =>
+    runSave(async () => {
+      const supabase = createClient();
+      const { error: err } = await supabase.from("prep_list_adjustments").delete().eq("id", id);
+      if (err) throw new Error(err.message);
+      setAdjustments((prev) => prev.filter((a) => a.id !== id));
+    });
+
+  const updateCustomTask = (id: string, patch: Partial<PrepListAdjustment>) =>
+    runSave(async () => {
+      const supabase = createClient();
+      const { data, error: err } = await supabase
+        .from("prep_list_adjustments")
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select("*")
+        .single();
+      if (err) throw new Error(err.message);
+      const saved = data as PrepListAdjustment;
+      setAdjustments((prev) => prev.map((a) => (a.id === id ? saved : a)));
+    });
+
+  const handleAddTask = () => {
+    const qty = parseQty(addQty);
+    if (qty == null) {
+      setError("Enter a valid quantity.");
+      return;
+    }
+    if (addItemId) {
+      void upsertItemAdjustment(addItemId, { make_override: qty, removed: false });
+      setAddItemId("");
+      setAddQty("1");
+      return;
+    }
+    const name = addName.trim();
+    if (!name) {
+      setError("Pick a prep item or type a task name.");
+      return;
+    }
+    void runSave(async () => {
+      if (!locationId) return;
+      const supabase = createClient();
+      const { data, error: err } = await supabase
+        .from("prep_list_adjustments")
+        .insert({
+          location_id: locationId,
+          date,
+          custom_name: name,
+          custom_unit: addUnit.trim() || null,
+          make_override: qty,
+        })
+        .select("*")
+        .single();
+      if (err) throw new Error(err.message);
+      setAdjustments((prev) => [...prev, data as PrepListAdjustment]);
+      setAddName("");
+      setAddUnit("");
+      setAddQty("1");
+    });
+  };
+
+  const addableItems = hiddenRows.filter((r) => !r.override?.removed);
 
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
 
@@ -334,12 +530,21 @@ export default function PrepListPage() {
           <p className="py-8 text-ink-soft/80">Loading…</p>
         ) : !locationId ? (
           <p className="py-8 text-ink-soft/80">Select a location.</p>
-        ) : todayRows.length === 0 && tomorrowRows.length === 0 ? (
-          <p className="py-8 text-ink-soft/80">No prep items to show, or all items are fully stocked.</p>
+        ) : todayRows.length === 0 && tomorrowRows.length === 0 && customTasks.length === 0 && !editing ? (
+          <div className="py-8">
+            <p className="text-ink-soft/80">No prep items to show, or all items are fully stocked.</p>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="btn-secondary mt-4 rounded-xl px-4 py-2.5 text-sm font-medium no-print"
+            >
+              Edit / add task
+            </button>
+          </div>
         ) : (
           <>
             <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
-            <div className="mt-6 flex gap-2 no-print">
+            <div className="mt-6 flex flex-wrap items-center gap-2 no-print">
               <button
                 type="button"
                 onClick={handlePrint}
@@ -347,10 +552,115 @@ export default function PrepListPage() {
               >
                 Print
               </button>
+              <button
+                type="button"
+                onClick={() => setEditing((v) => !v)}
+                className={`${editing ? "btn-accent" : "btn-secondary"} rounded-xl px-4 py-2.5 text-sm font-medium`}
+              >
+                {editing ? "Done editing" : "Edit"}
+              </button>
+              {saving && <span className="help-text">Saving…</span>}
             </div>
 
+            {editing && (
+              <div className="mt-4 card p-4 no-print space-y-3">
+                <p className="text-sm font-medium text-ink">Add task for today</p>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={addItemId}
+                    onChange={(e) => {
+                      setAddItemId(e.target.value);
+                      const r = addableItems.find((x) => x.row.prep_item_id === e.target.value);
+                      if (r) setAddUnit(r.row.prep_items?.unit ?? "");
+                    }}
+                    className="input h-10 min-w-[12rem] flex-1"
+                    aria-label="Prep item"
+                  >
+                    <option value="">Custom task…</option>
+                    {addableItems.map((r) => (
+                      <option key={r.row.prep_item_id} value={r.row.prep_item_id}>
+                        {r.row.prep_items?.name}
+                        {r.row.prep_items?.unit ? ` (${r.row.prep_items.unit})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {!addItemId && (
+                    <>
+                      <input
+                        type="text"
+                        value={addName}
+                        onChange={(e) => setAddName(e.target.value)}
+                        placeholder="Task name, e.g. Dust pitas"
+                        className="input h-10 min-w-[12rem] flex-1"
+                        aria-label="Task name"
+                      />
+                      <input
+                        type="text"
+                        value={addUnit}
+                        onChange={(e) => setAddUnit(e.target.value)}
+                        placeholder="Unit"
+                        className="input h-10 w-28"
+                        aria-label="Unit"
+                      />
+                    </>
+                  )}
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="any"
+                    value={addQty}
+                    onChange={(e) => setAddQty(e.target.value)}
+                    className="input h-10 w-24 text-center"
+                    aria-label="Quantity to make"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddTask}
+                    disabled={saving}
+                    className="btn-primary h-10 rounded-xl px-4 text-sm font-medium"
+                  >
+                    Add task
+                  </button>
+                </div>
+                <p className="help-text">
+                  Pick an item the model left off today, or type a custom task. Changes apply to{" "}
+                  <strong>{locationName || "this location"}</strong> on {date} only.
+                </p>
+                {removedAdjustments.length > 0 && (
+                  <div className="border-t border-brand-green/10 pt-3">
+                    <p className="mb-1 text-sm font-medium text-ink">Removed today</p>
+                    <ul className="space-y-1">
+                      {removedAdjustments.map((a) => {
+                        const name =
+                          a.custom_name ??
+                          locationPrepItems.find((r) => r.prep_item_id === a.prep_item_id)?.prep_items?.name ??
+                          "Item";
+                        return (
+                          <li key={a.id} className="flex items-center justify-between text-sm">
+                            <span className="text-ink-soft line-through">{name}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                a.prep_item_id
+                                  ? void deleteAdjustment(a.id)
+                                  : void updateCustomTask(a.id, { removed: false })
+                              }
+                              className="btn-ghost rounded-lg px-3 py-1 text-xs font-medium"
+                            >
+                              Restore
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 space-y-6">
-              {todayRows.map(({ row, needed, toMake, priority, currentStock }) => {
+              {todayRows.map(({ row, needed, toMake, priority, currentStock, override }) => {
                 const item = row.prep_items!;
                 const priorityClass =
                   priority === 1
@@ -394,12 +704,72 @@ export default function PrepListPage() {
                           {item.batch_size != null && item.batch_size > 0 && (
                             <span> (batch {item.batch_size})</span>
                           )}
+                          {override?.make_override != null && (
+                            <span className="ml-1 text-accent-terracotta">(edited)</span>
+                          )}
                         </p>
                       </div>
+                      {editing && (
+                        <div className="flex shrink-0 items-center gap-2 no-print">
+                          <MakeInput
+                            value={toMake}
+                            onCommit={(n) => void upsertItemAdjustment(item.id, { make_override: n })}
+                            label={`Make: ${item.name}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void upsertItemAdjustment(item.id, { removed: true })}
+                            className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
               })}
+
+              {customTasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="rounded-xl border border-brand-green/10 border-l-4 border-l-brand-green bg-brand-sage/25 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={!!completed[task.id]}
+                      onChange={() => toggleDone(task.id)}
+                      className="mt-1 h-5 w-5 shrink-0 rounded border-brand-green/15"
+                      aria-label={`Done: ${task.custom_name}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-ink">{task.custom_name}</p>
+                      {task.custom_unit && <p className="help-text">{task.custom_unit}</p>}
+                      <p className="mt-1 help-text">
+                        Make: <strong>{formatPrepQuantity(Number(task.make_override ?? 0))}</strong>
+                        <span className="ml-1 text-accent-terracotta">(added by kitchen)</span>
+                      </p>
+                    </div>
+                    {editing && (
+                      <div className="flex shrink-0 items-center gap-2 no-print">
+                        <MakeInput
+                          value={Number(task.make_override ?? 0)}
+                          onCommit={(n) => void updateCustomTask(task.id, { make_override: n })}
+                          label={`Make: ${task.custom_name}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void deleteAdjustment(task.id)}
+                          className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
 
               {tomorrowRows.length > 0 && (
                 <section className="border-t border-brand-green/10 pt-6">
@@ -407,7 +777,7 @@ export default function PrepListPage() {
                     Tomorrow (overnight)
                   </h2>
                   <div className="space-y-4">
-                    {tomorrowRows.map(({ row, needed, toMake, priority, currentStock }) => {
+                    {tomorrowRows.map(({ row, needed, toMake, priority, currentStock, override }) => {
                       const item = row.prep_items!;
                       const priorityClass =
                         priority === 1
@@ -446,8 +816,27 @@ export default function PrepListPage() {
                                 Stock: {formatPrepQuantity(currentStock)} · Needed:{" "}
                                 {formatPrepQuantity(needed)} · Make:{" "}
                                 <strong>{formatPrepQuantity(toMake)}</strong>
+                                {override?.make_override != null && (
+                                  <span className="ml-1 text-accent-terracotta">(edited)</span>
+                                )}
                               </p>
                             </div>
+                            {editing && (
+                              <div className="flex shrink-0 items-center gap-2 no-print">
+                                <MakeInput
+                                  value={toMake}
+                                  onCommit={(n) => void upsertItemAdjustment(item.id, { make_override: n })}
+                                  label={`Make: ${item.name}`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void upsertItemAdjustment(item.id, { removed: true })}
+                                  className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
