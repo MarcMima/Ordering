@@ -18,14 +18,12 @@ Dit is een **live productie-app** (Next.js 16 + Supabase, deploys van GitHub `ma
 - UI-tekst is Engels.
 - Bij een vastgelopen dev-server: `npm run dev:clean` (zie `docs/DEV_SERVER_LOCK.md`).
 
-<<<<<<< HEAD
+## Meetingpijplijn (Plaud → Notion)
+
+Deze repo bevat naast de app ook `/api/plaud-webhook` en `/api/meeting-reminders`. Werking, payload en herstelstappen staan in `docs/plaud-pipeline.md` (Zapier + Plaud-watchdog via Supabase `plaud_watchdog_post`, migratie 217). Lees dat vóór je aan de webhook sleutelt.
+
 ## Context & systeemlandschap
 - Het grote plaatje van alle Mima-systemen (deze app, het mima-data-warehouse, de Plaud→Notion-meetingpijplijn, website 2.0) staat in Notion: Second Brain → Afdelingen → Systems → "Systeemlandschap — Mima". Lees dat bij twijfel over wat waar hoort.
 - Deze repo bevat naast de app óók de automatiseringen `/api/plaud-webhook` (meetingpijplijn) en `/api/meeting-reminders` — wees daar voorzichtig mee bij refactors van de api-routes.
 - Het datawarehouse (`MarcMima/mima-data`, Supabase `mima-data`) is bewust een apart systeem: deze app schrijft de operatie, het warehouse leest en analyseert. Analyse-features horen dáár, operationele features hier.
 - Einde sessie: landschap of werkwijze veranderd → Systeemlandschap-pagina bijwerken en `/brein-oogst` draaien.
-=======
-## Meetingpijplijn (Plaud → Notion)
-
-Deze repo bevat naast de app ook `/api/plaud-webhook` en `/api/meeting-reminders`. Werking, payload en herstelstappen staan in `docs/plaud-pipeline.md` (Zapier + Plaud-watchdog via Supabase `plaud_watchdog_post`, migratie 217). Lees dat vóór je aan de webhook sleutelt.
->>>>>>> main
