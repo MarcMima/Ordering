@@ -16,3 +16,7 @@ Dit is een **live productie-app** (Next.js 16 + Supabase, deploys van GitHub `ma
 ## Overig
 - UI-tekst is Engels.
 - Bij een vastgelopen dev-server: `npm run dev:clean` (zie `docs/DEV_SERVER_LOCK.md`).
+
+## Meetingpijplijn (Plaud → Notion)
+
+Deze repo bevat naast de app ook `/api/plaud-webhook` en `/api/meeting-reminders`. Werking, payload en herstelstappen staan in `docs/plaud-pipeline.md` (Zapier + Plaud-watchdog via Supabase `plaud_watchdog_post`, migratie 217). Lees dat vóór je aan de webhook sleutelt.
