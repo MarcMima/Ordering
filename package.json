@@ -8,7 +8,8 @@
     "dev:clean": "bash scripts/dev-clean.sh",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test \"supabase/functions/**/__tests__/*.test.ts\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.105.0",
