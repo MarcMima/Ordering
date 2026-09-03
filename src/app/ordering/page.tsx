@@ -1654,8 +1654,42 @@ export default function OrderingPage() {
 
     try {
       const orderDate = localCalendarDateString();
-      const orderId = await createOrderForSupplier(supplierId, lines, orderDate);
       const supabase = createClient();
+
+      // Zuidas verstuurde op 2026-09-01 vier keer dezelfde Van Gelder-order binnen 25 minuten;
+      // elke klik was een echte, geslaagde verzending. Een tweede order op dezelfde dag is soms
+      // legitiem (vergeten artikel), dus we blokkeren niet, maar we vragen het wel.
+      if (!dryRun) {
+        const { data: sentToday } = await supabase
+          .from("orders")
+          .select("id, created_at, order_dispatches!inner(status)")
+          .eq("location_id", locationId)
+          .eq("supplier_id", supplierId)
+          .eq("order_date", orderDate)
+          .eq("order_dispatches.status", "sent");
+        if ((sentToday?.length ?? 0) > 0) {
+          const supName = suppliers.find((s) => s.id === supplierId)?.name ?? "this supplier";
+          const times = (sentToday ?? [])
+            .map((o) => new Date((o as { created_at: string }).created_at))
+            .sort((a, b) => a.getTime() - b.getTime())
+            .map((d) => d.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }))
+            .join(", ");
+          const ok = window.confirm(
+            `An order was already sent to ${supName} today (${times}). ` +
+              `Sending again creates a second, separate order — it does not replace the first one.\n\n` +
+              `Send another order?`
+          );
+          if (!ok) {
+            setDispatchStatusBySupplier((prev) => ({
+              ...prev,
+              [supplierId]: { loading: false, loadingAction: undefined, dryRun, message: "Not sent." },
+            }));
+            return;
+          }
+        }
+      }
+
+      const orderId = await createOrderForSupplier(supplierId, lines, orderDate);
       const { data, error: invokeErr } = await supabase.functions.invoke("dispatch-order", {
         body: {
           order_id: orderId,
