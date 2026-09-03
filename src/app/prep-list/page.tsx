@@ -27,6 +27,52 @@ import {
   isWholewheatPitaPrepName,
 } from "@/lib/pitaPrepStock";
 import type { RawIngredient } from "@/lib/types";
+import {
+  ADJUSTMENT_REASONS,
+  computeBaseSuggestions,
+  reasonLabel,
+  type AdjustmentReason,
+  type SuggestionDecision,
+} from "@/lib/prepBaseSuggestions";
+
+/** Days of adjustment history loaded for the learning suggestions. */
+const SUGGESTION_WINDOW_DAYS = 28;
+
+function isoDaysAgo(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+function ReasonChips({
+  value,
+  onPick,
+  disabled,
+}: {
+  value: string | null | undefined;
+  onPick: (r: AdjustmentReason) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {ADJUSTMENT_REASONS.map((r) => (
+        <button
+          key={r.value}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(r.value)}
+          className={`rounded-full border px-3 py-1 text-xs font-medium ${
+            value === r.value
+              ? "border-brand-green bg-brand-green text-white"
+              : "border-brand-green/25 bg-white/60 text-ink"
+          }`}
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 type LocationPrepItemRow = {
   id: string;
@@ -114,6 +160,10 @@ export default function PrepListPage() {
   const [locationDetails, setLocationDetails] = useState<Location | null>(null);
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
   const [adjustments, setAdjustments] = useState<PrepListAdjustment[]>([]);
+  const [history, setHistory] = useState<PrepListAdjustment[]>([]);
+  const [decisions, setDecisions] = useState<SuggestionDecision[]>([]);
+  const [pendingReasonId, setPendingReasonId] = useState<string | null>(null);
+  const [addReason, setAddReason] = useState<AdjustmentReason | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addItemId, setAddItemId] = useState<string>("");
@@ -134,6 +184,8 @@ export default function PrepListPage() {
       setLoading(false);
       setCompleted({});
       setAdjustments([]);
+      setHistory([]);
+      setDecisions([]);
       return;
     }
     setLoading(true);
@@ -142,7 +194,7 @@ export default function PrepListPage() {
 
     void (async () => {
       const revCents = await ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d);
-      const [lpiRes, countRes, rawStockRes, rawRes, locRes, adjRes] = await Promise.all([
+      const [lpiRes, countRes, rawStockRes, rawRes, locRes, adjRes, decRes] = await Promise.all([
         supabase
           .from("location_prep_items")
           .select("id, location_id, prep_item_id, base_quantity, display_order, prep_items(*)")
@@ -169,8 +221,13 @@ export default function PrepListPage() {
           .from("prep_list_adjustments")
           .select("*")
           .eq("location_id", locationId)
-          .eq("date", d)
+          .gte("date", isoDaysAgo(d, SUGGESTION_WINDOW_DAYS))
+          .lte("date", d)
           .order("created_at"),
+        supabase
+          .from("prep_base_suggestion_decisions")
+          .select("prep_item_id, created_at")
+          .eq("location_id", locationId),
       ]);
       try {
         if (lpiRes.error) throw new Error(lpiRes.error.message);
@@ -179,6 +236,7 @@ export default function PrepListPage() {
         if (rawRes.error) throw new Error(rawRes.error.message);
         if (locRes.error) throw new Error(locRes.error.message);
         if (adjRes.error) throw new Error(adjRes.error.message);
+        if (decRes.error) throw new Error(decRes.error.message);
 
         const raw = (lpiRes.data as (Omit<LocationPrepItemRow, "prep_items"> & { prep_items: PrepItem | PrepItem[] | null })[]) ?? [];
         const items: LocationPrepItemRow[] = raw.map((row) => ({
@@ -200,7 +258,10 @@ export default function PrepListPage() {
         setRawIngredients(rawList);
         setRevenueTargetCents(revCents);
         setLocationDetails(loc ?? null);
-        setAdjustments((adjRes.data as PrepListAdjustment[]) ?? []);
+        const allAdj = (adjRes.data as PrepListAdjustment[]) ?? [];
+        setAdjustments(allAdj.filter((a) => a.date === d));
+        setHistory(allAdj);
+        setDecisions((decRes.data as SuggestionDecision[]) ?? []);
         setCompleted(getStoredDone(locationId, d));
         setError(null);
       } catch (e) {
@@ -232,6 +293,17 @@ export default function PrepListPage() {
     currentStock: number;
     /** Kitchen override of the calculated quantity (edit mode). */
     override: PrepListAdjustment | null;
+    /** What the model said before any override. */
+    modelToMake: number;
+  };
+
+  const mergeAdjustment = (saved: PrepListAdjustment) => {
+    setAdjustments((prev) => [...prev.filter((a) => a.id !== saved.id), saved]);
+    setHistory((prev) => [...prev.filter((a) => a.id !== saved.id), saved]);
+  };
+  const dropAdjustment = (id: string) => {
+    setAdjustments((prev) => prev.filter((a) => a.id !== id));
+    setHistory((prev) => prev.filter((a) => a.id !== id));
   };
 
   const adjustmentByPrepId = useMemo(() => {
@@ -316,8 +388,9 @@ export default function PrepListPage() {
         prepTimeHours: item.prep_time_hours ?? null,
       });
       const adj = adjustmentByPrepId[row.prep_item_id] ?? null;
+      const modelToMake = toMake;
       if (adj?.removed) {
-        hidden.push({ row, needed, toMake, priority, currentStock, override: adj });
+        hidden.push({ row, needed, toMake, priority, currentStock, override: adj, modelToMake });
         continue;
       }
       if (adj && adj.make_override != null) {
@@ -325,10 +398,10 @@ export default function PrepListPage() {
         if (priority === "hidden") priority = 3;
       }
       if (priority === "hidden") {
-        hidden.push({ row, needed, toMake, priority, currentStock, override: adj });
+        hidden.push({ row, needed, toMake, priority, currentStock, override: adj, modelToMake });
         continue;
       }
-      list.push({ row, needed, toMake, priority, currentStock, override: adj });
+      list.push({ row, needed, toMake, priority, currentStock, override: adj, modelToMake });
     }
     list.sort((a, b) => {
       const order: PrepPriority[] = [1, 2, 3, "hidden"];
@@ -389,7 +462,8 @@ export default function PrepListPage() {
   /** Insert or update the adjustment row for an existing prep item. */
   const upsertItemAdjustment = (
     prepItemId: string,
-    patch: { make_override?: number | null; removed?: boolean }
+    patch: { make_override?: number | null; removed?: boolean; reason?: AdjustmentReason | null },
+    snapshot?: { modelMake: number; modelNeeded: number; stock: number }
   ) =>
     runSave(async () => {
       if (!locationId) return;
@@ -401,6 +475,11 @@ export default function PrepListPage() {
         prep_item_id: prepItemId,
         make_override: patch.make_override ?? existing?.make_override ?? null,
         removed: patch.removed ?? existing?.removed ?? false,
+        reason: patch.reason ?? existing?.reason ?? null,
+        model_make: snapshot?.modelMake ?? existing?.model_make ?? null,
+        model_needed: snapshot?.modelNeeded ?? existing?.model_needed ?? null,
+        stock_at_edit: snapshot?.stock ?? existing?.stock_at_edit ?? null,
+        revenue_multiplier: existing?.revenue_multiplier ?? revenueMultiplier,
         updated_at: new Date().toISOString(),
       };
       const { data, error: err } = await supabase
@@ -410,7 +489,22 @@ export default function PrepListPage() {
         .single();
       if (err) throw new Error(err.message);
       const saved = data as PrepListAdjustment;
-      setAdjustments((prev) => [...prev.filter((a) => a.id !== saved.id), saved]);
+      mergeAdjustment(saved);
+      if (!saved.reason) setPendingReasonId(saved.id);
+    });
+
+  const setReason = (id: string, reason: AdjustmentReason) =>
+    runSave(async () => {
+      const supabase = createClient();
+      const { data, error: err } = await supabase
+        .from("prep_list_adjustments")
+        .update({ reason, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select("*")
+        .single();
+      if (err) throw new Error(err.message);
+      mergeAdjustment(data as PrepListAdjustment);
+      setPendingReasonId((cur) => (cur === id ? null : cur));
     });
 
   const deleteAdjustment = (id: string) =>
@@ -418,7 +512,34 @@ export default function PrepListPage() {
       const supabase = createClient();
       const { error: err } = await supabase.from("prep_list_adjustments").delete().eq("id", id);
       if (err) throw new Error(err.message);
-      setAdjustments((prev) => prev.filter((a) => a.id !== id));
+      dropAdjustment(id);
+    });
+
+  const suggestions = useMemo(
+    () => computeBaseSuggestions({ adjustments: history, locationPrepItems, decisions }),
+    [history, locationPrepItems, decisions]
+  );
+
+  const decideSuggestion = (
+    locationPrepItemId: string,
+    prepItemId: string,
+    suggestedBase: number,
+    decision: "accepted" | "dismissed"
+  ) =>
+    runSave(async () => {
+      const supabase = createClient();
+      const { error: err } = await supabase.rpc("decide_prep_base_suggestion", {
+        p_location_prep_item_id: locationPrepItemId,
+        p_suggested_base: suggestedBase,
+        p_decision: decision,
+      });
+      if (err) throw new Error(err.message);
+      setDecisions((prev) => [...prev, { prep_item_id: prepItemId, created_at: new Date().toISOString() }]);
+      if (decision === "accepted") {
+        setLocationPrepItems((prev) =>
+          prev.map((r) => (r.id === locationPrepItemId ? { ...r, base_quantity: suggestedBase } : r))
+        );
+      }
     });
 
   const updateCustomTask = (id: string, patch: Partial<PrepListAdjustment>) =>
@@ -431,8 +552,7 @@ export default function PrepListPage() {
         .select("*")
         .single();
       if (err) throw new Error(err.message);
-      const saved = data as PrepListAdjustment;
-      setAdjustments((prev) => prev.map((a) => (a.id === id ? saved : a)));
+      mergeAdjustment(data as PrepListAdjustment);
     });
 
   const handleAddTask = () => {
@@ -441,10 +561,22 @@ export default function PrepListPage() {
       setError("Enter a valid quantity.");
       return;
     }
+    if (!addReason) {
+      setError("Pick a reason for adding this task.");
+      return;
+    }
     if (addItemId) {
-      void upsertItemAdjustment(addItemId, { make_override: qty, removed: false });
+      const hiddenRow = hiddenRows.find((r) => r.row.prep_item_id === addItemId);
+      void upsertItemAdjustment(
+        addItemId,
+        { make_override: qty, removed: false, reason: addReason },
+        hiddenRow
+          ? { modelMake: hiddenRow.toMake, modelNeeded: hiddenRow.needed, stock: hiddenRow.currentStock }
+          : undefined
+      );
       setAddItemId("");
       setAddQty("1");
+      setAddReason(null);
       return;
     }
     const name = addName.trim();
@@ -463,14 +595,17 @@ export default function PrepListPage() {
           custom_name: name,
           custom_unit: addUnit.trim() || null,
           make_override: qty,
+          reason: addReason,
+          revenue_multiplier: revenueMultiplier,
         })
         .select("*")
         .single();
       if (err) throw new Error(err.message);
-      setAdjustments((prev) => [...prev, data as PrepListAdjustment]);
+      mergeAdjustment(data as PrepListAdjustment);
       setAddName("");
       setAddUnit("");
       setAddQty("1");
+      setAddReason(null);
     });
   };
 
@@ -623,6 +758,10 @@ export default function PrepListPage() {
                     Add task
                   </button>
                 </div>
+                <div>
+                  <span className="mb-1 block label">Why?</span>
+                  <ReasonChips value={addReason} onPick={setAddReason} disabled={saving} />
+                </div>
                 <p className="help-text">
                   Pick an item the model left off today, or type a custom task. Changes apply to{" "}
                   <strong>{locationName || "this location"}</strong> on {date} only.
@@ -637,8 +776,12 @@ export default function PrepListPage() {
                           locationPrepItems.find((r) => r.prep_item_id === a.prep_item_id)?.prep_items?.name ??
                           "Item";
                         return (
-                          <li key={a.id} className="flex items-center justify-between text-sm">
+                          <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                             <span className="text-ink-soft line-through">{name}</span>
+                            {a.prep_item_id && !a.reason && (
+                              <ReasonChips value={a.reason} onPick={(r) => void setReason(a.id, r)} disabled={saving} />
+                            )}
+                            {a.reason && <span className="help-text">{reasonLabel(a.reason)}</span>}
                             <button
                               type="button"
                               onClick={() =>
@@ -659,8 +802,60 @@ export default function PrepListPage() {
               </div>
             )}
 
+            {editing && suggestions.length > 0 && (
+              <section className="mt-4 card p-4 no-print space-y-3 border-l-4 border-l-accent-orange">
+                <p className="text-sm font-medium text-ink">Suggestions for the manager</p>
+                <p className="help-text">
+                  The kitchen keeps correcting these items. Accepting changes the base quantity for{" "}
+                  <strong>{locationName || "this location"}</strong> from now on; dismissing hides the
+                  suggestion until it happens again.
+                </p>
+                <ul className="space-y-2">
+                  {suggestions.map((sg) => (
+                    <li
+                      key={sg.prepItemId}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-sand/30 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink">
+                          {sg.name}
+                          {sg.unit ? <span className="help-text"> · {sg.unit}</span> : null}
+                        </p>
+                        <p className="help-text">
+                          Base {formatPrepQuantity(sg.currentBase)} → <strong>{formatPrepQuantity(sg.suggestedBase)}</strong>{" "}
+                          · corrected on {sg.occurrences} days (last {sg.dates[0]})
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() =>
+                            void decideSuggestion(sg.locationPrepItemId, sg.prepItemId, sg.suggestedBase, "accepted")
+                          }
+                          className="btn-primary rounded-lg px-3 py-1.5 text-xs font-medium"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() =>
+                            void decideSuggestion(sg.locationPrepItemId, sg.prepItemId, sg.suggestedBase, "dismissed")
+                          }
+                          className="btn-ghost rounded-lg px-3 py-1.5 text-xs font-medium"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <div className="mt-6 space-y-6">
-              {todayRows.map(({ row, needed, toMake, priority, currentStock, override }) => {
+              {todayRows.map(({ row, needed, toMake, priority, currentStock, override, modelToMake }) => {
                 const item = row.prep_items!;
                 const priorityClass =
                   priority === 1
@@ -713,12 +908,24 @@ export default function PrepListPage() {
                         <div className="flex shrink-0 items-center gap-2 no-print">
                           <MakeInput
                             value={toMake}
-                            onCommit={(n) => void upsertItemAdjustment(item.id, { make_override: n })}
+                            onCommit={(n) =>
+                              void upsertItemAdjustment(
+                                item.id,
+                                { make_override: n },
+                                { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
+                              )
+                            }
                             label={`Make: ${item.name}`}
                           />
                           <button
                             type="button"
-                            onClick={() => void upsertItemAdjustment(item.id, { removed: true })}
+                            onClick={() =>
+                              void upsertItemAdjustment(
+                                item.id,
+                                { removed: true },
+                                { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
+                              )
+                            }
                             className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
                           >
                             Remove
@@ -726,6 +933,31 @@ export default function PrepListPage() {
                         </div>
                       )}
                     </div>
+                    {editing && override && !override.removed && (
+                      <div className="mt-3 no-print">
+                        {override.reason && pendingReasonId !== override.id ? (
+                          <p className="help-text">
+                            Reason: {reasonLabel(override.reason)}{" "}
+                            <button
+                              type="button"
+                              onClick={() => setPendingReasonId(override.id)}
+                              className="underline"
+                            >
+                              change
+                            </button>
+                          </p>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="label block">Why did you change this?</span>
+                            <ReasonChips
+                              value={override.reason}
+                              onPick={(r) => void setReason(override.id, r)}
+                              disabled={saving}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -777,7 +1009,7 @@ export default function PrepListPage() {
                     Tomorrow (overnight)
                   </h2>
                   <div className="space-y-4">
-                    {tomorrowRows.map(({ row, needed, toMake, priority, currentStock, override }) => {
+                    {tomorrowRows.map(({ row, needed, toMake, priority, currentStock, override, modelToMake }) => {
                       const item = row.prep_items!;
                       const priorityClass =
                         priority === 1
@@ -825,12 +1057,24 @@ export default function PrepListPage() {
                               <div className="flex shrink-0 items-center gap-2 no-print">
                                 <MakeInput
                                   value={toMake}
-                                  onCommit={(n) => void upsertItemAdjustment(item.id, { make_override: n })}
+                                  onCommit={(n) =>
+                                    void upsertItemAdjustment(
+                                      item.id,
+                                      { make_override: n },
+                                      { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
+                                    )
+                                  }
                                   label={`Make: ${item.name}`}
                                 />
                                 <button
                                   type="button"
-                                  onClick={() => void upsertItemAdjustment(item.id, { removed: true })}
+                                  onClick={() =>
+                                    void upsertItemAdjustment(
+                                      item.id,
+                                      { removed: true },
+                                      { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
+                                    )
+                                  }
                                   className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
                                 >
                                   Remove
@@ -838,6 +1082,31 @@ export default function PrepListPage() {
                               </div>
                             )}
                           </div>
+                          {editing && override && !override.removed && (
+                            <div className="mt-3 no-print">
+                              {override.reason && pendingReasonId !== override.id ? (
+                                <p className="help-text">
+                                  Reason: {reasonLabel(override.reason)}{" "}
+                                  <button
+                                    type="button"
+                                    onClick={() => setPendingReasonId(override.id)}
+                                    className="underline"
+                                  >
+                                    change
+                                  </button>
+                                </p>
+                              ) : (
+                                <div className="space-y-1">
+                                  <span className="label block">Why did you change this?</span>
+                                  <ReasonChips
+                                    value={override.reason}
+                                    onPick={(r) => void setReason(override.id, r)}
+                                    disabled={saving}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
