@@ -11,6 +11,7 @@
 import {
   createServiceClient,
   formatSyncReportEmail,
+  needsAttention,
   runBidfoodAssortmentSync,
   sendReportEmail,
 } from "../sync-bidfood-assortment/bidfoodAssortment.ts";
@@ -171,13 +172,9 @@ Deno.serve(async (req) => {
       fileName: file.fileName,
     });
 
-    const needsAttention =
-      result.errors.length > 0 ||
-      result.inactive > 0 ||
-      result.notInFile > 0 ||
-      !result.ok;
+    const attention = needsAttention(result);
     let reportEmail: string | null = null;
-    if (needsAttention) {
+    if (attention) {
       const { subject: reportSubject, text: reportText } = formatSyncReportEmail(
         result,
         file.fileName
@@ -194,7 +191,7 @@ Deno.serve(async (req) => {
         processed: true,
         file_name: file.fileName,
         ...result,
-        report_email: needsAttention ? (reportEmail ?? "sent") : "skipped_all_ok",
+        report_email: attention ? (reportEmail ?? "sent") : "skipped_all_ok",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
