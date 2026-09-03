@@ -156,6 +156,14 @@ export interface PrepListAdjustment {
   /** null = use the calculated quantity. */
   make_override?: number | null;
   removed: boolean;
+  /** Why the kitchen changed it (migration 219); 'event' never feeds the learning loop. */
+  reason?: "event" | "model_wrong" | "stock_wrong" | "other" | null;
+  reason_note?: string | null;
+  /** Snapshot of the model at the moment of the edit, used to derive a new base quantity. */
+  model_make?: number | null;
+  model_needed?: number | null;
+  stock_at_edit?: number | null;
+  revenue_multiplier?: number | null;
   created_at?: string;
   updated_at?: string;
 }
