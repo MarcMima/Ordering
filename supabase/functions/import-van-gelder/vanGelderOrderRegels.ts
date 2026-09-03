@@ -29,10 +29,20 @@ export function parsleyVanGelderEanForPack(
   return PARSLEY_VG_BAG_1KG_EAN;
 }
 
-/** App order quantity is already in VG order units (crates), not sub-units inside a crate. */
+/**
+ * App order quantity is already in VG order units (crates), not sub-units inside a crate.
+ * Red cabbage shredded (art. 161329, KST2ST = 2 × 2.5 kg): the app pack is `crate (2 × 2.5 kg)`
+ * = 5 kg since 2026-09-03, which the size comparison cannot line up with "2 ST", so 2 crates
+ * would be sent as ceil(2 / 2) = 1.
+ */
 export function isVanGelderQtyAlreadyInOrderUnits(rawName: string | null | undefined): boolean {
   const n = (rawName ?? "").trim().toLowerCase();
-  return n === "aubergine" || n === "chickpeas" || n === "romaine lettuce";
+  return (
+    n === "aubergine" ||
+    n === "chickpeas" ||
+    n === "romaine lettuce" ||
+    n === "red cabbage shredded"
+  );
 }
 
 /**

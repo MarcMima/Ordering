@@ -69,6 +69,8 @@ test("zonder pack_size blijft de oude deling staan (stuks → kratten)", () => {
 test("de hardgecodeerde namenlijst blijft als vangnet werken", () => {
   assert.equal(vanGelderDispatchQtyForLine(line(5, { size: 14, size_unit: "pcs" }, "KST14ST", null, "Aubergine")), 5);
   assert.equal(vanGelderDispatchQtyForLine(line(3, null, "KST10KG", 10, "Chickpeas")), 3);
+  // rode kool: pack `crate (2 × 2.5 kg)` = 5 kg tegenover KST2ST — niet vergelijkbaar, dus via de lijst
+  assert.equal(vanGelderDispatchQtyForLine(line(2, { size: 5, size_unit: "kg" }, "KST2ST", 2, "Red cabbage shredded")), 2);
 });
 
 test("aantal wordt naar boven afgerond en is minimaal 1", () => {
