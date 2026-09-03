@@ -144,6 +144,22 @@ export interface DailyPrepCount {
   updated_at?: string;
 }
 
+/** Kitchen edit on the daily prep list for one location + date (migration 218). */
+export interface PrepListAdjustment {
+  id: string;
+  location_id: string;
+  date: string;
+  /** Existing prep item; null for a custom task. */
+  prep_item_id?: string | null;
+  custom_name?: string | null;
+  custom_unit?: string | null;
+  /** null = use the calculated quantity. */
+  make_override?: number | null;
+  removed: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface LocationPrepItem {
   id: string;
   location_id: string;
