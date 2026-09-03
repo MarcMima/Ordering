@@ -20,15 +20,9 @@
 //   VAN_GELDER_API_BASE_URL   — https://vg-acc-we-apim.azure-api.net (acc) of vg-prd (prod)
 //   VAN_GELDER_ORDER_URL      — exact order endpoint (acc/prod …/api/orders/2.0/create)
 //   VAN_GELDER_BASE_URL       — bijv. https://api.vangeldernederland.nl
-//   VAN_GELDER_CUSTOMER_CODE  — Debiteurnummer (override van DB config)
-//   VAN_GELDER_DELIVERY_CITY      — LeveringAdres.Plaats
-//   VAN_GELDER_DELIVERY_STREET    — LeveringAdres.Straat
-//   VAN_GELDER_DELIVERY_POSTCODE  — LeveringAdres.Postcode
-//   VAN_GELDER_DELIVERY_COUNTRY   — LeveringAdres.Landcode (bijv. NL)
-//   VAN_GELDER_DELIVERY_NAME      — LeveringAdres.Naam (optioneel; fallback: locatie naam)
-//   VAN_GELDER_DELIVERY_KLANTCODE — LeveringAdres.Klantcode (optioneel; fallback: Debiteurnummer)
-//   VAN_GELDER_DELIVERY_HOUSENUMBER — LeveringAdres.Huisnummer (optioneel)
-//   VAN_GELDER_DELIVERY_PHONE       — LeveringAdres.Telefoonnummer (optioneel)
+//   Debiteurnummer en leveradres komen per vestiging uit supplier_order_channels
+//   (api_customer_code + delivery_address). Bewust géén env-fallback meer: een vestiging
+//   zonder eigen config moet falen, niet stilzwijgend onder een andere vestiging bestellen.
 //   BIDFOOD_USERNAME          — Basic Auth (fallback als geen per-klant secret)
 //   BIDFOOD_PASSWORD / BIDFOOD_PASSWORD_B64 — idem fallback
 //   Per klantnummer (productie, 3 users): BIDFOOD_USERNAME_074380, BIDFOOD_PASSWORD_B64_074380, enz.
@@ -707,25 +701,20 @@ function resolveVanGelderDelivery(
   houseNumber: string;
   phone: string;
 } {
+  // Alleen uit supplier_order_channels.delivery_address. Vroeger vielen deze velden terug op
+  // globale VAN_GELDER_DELIVERY_* secrets; dat stuurde een vestiging zonder eigen adres
+  // stilzwijgend naar het adres van een andere vestiging. Ontbreekt iets, dan faalt de
+  // dispatch nu met een duidelijke melding (zie de config-check in dispatchVanGelder).
   const db = channel.delivery_address ?? {};
-  const customerCodeResolved =
-    channel.api_customer_code ?? Deno.env.get("VAN_GELDER_CUSTOMER_CODE") ?? customerCode;
   return {
-    city: db.plaats ?? Deno.env.get("VAN_GELDER_DELIVERY_CITY") ?? "",
-    street: db.straat ?? Deno.env.get("VAN_GELDER_DELIVERY_STREET") ?? "",
-    postcode: db.postcode ?? Deno.env.get("VAN_GELDER_DELIVERY_POSTCODE") ?? "",
-    country: db.landcode ?? Deno.env.get("VAN_GELDER_DELIVERY_COUNTRY") ?? "",
-    name:
-      db.naam ??
-      Deno.env.get("VAN_GELDER_DELIVERY_NAME") ??
-      `MIMA ${order.location_id.slice(0, 8)}`,
-    klantcode:
-      db.klantcode ??
-      Deno.env.get("VAN_GELDER_DELIVERY_KLANTCODE") ??
-      customerCodeResolved ??
-      "",
-    houseNumber: db.huisnummer ?? Deno.env.get("VAN_GELDER_DELIVERY_HOUSENUMBER") ?? "",
-    phone: db.telefoon ?? Deno.env.get("VAN_GELDER_DELIVERY_PHONE") ?? "",
+    city: db.plaats ?? "",
+    street: db.straat ?? "",
+    postcode: db.postcode ?? "",
+    country: db.landcode ?? "",
+    name: db.naam ?? `MIMA ${order.location_id.slice(0, 8)}`,
+    klantcode: db.klantcode ?? customerCode,
+    houseNumber: db.huisnummer ?? "",
+    phone: db.telefoon ?? "",
   };
 }
 
@@ -753,8 +742,8 @@ async function dispatchVanGelder(
         ? configuredBaseOrEndpoint
         : `${configuredBaseOrEndpoint.replace(/\/+$/, "")}/orders`
       : null);
-  const customerCode =
-    channel.api_customer_code ?? Deno.env.get("VAN_GELDER_CUSTOMER_CODE");
+  // Per vestiging, uitsluitend uit supplier_order_channels — geen globale env-fallback (zie resolveVanGelderDelivery).
+  const customerCode = (channel.api_customer_code ?? "").trim() || null;
   const delivery = resolveVanGelderDelivery(channel, customerCode ?? "", order);
 
   let accessToken: string | null = null;
@@ -782,7 +771,7 @@ async function dispatchVanGelder(
       success: false,
       channel: "van_gelder_api",
       error:
-        "Incomplete Van Gelder config. Required: OAuth credentials (or VAN_GELDER_API_KEY fallback), VAN_GELDER_SUBSCRIPTION_KEY, VAN_GELDER_ORDER_URL (or api_base_url), api_customer_code (of supplier_order_channels), en leveradres (delivery_address in DB of VAN_GELDER_DELIVERY_* envs).",
+        "Incomplete Van Gelder config. Required: OAuth credentials (or VAN_GELDER_API_KEY fallback), VAN_GELDER_SUBSCRIPTION_KEY, VAN_GELDER_ORDER_URL (or api_base_url), and per location in supplier_order_channels: api_customer_code and a complete delivery_address (plaats, straat, postcode, landcode).",
     };
   }
 
@@ -1074,6 +1063,46 @@ function bidfoodBasicAuthValue(username: string, password: string): string {
   return btoa(binary);
 }
 
+/**
+ * Bidfood's A0022 422-antwoord verstopt de reden per regel in `products[].productIssueInformation`.
+ * Pijp klikte op 2026-09-02 drie keer "Send" op dezelfde order voordat iemand in de ruwe JSON zag
+ * dat één artikel maar 1 stuk op voorraad had. Dit haalt die regels naar voren.
+ */
+function describeBidfoodProductIssues(responseData: unknown): string | null {
+  if (!responseData || typeof responseData !== "object") return null;
+  const products = (responseData as { products?: unknown }).products;
+  if (!Array.isArray(products)) return null;
+  const parts: string[] = [];
+  for (const p of products) {
+    if (!p || typeof p !== "object") continue;
+    const r = p as {
+      productIssue?: boolean;
+      productId?: string;
+      skuId?: string;
+      gtin?: string;
+      productUom?: string;
+      quantityOrdered?: number;
+      quantityAvailable?: number;
+      firstPossibleDeliveryDate?: string;
+      productIssueInformation?: { reason?: unknown };
+    };
+    if (!r.productIssue) continue;
+    const id = r.productId ?? r.skuId ?? r.gtin ?? "?";
+    const reasons = Array.isArray(r.productIssueInformation?.reason)
+      ? (r.productIssueInformation!.reason as unknown[]).map(String).join("; ")
+      : "";
+    const extra: string[] = [];
+    if (r.quantityAvailable != null) extra.push(`beschikbaar ${r.quantityAvailable}`);
+    if (r.firstPossibleDeliveryDate) extra.push(`eerst leverbaar ${r.firstPossibleDeliveryDate}`);
+    parts.push(
+      `artikel ${id} (${r.quantityOrdered ?? "?"} ${r.productUom ?? ""})`.trim() +
+        (reasons ? `: ${reasons}` : "") +
+        (extra.length ? ` (${extra.join(", ")})` : "")
+    );
+  }
+  return parts.length ? parts.join(" | ") : null;
+}
+
 function formatBidfoodApiError(
   status: number,
   baseUrl: string,
@@ -1082,7 +1111,10 @@ function formatBidfoodApiError(
   creds: { username: string; password: string }
 ): string {
   const body = JSON.stringify(responseData);
-  const base = `Bidfood API ${status} (${baseUrl}, klant ${customerNumber}): ${body}`;
+  const issues = describeBidfoodProductIssues(responseData);
+  const base = issues
+    ? `Bidfood weigert de order — ${issues} | Bidfood API ${status} (${baseUrl}, klant ${customerNumber}): ${body}`
+    : `Bidfood API ${status} (${baseUrl}, klant ${customerNumber}): ${body}`;
   if (status !== 401) return base;
 
   const usernameHint = creds.username
@@ -2023,6 +2055,17 @@ Deno.serve(async (req: Request) => {
           message_body: result.message_body ?? null,
         })
         .eq("id", dispatch.id);
+    }
+
+    // Laat geen spookorders achter. De app maakt de order vóór het verzenden aan met status
+    // "submitted"; tot nu toe bleef die zo staan na een dry run of een mislukte dispatch, waardoor
+    // de historie orders toonde die nooit bij een leverancier zijn aangekomen (26 stuks sinds juni)
+    // en een nieuwe poging altijd een tweede order opleverde.
+    if (dry_run) {
+      // Een dry run is een voorvertoning; de order (en via cascade de dispatch-log) hoort niet te bestaan.
+      await supabase.from("orders").delete().eq("id", order_id);
+    } else if (!result.success) {
+      await supabase.from("orders").update({ status: "cancelled" }).eq("id", order_id);
     }
 
     // Van Gelder / Bidfood: waarschuw manager wanneer regels zijn overgeslagen maar order wel is verstuurd.

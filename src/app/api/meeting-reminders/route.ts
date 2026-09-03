@@ -198,11 +198,11 @@ function preMMMMMail(): Mail {
   return { to: TEAM, subject, text, html };
 }
 
-function postMMMMMail(): Mail {
+function postMMMMMail(tasks = 0): Mail {
   const subject = "MMMM processed — review your Drafts for review";
   const text =
     "Hi team,\n\n" +
-    "Monday's weekly meeting (MMMM) has been processed into Notion. New to-do's and " +
+    `Monday's weekly meeting (MMMM) has been processed into Notion${tasks ? ` (${tasks} new to-do's)` : ""}. New to-do's and ` +
     "decisions are in as \"Drafts for review\". Please open your tasks, check the items " +
     "assigned to you, and adjust owner, domain, priority or deadline where needed — then " +
     "they're confirmed." +
@@ -212,7 +212,7 @@ function postMMMMMail(): Mail {
     eyebrow: "Weekly meeting &middot; MMMM",
     heading: "Review your &ldquo;Drafts for review&rdquo;",
     paragraphs: [
-      "Monday&rsquo;s weekly meeting (<strong>MMMM</strong>) has been processed into Notion. " +
+      `Monday&rsquo;s weekly meeting (<strong>MMMM</strong>) has been processed into Notion${tasks ? ` (${tasks} new to-do&rsquo;s)` : ""}. ` +
         "New to-do&rsquo;s and decisions are in as <strong>&ldquo;Drafts for review&rdquo;</strong>.",
       "Please open your tasks, check the items assigned to you, and adjust owner, domain, " +
         "priority or deadline where needed &mdash; then they&rsquo;re confirmed.",
@@ -273,6 +273,87 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
   return { to: TEAM, subject, text, html };
 }
 
+
+// ---- Sync Log-check (is de meeting daadwerkelijk verwerkt?) -----------------
+// De post-meeting-mails gingen tot 09-2026 blind uit ("MMMM is verwerkt"), ook als de
+// pijplijn stil was uitgevallen. Nu: eerst in de Plaud Sync Log kijken. Niets gevonden
+// => geen team-mail maar een alarm naar Marc. Zo is stilte nooit meer "ok".
+const SYNC_LOG_DB_ID = "38821d9d-7c6a-819c-87fb-c10b6a969483";
+const NOTION_VERSION = "2022-06-28";
+
+type ProcessedCheck = { checked: boolean; count: number; tasks: number; error?: string };
+
+async function processedSince(
+  typeLabel: "Weekly" | "Monthly" | "Quarterly",
+  sinceIso: string,
+): Promise<ProcessedCheck> {
+  const token = process.env.NOTION_TOKEN;
+  if (!token) return { checked: false, count: 0, tasks: 0, error: "NOTION_TOKEN missing" };
+  try {
+    const res = await fetch(`https://api.notion.com/v1/databases/${SYNC_LOG_DB_ID}/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        filter: {
+          and: [
+            { property: "Status", select: { equals: "Done" } },
+            { property: "Processed at", date: { on_or_after: sinceIso } },
+            {
+              or: [
+                { property: "Meeting type", select: { equals: typeLabel } },
+                // legacy-rijen (vóór 09-2026) hebben geen Meeting type; alleen relevant
+                // voor Weekly, want die waren het overgrote deel.
+                ...(typeLabel === "Weekly" ? [{ property: "Meeting type", select: { is_empty: true } }] : []),
+              ],
+            },
+          ],
+        },
+        page_size: 20,
+      }),
+    });
+    if (!res.ok) return { checked: false, count: 0, tasks: 0, error: `${res.status} ${await res.text()}` };
+    const data = (await res.json()) as { results: Array<{ properties: Record<string, any> }> };
+    const tasks = data.results.reduce((n, r) => n + (r.properties?.["Tasks created"]?.number ?? 0), 0);
+    return { checked: true, count: data.results.length, tasks };
+  } catch (e: unknown) {
+    return { checked: false, count: 0, tasks: 0, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
+// Alarm naar Marc (Nederlands: alleen hij leest dit).
+function notProcessedMail(kind: "MMMM" | "MMM", check: ProcessedCheck): Mail {
+  const subject = `⚠️ Geen ${kind} verwerkt — pijplijn controleren`;
+  const text =
+    `De ${kind} van deze ${kind === "MMMM" ? "week" : "maand"} staat NIET als Done in de Plaud Sync Log` +
+    (check.checked ? "." : ` (check zelf mislukt: ${check.error}).`) +
+    "\n\nEr is daarom geen 'review je drafts'-mail naar het team gestuurd.\n\n" +
+    "Mogelijke oorzaken: opname niet gemaakt of niet gesynct, AutoFlow niet gevuurd, watchdog nog niet gedraaid, " +
+    "of een Failed/Ignored-rij in de Sync Log.\n\n" +
+    "Herstel: vraag Claude 'draai de Plaud-watchdog' (die haalt de opname op via de Plaud-MCP en biedt hem opnieuw aan), " +
+    "of controleer de Sync Log: https://www.notion.so/38821d9d7c6a819c87fbc10b6a969483";
+  const html = renderEmail({
+    eyebrow: `Pijplijn-alarm &middot; ${kind}`,
+    heading: `Geen ${kind} verwerkt`,
+    paragraphs: [
+      `De <strong>${kind}</strong> van deze ${kind === "MMMM" ? "week" : "maand"} staat niet als Done in de Plaud Sync Log` +
+        (check.checked ? "." : ` (check zelf mislukt: ${check.error}).`),
+      "Er is daarom geen &ldquo;review je drafts&rdquo;-mail naar het team gestuurd.",
+      "Herstel: vraag Claude &ldquo;draai de Plaud-watchdog&rdquo;, of controleer de Sync Log.",
+    ],
+    buttonLabel: "Open de Plaud Sync Log",
+    buttonUrl: "https://www.notion.so/38821d9d7c6a819c87fbc10b6a969483",
+  });
+  return { to: [MARC], subject, text, html };
+}
+
 // ---- Resend ---------------------------------------------------------------
 async function sendMail(m: Mail): Promise<{ ok: boolean; error?: string }> {
   const key = process.env.RESEND_API_KEY;
@@ -318,7 +399,7 @@ export async function GET(req: Request) {
   if (test) {
     let mail: Mail | null = null;
     if (test === "preMMMM") mail = preMMMMMail();
-    else if (test === "postMMMM") mail = postMMMMMail();
+    else if (test === "postMMMM") mail = postMMMMMail(0);
     else if (test === "preMMMweek") {
       const c = mmmDaysAway(p, 7) ?? firstTuesday(
         p.month === 12 ? p.year + 1 : p.year,
@@ -352,9 +433,23 @@ export async function GET(req: Request) {
   if (p.weekday === 5 && slotAllows("afternoon")) {
     due.push({ name: "pre-MMMM", mail: preMMMMMail() });
   }
-  // 2. post-MMMM — dinsdag (2), ochtend-slot
+  // 2. post-MMMM — dinsdag (2), ochtend-slot. Alleen als de MMMM écht verwerkt is;
+  //    anders alarm naar Marc i.p.v. een misleidende team-mail.
   if (p.weekday === 2 && slotAllows("morning")) {
-    due.push({ name: "post-MMMM", mail: postMMMMMail() });
+    const check = await processedSince("Weekly", isoDaysAgo(6));
+    if (check.checked && check.count > 0) {
+      due.push({ name: "post-MMMM", mail: postMMMMMail(check.tasks) });
+    } else {
+      due.push({ name: "post-MMMM-NOT-PROCESSED", mail: notProcessedMail("MMMM", check) });
+    }
+  }
+  // 2b. post-MMM — de dag na de eerste-dinsdag-MMM (woensdag), ochtend-slot: alleen
+  //     een controle; bij ontbreken alarm naar Marc.
+  if (mmmDaysAway(p, -1) && slotAllows("morning")) {
+    const check = await processedSince("Monthly", isoDaysAgo(6));
+    if (!(check.checked && check.count > 0)) {
+      due.push({ name: "post-MMM-NOT-PROCESSED", mail: notProcessedMail("MMM", check) });
+    }
   }
   // 3a. pre-MMM (week) — 7 dagen vóór de eerste-dinsdag-MMM, ochtend-slot
   const mmmWeek = mmmDaysAway(p, 7);
