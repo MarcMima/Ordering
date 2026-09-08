@@ -3,6 +3,10 @@
 -- besteld kunnen worden. Wekelijkse telling (maandag) zoals de bestaande non-food. Prijzen komen
 -- uit hetzelfde bestand; de wekelijkse Bidfood-sync houdt ze daarna bij.
 -- Idempotent: bestaande naam+locatie wordt overgeslagen.
+-- Bijgewerkt 08-09 (later op de dag): teruggebracht tot Marcs lijst — wc-papier, centerfeed,
+-- besteksetjes, foliedispenser, rietjes, handzeep, sponzen, vaatwaszout, Topmatic, bleek,
+-- schoonmaakazijn, afwasmiddel, Rational-tabs, koffie. De 21 overige regels zijn op productie
+-- weer verwijderd (zie 223).
 -- Deel 2 (onderaan): vijf bestaande GéDé-items verhuizen naar Bidfood omdat Bidfood daar
 -- goedkoper is (Marc, 8 sept): wc-papier, besteksetjes, centerfeed, roerstaafjes, foliedispenser.
 
@@ -12,37 +16,16 @@ DECLARE
 BEGIN
   FOR it IN SELECT * FROM (VALUES
     ('Paper straws black (box 250)','106283','non_food','pcs','box',250,'pcs',250,'pcs','box (250 pcs)',1430,487,316,'Doosje 250ST (0.32 kg)','DJ','08710803037272','DRINKR PAPIER ZWART'),
-    ('Aluminium catering tray 55 cm (pack 10)','147727','non_food','pcs','pack',10,'pcs',10,'pcs','pack (10 pcs)',1460,1102,720,'Pak 10ST (0.72 kg)','PK','08710803047349','ALU. CAT.SCHAAL 55CM'),
-    ('Detectable plasters (box 100)','056876','non_food','pcs','box',100,'pcs',100,'pcs','box (100 pcs)',1470,783,113,'Doosje 100ST (0.11 kg)','DJ','08715886013724','DETEC. PLEISTERS'),
-    ('Vacuum bags 30x40 (pack 100)','100402','non_food','pcs','pack',100,'pcs',100,'pcs','pack (100 pcs)',1480,1614,1620,'Zak 100ST (1.62 kg)','ZK','08710803033038','VACUUMZAK 30X40 70MY'),
-    ('Garbage bags 60x80 (roll 20)','054424','non_food','pcs','roll',20,'pcs',20,'pcs','roll (20 pcs)',1490,213,580,'Rol 20ST (0.58 kg)','RL','08710803026917','AFVALZ NONKOMO 60X80'),
-    ('Piping bags blue 51 cm (box 72)','147538','non_food','pcs','box',72,'pcs',72,'pcs','box (72 pcs)',1500,1313,720,'Doosje 72ST (0.72 kg)','DJ','08710803046526','SPUITZAK BLAUW 51CM'),
-    ('Squeeze bottle 70 cl','117937','non_food','pcs','piece',1,'pcs',1,'pcs','piece',1510,185,54,'Fles 1ST (0.05 kg)','FL','08710803039931','KNIJPFL.M.D.70CL TR'),
-    ('Thermal till roll 57x30 (box 10)','143292','non_food','pcs','box',10,'pcs',10,'pcs','box (10 rolls)',1520,425,142,'Krimp 10RL (0.14 kg)','KI','08710803043723','THERMOROL 57X30X8'),
-    ('Tea towels blue (pack 6)','128321','non_food','pcs','pack',6,'pcs',6,'pcs','pack (6 pcs)',1530,934,654,'Pak 6ST (0.65 kg)','PK','08710803043136','THEEDOEK BL.BLOK 65'),
     ('Washing-up liquid 5 L','042902','non_food','ml','can',5,'l',5,'l','can (5 l)',1600,578,5155,'Can 5LT (5.16 kg)','CN','08710803025910','AFWASMIDDEL'),
     ('Dishwasher salt Broxo 10 kg','777920','non_food','g','bag',10,'kg',10,'kg','bag (10 kg)',1610,591,10000,'Zak 10KG (10.00 kg)','ZK','08715800100479','ONTHARDINGSZOUT'),
     ('Topmatic Hero dishwasher detergent 12 kg','752480','non_food','g','can',12,'kg',12,'kg','can (12 kg)',1620,10066,12000,'Can 12KG (12.00 kg)','CN','04028159013968','TOPMATIC HERO VAATWA'),
     ('Topmatic Hero dishwasher detergent 25 kg','752670','non_food','g','can',25,'kg',25,'kg','can (25 kg)',1630,18128,25000,'Can 25KG (25.00 kg)','CN','04028159013975','TOPMATIC HERO VAATWA'),
-    ('Clear Dry Classic rinse aid 5 L','752370','non_food','ml','can',5,'l',5,'l','can (5 l)',1640,11305,5200,'Can 5LT (5.20 kg)','CN','04028159013678','CLEAR DRY CLASSIC NA'),
     ('Bleach 1 L','153238','non_food','ml','bottle',1,'l',1,'l','bottle (1 l)',1650,136,1080,'Fles 1LT (1.08 kg)','FL','08719324686150','DIKBLEEK'),
     ('Cleaning vinegar 5 L','145614','non_food','ml','can',5,'l',5,'l','can (5 l)',1660,325,5040,'Can 5LT (5.04 kg)','CN','08720500110826','SCHOONMAAKAZIJN'),
     ('Rational Active Green cleaner tabs (150)','132051','non_food','pcs','bucket',150,'pcs',150,'pcs','bucket (150 tabs)',1670,10014,5000,'Emmer 150ST (5.00 kg)','EM','04040337565359','ACTIVE GREEN REINING'),
     ('Rational Care Control tabs (150)','027663','non_food','pcs','bucket',150,'pcs',150,'pcs','bucket (150 tabs)',1680,9086,6000,'Emmer 150ST (6.00 kg)','EM','04040337565625','CARE CONTROL TABLET'),
     ('Scouring sponges with grip (pack 10)','159034','non_food','pcs','pack',10,'pcs',10,'pcs','pack (10 pcs)',1690,318,169,'Pak 10ST (0.17 kg)','PK','08710803051179','SCHUURSPONS HANDGR.'),
     ('Steel scourers 40 g (pack 10)','112444','non_food','pcs','pack',10,'pcs',10,'pcs','pack (10 pcs)',1700,806,400,'Zak 10X40GR (0.40 kg)','ZK','08710803036879','PANSPONS RVS'),
-    ('Work cloths yellow 38x38 (box 50)','159029','non_food','pcs','box',50,'pcs',50,'pcs','box (50 pcs)',1710,1731,1015,'Doos 50ST (1.01 kg)','DS','08710803051094','WERKDOEK GEEL 38X38'),
-    ('Work cloths blue 38x38 (box 50)','159030','non_food','pcs','box',50,'pcs',50,'pcs','box (50 pcs)',1720,1731,1015,'Doos 50ST (1.01 kg)','DS','08710803051100','WERKDOEK BLAUW 38X38'),
-    ('Kitchen cleaner / degreaser 5 L','042904','non_food','ml','can',5,'l',5,'l','can (5 l)',1730,1271,5160,'Can 5LT (5.16 kg)','CN','08710803025842','KEUKENREINIGER'),
-    ('Degreaser spray 750 ml','059169','non_food','ml','bottle',750,'ml',750,'ml','bottle (750 ml)',1740,280,750,'Fles 750ML (0.75 kg)','FL','08710803026948','ONTVETTER SPRAY'),
-    ('Sanitary cleaner 1 L','042911','non_food','ml','bottle',1,'l',1,'l','bottle (1 l)',1750,256,1014,'Fles 1LT (1.01 kg)','FL','08710803025811','SANITAIRREINIGER'),
-    ('Glass cleaner Glassex (2 x 750 ml)','135029','non_food','pcs','pack',2,'pcs',2,'pcs','pack (2 bottles)',1760,549,1500,'Wikkel 2X750ML (1.50 kg)','WL','08710552581354','GLAS & MULTI - MULTI'),
-    ('Floor cleaner 5 L','042903','non_food','ml','can',5,'l',5,'l','can (5 l)',1770,1106,5060,'Can 5LT (5.06 kg)','CN','08710803025859','VLOERREINIGER'),
-    ('Oven & grill cleaner 5 L','059165','non_food','ml','can',5,'l',5,'l','can (5 l)',1780,1353,5000,'Can 5LT (5.00 kg)','CN','08710803028331','OVEN GRILLREINIGER'),
-    ('Limescale spray Antikal 800 ml','163473','non_food','ml','bottle',800,'ml',800,'ml','bottle (800 ml)',1790,486,810,'Fles 800ML (0.81 kg)','FL','08700216836197','SPRAY KALKREINIGER'),
-    ('Drain unblocker gel 1 L','144755','non_food','ml','bottle',1,'l',1,'l','bottle (1 l)',1800,572,1000,'Fles 1LT (1.00 kg)','FL','07615400841615','ONTSTOPPER GEL'),
-    ('Cif cream scouring 2 L','058072','non_food','ml','bottle',2,'l',2,'l','bottle (2 l)',1810,1340,2400,'Flacon 2LT (2.40 kg)','FN','07615400175253','SCHUURMID.PROF CREAM'),
-    ('Washing powder 8 kg','091895','non_food','g','pack',8,'kg',8,'kg','pack (8 kg)',1820,1002,7515,'Pak 8KG (7.51 kg)','PK','08710585756507','WASPOEDER'),
     ('Coffee capsules Barzini lungo (box 80)','088391','food','pcs','box',80,'pcs',80,'pcs','box (80 capsules)',1050,8404,2400,'Doos 80X5GR (2.40 kg)','DS','08711363390814','ESPRESSO KOF. LUNGO')
   ) AS v(name, code, kind, unit, count_label, content_amount, content_unit, pack_size, pack_unit, pack_label, dord, price_cents, pack_grams, price_label, ve, ean, article_name)
   LOOP
