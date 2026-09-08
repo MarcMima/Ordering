@@ -1630,9 +1630,14 @@ export default function OrderingPage() {
         quantity: line.quantity,
         // Wat het systeem adviseerde op verstuurmoment, plus de eventuele reden dat de
         // manager daarvan afweek. Valt terug op de actuele suggestie voor regels die
-        // uit een ouder concept komen (toen nog zonder dit veld).
+        // uit een ouder concept komen (toen nog zonder dit veld). Een regel die de
+        // manager zelf toevoegde terwijl er wél een suggestie was berekend, krijgt 0:
+        // "systeem zei niets, manager bestelde toch" is een leersignaal (Marc, 08-09);
+        // null blijft gereserveerd voor "geen suggestie berekend".
         suggested_base_qty:
-          line.suggested_base_qty ?? baseSuggestedByRaw[line.raw_ingredient_id] ?? null,
+          line.suggested_base_qty ??
+          baseSuggestedByRaw[line.raw_ingredient_id] ??
+          (suggestionSnapshotLines != null ? 0 : null),
         adjustment_reason: line.adjustment_reason ?? null,
         adjustment_note: line.adjustment_note ?? null,
       });
