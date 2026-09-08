@@ -1035,6 +1035,7 @@ function IngredientsSection({
     order_interval_days: "",
     stocktake_visible: true,
     stocktake_day_of_week: "" as string, // "" = all days, "0".."6" = Sun..Sat
+    item_kind: "food" as "food" | "non_food",
   });
   const [editing, setEditing] = useState<RawIngredientWithLocation | null>(null);
   const [editForm, setEditForm] = useState({
@@ -1043,6 +1044,7 @@ function IngredientsSection({
     order_interval_days: "",
     stocktake_visible: true,
     stocktake_day_of_week: "" as string,
+    item_kind: "food" as "food" | "non_food",
   });
   const [editingAllergenIds, setEditingAllergenIds] = useState<Set<string>>(new Set());
 
@@ -1075,6 +1077,7 @@ function IngredientsSection({
       order_interval_days: interval,
       stocktake_visible: form.stocktake_visible,
       stocktake_day_of_week: dow,
+      item_kind: form.item_kind,
     });
     if (error) alert(error.message);
     else {
@@ -1086,6 +1089,7 @@ function IngredientsSection({
         order_interval_days: "",
         stocktake_visible: true,
         stocktake_day_of_week: "",
+        item_kind: "food",
       });
       onReload();
     }
@@ -1112,6 +1116,7 @@ function IngredientsSection({
         order_interval_days: intervalEdit,
         stocktake_visible: editForm.stocktake_visible,
         stocktake_day_of_week: dowEdit,
+        item_kind: editForm.item_kind,
       })
       .eq("id", editing.id);
     if (error) {
@@ -1221,6 +1226,15 @@ function IngredientsSection({
               Show on stocktake list
             </label>
             <select
+              value={form.item_kind}
+              onChange={(e) => setForm((f) => ({ ...f, item_kind: e.target.value as "food" | "non_food" }))}
+              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              title="Groups the Add item selector on the ordering page"
+            >
+              <option value="food">Food</option>
+              <option value="non_food">Non-food</option>
+            </select>
+            <select
               value={form.stocktake_day_of_week}
               onChange={(e) => setForm((f) => ({ ...f, stocktake_day_of_week: e.target.value }))}
               className="rounded-md border border-brand-green/15 px-3 py-2 text-sm sm:col-span-2"
@@ -1250,6 +1264,7 @@ function IngredientsSection({
                   order_interval_days: "",
                   stocktake_visible: true,
                   stocktake_day_of_week: "",
+                  item_kind: "food",
                 });
               }}
               className="rounded-md border border-brand-green/15 px-3 py-1.5 text-sm"
@@ -1273,6 +1288,7 @@ function IngredientsSection({
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Name</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Unit</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Order days</th>
+              <th className="px-4 py-2 text-left font-medium text-ink-soft">Kind</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Stocktake</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">ST day</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Allergens</th>
@@ -1282,7 +1298,7 @@ function IngredientsSection({
           <tbody>
             {rawIngredients.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-ink-soft/80">
+                <td colSpan={8} className="px-4 py-6 text-center text-ink-soft/80">
                   No ingredients yet. Add one above.
                 </td>
               </tr>
@@ -1290,7 +1306,7 @@ function IngredientsSection({
               rawIngredients.map((ing) =>
                 editing?.id === ing.id ? (
                   <tr key={ing.id} className="border-t border-brand-green/10">
-                    <td colSpan={7} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <input
                           value={editForm.name}
@@ -1319,6 +1335,14 @@ function IngredientsSection({
                           />
                           Stocktake
                         </label>
+                        <select
+                          value={editForm.item_kind}
+                          onChange={(e) => setEditForm((f) => ({ ...f, item_kind: e.target.value as "food" | "non_food" }))}
+                          className="rounded border px-2 py-1.5 text-sm"
+                        >
+                          <option value="food">Food</option>
+                          <option value="non_food">Non-food</option>
+                        </select>
                         <select
                           value={editForm.stocktake_day_of_week}
                           onChange={(e) => setEditForm((f) => ({ ...f, stocktake_day_of_week: e.target.value }))}
@@ -1380,6 +1404,9 @@ function IngredientsSection({
                         : "—"}
                     </td>
                     <td className="px-4 py-2 text-ink-soft">
+                      {ing.item_kind === "non_food" ? "Non-food" : "Food"}
+                    </td>
+                    <td className="px-4 py-2 text-ink-soft">
                       {ing.stocktake_visible === false ? "No" : "Yes"}
                     </td>
                     <td className="px-4 py-2 text-ink-soft">
@@ -1406,6 +1433,7 @@ function IngredientsSection({
                                 ? String(ing.order_interval_days)
                                 : "",
                             stocktake_visible: ing.stocktake_visible !== false,
+                            item_kind: ing.item_kind === "non_food" ? "non_food" : "food",
                             stocktake_day_of_week:
                               ing.stocktake_day_of_week != null &&
                               ing.stocktake_day_of_week >= 0 &&

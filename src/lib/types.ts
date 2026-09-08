@@ -45,6 +45,8 @@ export interface RawIngredient {
   order_interval_days?: number | null;
   /** Master col I: false = hidden from stocktake list. */
   stocktake_visible?: boolean | null;
+  /** food | non_food — groups the ordering "Add item" selector (migration 220). */
+  item_kind?: "food" | "non_food" | null;
   /** JS getDay(): 0=Sun..6=Sat; null/undefined = show every day. Master col J weekly uses Monday (1) in sync. */
   stocktake_day_of_week?: number | null;
   /** Master B — count unit label (bag, box, …). Shown on stocktake; preferred over pack table when set. */
