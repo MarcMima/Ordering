@@ -156,6 +156,11 @@ function formatDryRunSuccessMessage(payload: {
   return `${base} ${detail}`;
 }
 
+/** Selector grouping: non-food (packaging, cleaning, paper) vs food. Missing kind counts as food. */
+function isNonFoodRaw(ing: RawIngredient | undefined): boolean {
+  return ing?.item_kind === "non_food";
+}
+
 function isTodayFoodGroupSupplier(name: string): boolean {
   return normSupplierName(name) === "today food group";
 }
@@ -796,7 +801,7 @@ export default function OrderingPage() {
       supabase
         .from("raw_ingredients")
         .select(
-          `id, name, unit, location_id, order_interval_days, stocktake_visible, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
+          `id, name, unit, location_id, order_interval_days, stocktake_visible, item_kind, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`
         )
         .eq("location_id", locationId)
         .order("name"),
@@ -2166,14 +2171,25 @@ export default function OrderingPage() {
                 <option value="" disabled>
                   Select item…
                 </option>
-                {addableRawIds.map((rid) => {
-                  const ing = rawIngredients.find((r) => r.id === rid);
-                  return (
-                    <option key={rid} value={rid}>
-                      {ing?.name ?? rid}
-                    </option>
-                  );
-                })}
+                {(
+                  [
+                    ["Food", addableRawIds.filter((rid) => !isNonFoodRaw(rawIngredients.find((r) => r.id === rid)))],
+                    ["Non-food", addableRawIds.filter((rid) => isNonFoodRaw(rawIngredients.find((r) => r.id === rid)))],
+                  ] as const
+                )
+                  .filter(([, ids]) => ids.length > 0)
+                  .map(([label, ids]) => (
+                    <optgroup key={label} label={label}>
+                      {ids.map((rid) => {
+                        const ing = rawIngredients.find((r) => r.id === rid);
+                        return (
+                          <option key={rid} value={rid}>
+                            {ing?.name ?? rid}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  ))}
               </select>
             </label>
             <button
