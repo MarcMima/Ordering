@@ -207,11 +207,25 @@ OUTPUT: Respond with ONLY a JSON array of these objects. No prose, no explanatio
 // template, geen AutoFlow, of watchdog-aanlevering). Claude haalt de actiepunten dan
 // rechtstreeks uit het transcript. Minder deterministisch dan route A; de taken landen
 // als "Drafts for review", dus het menselijke reviewmoment blijft de vangrail.
+//
+// Owner-toekenning (les van 03-09-2026): Plaud levert labels als "Speaker 1" — en
+// soms wél namen voor sprekers met een stemprofiel, maar juist niet voor de opnemer.
+// Zonder expliciete mapping-stap kreeg alles wat in de eerste persoon werd toegezegd
+// ("I'll fix that") owner=null. Daarom: éérst sprekers identificeren, dán owners.
 export function buildTranscriptSystemPrompt(type: MeetingType): string {
   return `You extract the action items (to-do's) agreed in a ${type.cadence} management meeting of Mima (a fresh Mediterranean restaurant group in Amsterdam with locations Zuidas, De Pijp and West). The management team is Marc, Michiel and Hadi. The meeting is in English; the transcript has speaker labels and may contain transcription errors.
 
 There is NO structured to-do list available for this meeting, so you must identify the action items yourself from the TRANSCRIPT (and, if present, an unstructured SUMMARY that may list "ACTION ITEMS" — use it as a checklist, but the transcript is authoritative).
 
+STEP 1 — IDENTIFY THE SPEAKERS (do this BEFORE extracting anything):
+The transcript labels speakers as "Speaker 1", "Speaker 2", … or, for some of them, by name ("Hadi", "Michiel", "Marc Wesseling"). Work out which label is which person:
+- Marc is the one who records the meeting. He normally opens the recording by announcing the meeting name ("The Mima Monday Morning Meeting …", "the Monthly Mima Meeting …"), chairs it (moves between domains such as Operations, Marketing, Systems, Locations, Product development, Finance) and usually has the most turns. An unnamed label with that profile is Marc, even if nobody says his name.
+- Use direct address ("Hadi, can you …", "Marc, with these", "Michi") and self-reference ("when I was on holiday", "I spoke with Natanja") to pin down the other labels.
+- Domains as a hint only: Hadi = Operations manager (staff, managers, schedules, HACCP, restaurants); Michiel = Marketing, HR administration, Hâtebé/maintenance; Marc = Finance, Systems/data, Product development/recipes, Locations. Never let the domain override what was actually said.
+- A label that is only used a few times and does not fit anyone (e.g. "Speaker 4") is usually a transcription artefact for one of the three; treat it as unresolved, not as a fourth person.
+Keep this mapping in mind for STEP 2. Never write a raw label such as "Speaker 1" into a task title — use the person's name, or "Marc" when the label is the recorder.
+
+STEP 2 — EXTRACT THE ACTION ITEMS.
 WHAT COUNTS AS AN ACTION ITEM: a concrete thing that a person commits to do, is asked to do, or that the group agrees must be done, after this meeting. Include items even when the owner is unclear (owner = null). Include follow-ups such as "look into X", "share Y with Z", "decide on W next meeting".
 WHAT DOES NOT COUNT: status updates about work already done, opinions, general observations, decisions that require no further action, and things explicitly dropped or postponed indefinitely.
 
@@ -220,11 +234,18 @@ COMPLETENESS OVER PRECISION: a missed task is worse than an extra one — a revi
 For every action item, return an object with:
 ${TASK_FIELDS_SPEC.replace(
     '"original_bullet": the literal bullet line it came from, verbatim (including the "• " and the "– Owner: X" tail), for traceability.',
-    '"original_bullet": a short verbatim quote (max 200 characters) from the transcript where this action item was agreed, prefixed with the speaker label, for traceability.'
+    '"original_bullet": a short verbatim quote (max 200 characters) from the transcript where this action item was agreed, prefixed with the speaker label exactly as it appears in the transcript, for traceability.'
   ).replace(
     'Read it from the "– Owner: X" marker on the bullet. If absent/unclear, use null.',
-    "Use the person who committed to it or was asked to do it. Map speaker labels to names using the conversation (e.g. someone addressed as Hadi). If unclear, use null."
+    [
+      "The person who will DO it, using the STEP 1 mapping:",
+      "(a) someone commits in the first person (\"I'll fix that\", \"I can do it\", \"I'll check with him\") → the speaker of that line;",
+      "(b) someone is asked or told to do it and does not refuse (\"can you take this up with IBEO?\" — \"yeah, of course\") → the person addressed;",
+      "(c) the group agrees it must be done without naming anyone → the person whose domain it clearly is (see STEP 1 hints), otherwise null.",
+      "Do NOT default to null merely because the owner is only identifiable through the speaker mapping — that is exactly what the mapping is for. Use null only when even the mapping leaves it open.",
+    ].join(" ")
   )}
+- "speaker": the speaker label of the line quoted in "original_bullet", exactly as it appears in the transcript (e.g. "Speaker 1" or "Hadi"), followed by the resolved name in parentheses when the label is not already a name, e.g. "Speaker 1 (Marc)". Use null if there is no single quotable line.
 
 OUTPUT: Respond with ONLY a JSON array of these objects, in the order the items came up in the meeting. No prose, no explanation, no markdown code fences. If there are genuinely no action items, return [].`;
 }

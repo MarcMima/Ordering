@@ -56,6 +56,14 @@ Check-modus: `{"mode":"check","recordings":[{"file_id","title","create_time","du
 
 De pijplijn hangt niet meer aan de AutoFlow-keywords; AutoFlow → Zapier is alleen nog de snelle route. Blijf de meeting-naam wel in de opening uitspreken ("Mima Monday Morning Meeting" / "Mima Monthly Meeting" / "Quarterly Mima Meeting"): de regex herkent ook varianten en verhaspelingen, maar de naam is het sterkste signaal. Samengevoegde opnames (`_merge_`) krijgen geen AutoFlow; de watchdog pakt die op.
 
+## Owners bij de transcript-route
+
+Plaud levert sprekerlabels (`Speaker 1`, `Speaker 2`, …) en alleen een naam voor wie een stemprofiel heeft; de opnemer (Marc) is vaak juist het naamloze label. Op 03-09-2026 kreeg daardoor 15 van de 45 taken owner=null — alles wat in de eerste persoon werd toegezegd ("I'll fix that") kon niet aan een persoon worden gehangen.
+
+Sinds 08-09-2026 doet de transcript-prompt eerst een sprekerstap (opener/voorzitter = Marc, aanspreekvormen, domein-hints), kent daarna owners toe — ook bij eerste-persoon toezeggingen — en levert per taak een `speaker`-veld. De webhook schrijft nu `Spreker`, `Bron-citaat` en `Plaud file ID` op elke taak (beide routes), telt taken zonder Owner en zet dat in de Sync Log-note en de bevestigingsmail. Een door Notion geweigerde Owner-relatie wordt niet meer stil weggelaten maar geteld en gelogd.
+
+Nog beter: registreer in de Plaud-app je eigen stemprofiel (Speaker → naam), dan komt "Marc Wesseling" al benoemd het transcript in.
+
 ## Bekende beperkingen
 
 - Vercel Hobby: runtime-logs 1 uur, max 2 crons. Daarom logt de webhook alles wat telt in de Sync Log en mail, niet alleen in Vercel-logs.

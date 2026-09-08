@@ -95,6 +95,7 @@ type ExtractedTask = {
   task: string;
   original_bullet: string;
   owner: string | null;
+  speaker?: string | null; // route B: label van de geciteerde regel, bv. "Speaker 1 (Marc)"
   domain: string;
   priority: string;
   deadline: string | null;
@@ -488,7 +489,8 @@ function buildTaskProperties(
   type: MeetingType,
   meetingPageId: string,
   syncId: string,
-  includeOwner: boolean
+  includeOwner: boolean,
+  provenance?: { fileId: string | null }
 ): Record<string, any> {
   const domain = (ALLOWED_DOMAINS as readonly string[]).includes(t.domain) ? t.domain : null;
   const priority = (ALLOWED_PRIORITIES as readonly string[]).includes(t.priority)
@@ -512,17 +514,31 @@ function buildTaskProperties(
   const ownerId = includeOwner && t.owner ? PEOPLE[t.owner] : undefined;
   if (ownerId) properties["Owner"] = { relation: [{ id: ownerId }] };
 
+  // Provenance — zodat een reviewer een (owner-loze) draft kan beoordelen zonder
+  // het transcript erbij te pakken. Bron-citaat = de geciteerde regel (route B)
+  // of de letterlijke bullet (route A); Spreker = het label van die regel.
+  const quote = (t.original_bullet ?? "").trim();
+  if (quote) properties["Bron-citaat"] = { rich_text: [{ text: { content: quote.slice(0, 1900) } }] };
+  const speaker = (t.speaker ?? "").trim();
+  if (speaker) properties["Spreker"] = { rich_text: [{ text: { content: speaker.slice(0, 200) } }] };
+  if (provenance?.fileId) properties["Plaud file ID"] = { rich_text: [{ text: { content: provenance.fileId } }] };
+
   return properties;
 }
+
+type CreateTasksResult = { created: number; withoutOwner: number; ownerDropped: number };
 
 async function createTasks(
   notion: Client,
   tasks: ExtractedTask[],
   type: MeetingType,
-  meetingPageId: string
-): Promise<number> {
+  meetingPageId: string,
+  provenance: { fileId: string | null }
+): Promise<CreateTasksResult> {
   const seen = await existingSyncIdsForMeeting(notion, type, meetingPageId);
   let created = 0;
+  let withoutOwner = 0;
+  let ownerDropped = 0;
 
   for (const t of tasks) {
     if (!t?.task || !t.task.trim()) continue;
@@ -533,20 +549,25 @@ async function createTasks(
       try {
         await notion.pages.create({
           parent: { database_id: TASKS_DB_ID },
-          properties: buildTaskProperties(t, type, meetingPageId, syncId, true),
+          properties: buildTaskProperties(t, type, meetingPageId, syncId, true, provenance),
         });
       } catch (err: any) {
-        // Owner-relatie kan stil falen; retry zonder Owner zodat één property
-        // niet de hele taak sloopt.
+        // Owner-relatie kan falen; retry zonder Owner zodat één property niet de
+        // hele taak sloopt — maar nooit stil: tellen + loggen, komt in Sync Log/mail.
         if (err?.code === "validation_error" && t.owner) {
+          console.error(
+            `[plaud-webhook] Owner "${t.owner}" rejected by Notion for "${t.task.slice(0, 60)}" — retrying without Owner: ${err?.message ?? err}`
+          );
+          ownerDropped += 1;
           await notion.pages.create({
             parent: { database_id: TASKS_DB_ID },
-            properties: buildTaskProperties(t, type, meetingPageId, syncId, false),
+            properties: buildTaskProperties(t, type, meetingPageId, syncId, false, provenance),
           });
         } else {
           throw err;
         }
       }
+      if (!t.owner || !PEOPLE[t.owner]) withoutOwner += 1;
       seen.add(syncId);
       created += 1;
     } catch (err: any) {
@@ -555,7 +576,7 @@ async function createTasks(
       );
     }
   }
-  return created;
+  return { created, withoutOwner, ownerDropped };
 }
 
 // ---- Check-modus (watchdog) ------------------------------------------------
@@ -733,7 +754,13 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
     });
 
     // 7. TAKEN AANMAKEN (relatie + Horizon per type, incl. dedup laag 2)
-    const created = await createTasks(notion, tasks, type, meetingPageId);
+    const { created, withoutOwner, ownerDropped } = await createTasks(notion, tasks, type, meetingPageId, {
+      fileId: rec.fileId,
+    });
+    const ownerNote =
+      withoutOwner > 0 || ownerDropped > 0
+        ? `${withoutOwner}/${created} taken zonder Owner${ownerDropped ? ` (${ownerDropped}× Owner door Notion geweigerd)` : ""}.`
+        : "";
 
     // 8. MEETING-RECORD VERRIJKEN (best-effort, mag taak-aanmaak nooit breken)
     let meetingRecord: { renamed: string | null; completed: boolean; present: string[] } | null = null;
@@ -748,6 +775,7 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
       status: "Done",
       tasksCreated: created,
       processedAt: new Date().toISOString(),
+      note: [noteParts.join(" "), ownerNote].filter(Boolean).join(" ") || undefined,
     });
     const routeLabel = extraction === "Template" ? "template (1-op-1 bullets)" : "TRANSCRIPT (geen to-do-sectie in de summary)";
     await sendMail(
@@ -759,6 +787,7 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
         extraction === "Transcript"
           ? "Let op: transcript-route is minder strak dan de template-route — loop de Drafts for review extra kritisch na."
           : "",
+        ownerNote ? `⚠️ ${ownerNote} Zie kolom Spreker/Bron-citaat om ze snel toe te wijzen.` : "Alle taken hebben een Owner.",
         "",
         ...recordingLines(rec),
         "",
