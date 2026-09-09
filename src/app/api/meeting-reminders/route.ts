@@ -8,34 +8,33 @@ import { NextResponse } from "next/server";
 // Drie reminders:
 //   1. pre-MMMM   — elke VRIJDAG (middag): team werkt hun MMMM to-do's bij / klikt
 //                   afgeronde weg, vóór de weekly meeting op maandag.
-//   2. post-MMMM  — elke DINSDAG (ochtend): de verwerkte "Drafts for review" nalopen
-//                   en waar nodig aanpassen (de MMMM is maandag; pipeline verwerkt ma.).
+//   2. post-MMMM  — SINDS 09-2026 NIET MEER VANUIT DE CRON. De "review your Drafts for
+//                   review"-mail wordt door /api/plaud-webhook verstuurd op het moment
+//                   dat de taken daadwerkelijk in Notion staan (src/lib/meetingEmails.ts).
+//                   De dinsdag-ochtend hier is alleen nog een VANGNET: staat er geen
+//                   verwerkte MMMM in de Sync Log, dan krijgt Marc een alarm.
 //   3. pre-MMM    — TWEE momenten vóór de MMM (eerste DINSDAG v/d maand): een week
 //                   ervoor (de vorige dinsdag) én een dag ervoor (de maandag). Team
 //                   updatet data en bereidt zaken voor.
 //
 // Verzending gaat via Resend (zelfde conventie als plaud-webhook: RESEND_API_KEY +
-// FROM_EMAIL). Alle mail is Engelstalig — Hadi (Operations) leest mee, dus alles waar
-// hij bij betrokken is is Engels.
+// FROM_EMAIL). Alle team-mail is Engelstalig — Hadi (Operations) leest mee.
+// Opmaak, ontvangers en verzending: src/lib/meetingEmails.ts (gedeeld met de webhook).
+
+import {
+  type Mail,
+  MARC,
+  TEAM,
+  TASKS_DB_URL,
+  BTN_LABEL,
+  tasksLink,
+  renderEmail,
+  draftsReviewMail,
+  sendBrandedMail as sendMail,
+} from "@/lib/meetingEmails";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// ---- Ontvangers -----------------------------------------------------------
-const MARC = "marc@mimafood.nl";
-const MICHIEL = "michiel@mimafood.nl";
-const HADI = "abdulhadi@mimafood.nl";
-
-const TEAM = [MARC, MICHIEL, HADI];
-
-// De post-MMMM "Drafts for review"-reminder gaat standaard naar het hele team (elke
-// owner loopt zijn eigen drafts na). Zet dit op [MARC] als alleen Marc cureert.
-const DRAFTS_REVIEW_RECIPIENTS = TEAM;
-
-// Optionele Notion-links in de mail (leeg laten = geen link tonen).
-const TASKS_DB_URL =
-  process.env.TASKS_DB_URL ??
-  "https://www.notion.so/35e21d9d7c6a800f8921db421d9eee94";
 
 // ---- Datum-helpers (Europe/Amsterdam) -------------------------------------
 type AmsParts = { year: number; month: number; day: number; weekday: number };
@@ -111,68 +110,6 @@ function fmtDate(y: number, m: number, d: number): string {
 }
 
 // ---- Mailinhoud (Engels) --------------------------------------------------
-type Mail = { to: string[]; subject: string; text: string; html: string };
-
-// Merk-kleuren — accent is makkelijk te wijzigen (Mediterrane groen).
-const C_ACCENT = "#2f7a57";
-const C_INK = "#1f1d1a";
-const C_BODY = "#4a4640";
-const C_MUTED = "#9a948c";
-const C_LINE = "#e7e2da";
-const C_PAPER = "#f4f2ee";
-const C_CARD = "#ffffff";
-const BTN_LABEL = "Open your tasks in Notion";
-const EMAIL_FOOTER =
-  "You're receiving this because you're part of the Mima management team. " +
-  "It's an automated reminder tied to the meeting schedule.";
-
-function tasksLink(): string {
-  return TASKS_DB_URL ? `\n\nYour tasks: ${TASKS_DB_URL}` : "";
-}
-
-// Gedeelde, e-mailclient-vriendelijke opmaak: inline styles, table-layout,
-// bulletproof button. Alle vier de reminders gebruiken dezelfde kaart.
-function renderEmail(opts: {
-  eyebrow: string;
-  heading: string;
-  paragraphs: string[];
-  buttonLabel?: string;
-  buttonUrl?: string;
-}): string {
-  const paras = opts.paragraphs
-    .map((p) => `<p style="margin:14px 0 0 0;">${p}</p>`)
-    .join("");
-  const button =
-    opts.buttonUrl && opts.buttonLabel
-      ? `<table role="presentation" cellpadding="0" cellspacing="0"><tr>` +
-        `<td style="border-radius:8px;background:${C_ACCENT};">` +
-        `<a href="${opts.buttonUrl}" style="display:inline-block;padding:12px 22px;` +
-        `font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;` +
-        `color:#ffffff;text-decoration:none;border-radius:8px;">${opts.buttonLabel} &rarr;</a>` +
-        `</td></tr></table>`
-      : "";
-  return (
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C_PAPER};padding:28px 12px;">` +
-    `<tr><td align="center">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:${C_CARD};border:1px solid ${C_LINE};border-radius:14px;">` +
-    `<tr><td style="padding:26px 36px 0 36px;">` +
-    `<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;letter-spacing:1px;color:${C_ACCENT};font-weight:700;">mima</div>` +
-    `<div style="height:1px;background:${C_LINE};margin:18px 0 0 0;"></div>` +
-    `</td></tr>` +
-    `<tr><td style="padding:22px 36px 0 36px;">` +
-    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:${C_ACCENT};font-weight:700;">${opts.eyebrow}</div>` +
-    `<h1 style="font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:1.3;color:${C_INK};margin:10px 0 0 0;font-weight:700;">${opts.heading}</h1>` +
-    `</td></tr>` +
-    `<tr><td style="padding:2px 36px 0 36px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${C_BODY};">${paras}</td></tr>` +
-    `<tr><td style="padding:24px 36px 4px 36px;">${button}</td></tr>` +
-    `<tr><td style="padding:26px 36px 28px 36px;">` +
-    `<div style="height:1px;background:${C_LINE};margin-bottom:16px;"></div>` +
-    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C_MUTED};">${EMAIL_FOOTER}</div>` +
-    `</td></tr>` +
-    `</table></td></tr></table>`
-  );
-}
-
 function preMMMMMail(): Mail {
   const subject = "Before Monday's MMMM — update your to-do's";
   const text =
@@ -196,31 +133,6 @@ function preMMMMMail(): Mail {
     buttonUrl: TASKS_DB_URL,
   });
   return { to: TEAM, subject, text, html };
-}
-
-function postMMMMMail(tasks = 0): Mail {
-  const subject = "MMMM processed — review your Drafts for review";
-  const text =
-    "Hi team,\n\n" +
-    `Monday's weekly meeting (MMMM) has been processed into Notion${tasks ? ` (${tasks} new to-do's)` : ""}. New to-do's and ` +
-    "decisions are in as \"Drafts for review\". Please open your tasks, check the items " +
-    "assigned to you, and adjust owner, domain, priority or deadline where needed — then " +
-    "they're confirmed." +
-    tasksLink() +
-    "\n\nThanks!";
-  const html = renderEmail({
-    eyebrow: "Weekly meeting &middot; MMMM",
-    heading: "Review your &ldquo;Drafts for review&rdquo;",
-    paragraphs: [
-      `Monday&rsquo;s weekly meeting (<strong>MMMM</strong>) has been processed into Notion${tasks ? ` (${tasks} new to-do&rsquo;s)` : ""}. ` +
-        "New to-do&rsquo;s and decisions are in as <strong>&ldquo;Drafts for review&rdquo;</strong>.",
-      "Please open your tasks, check the items assigned to you, and adjust owner, domain, " +
-        "priority or deadline where needed &mdash; then they&rsquo;re confirmed.",
-    ],
-    buttonLabel: BTN_LABEL,
-    buttonUrl: TASKS_DB_URL,
-  });
-  return { to: DRAFTS_REVIEW_RECIPIENTS, subject, text, html };
 }
 
 function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
@@ -334,7 +246,7 @@ function notProcessedMail(kind: "MMMM" | "MMM", check: ProcessedCheck): Mail {
   const text =
     `De ${kind} van deze ${kind === "MMMM" ? "week" : "maand"} staat NIET als Done in de Plaud Sync Log` +
     (check.checked ? "." : ` (check zelf mislukt: ${check.error}).`) +
-    "\n\nEr is daarom geen 'review je drafts'-mail naar het team gestuurd.\n\n" +
+    "\n\nHet team heeft dus ook geen 'review your Drafts for review'-mail gekregen (die stuurt de webhook pas na verwerking).\n\n" +
     "Mogelijke oorzaken: opname niet gemaakt of niet gesynct, AutoFlow niet gevuurd, watchdog nog niet gedraaid, " +
     "of een Failed/Ignored-rij in de Sync Log.\n\n" +
     "Herstel: vraag Claude 'draai de Plaud-watchdog' (die haalt de opname op via de Plaud-MCP en biedt hem opnieuw aan), " +
@@ -345,34 +257,13 @@ function notProcessedMail(kind: "MMMM" | "MMM", check: ProcessedCheck): Mail {
     paragraphs: [
       `De <strong>${kind}</strong> van deze ${kind === "MMMM" ? "week" : "maand"} staat niet als Done in de Plaud Sync Log` +
         (check.checked ? "." : ` (check zelf mislukt: ${check.error}).`),
-      "Er is daarom geen &ldquo;review je drafts&rdquo;-mail naar het team gestuurd.",
+      "Het team heeft dus ook geen &ldquo;review your Drafts for review&rdquo;-mail gekregen (die stuurt de webhook pas na verwerking).",
       "Herstel: vraag Claude &ldquo;draai de Plaud-watchdog&rdquo;, of controleer de Sync Log.",
     ],
     buttonLabel: "Open de Plaud Sync Log",
     buttonUrl: "https://www.notion.so/38821d9d7c6a819c87fbc10b6a969483",
   });
   return { to: [MARC], subject, text, html };
-}
-
-// ---- Resend ---------------------------------------------------------------
-async function sendMail(m: Mail): Promise<{ ok: boolean; error?: string }> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
-  const from = process.env.FROM_EMAIL ?? "bestelling@mimafood.nl";
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ from, to: m.to, subject: m.subject, text: m.text, html: m.html }),
-    });
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      return { ok: false, error: `${res.status} ${err}` };
-    }
-    return { ok: true };
-  } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
 }
 
 // ---- Handler --------------------------------------------------------------
@@ -399,7 +290,7 @@ export async function GET(req: Request) {
   if (test) {
     let mail: Mail | null = null;
     if (test === "preMMMM") mail = preMMMMMail();
-    else if (test === "postMMMM") mail = postMMMMMail(0);
+    else if (test === "postMMMM") mail = draftsReviewMail("MMMM", 0);
     else if (test === "preMMMweek") {
       const c = mmmDaysAway(p, 7) ?? firstTuesday(
         p.month === 12 ? p.year + 1 : p.year,
@@ -433,13 +324,12 @@ export async function GET(req: Request) {
   if (p.weekday === 5 && slotAllows("afternoon")) {
     due.push({ name: "pre-MMMM", mail: preMMMMMail() });
   }
-  // 2. post-MMMM — dinsdag (2), ochtend-slot. Alleen als de MMMM écht verwerkt is;
-  //    anders alarm naar Marc i.p.v. een misleidende team-mail.
+  // 2. post-MMMM — dinsdag (2), ochtend-slot: ALLEEN VANGNET. De team-mail zelf
+  //    ("review your Drafts for review") stuurt de Plaud-webhook zodra de taken er
+  //    staan. Staat er na het weekend geen verwerkte MMMM in de Sync Log → alarm Marc.
   if (p.weekday === 2 && slotAllows("morning")) {
     const check = await processedSince("Weekly", isoDaysAgo(6));
-    if (check.checked && check.count > 0) {
-      due.push({ name: "post-MMMM", mail: postMMMMMail(check.tasks) });
-    } else {
+    if (!(check.checked && check.count > 0)) {
       due.push({ name: "post-MMMM-NOT-PROCESSED", mail: notProcessedMail("MMMM", check) });
     }
   }

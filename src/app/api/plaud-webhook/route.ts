@@ -17,6 +17,7 @@ import {
   TRANSCRIPT_WINDOW,
 } from "./meetingTypes";
 import { finalizeMeetingRecord } from "./meetingRecord";
+import { draftsReviewMail, sendBrandedMail } from "@/lib/meetingEmails";
 
 // Plaud-meeting -> Notion-taken webhook.
 //
@@ -35,6 +36,10 @@ import { finalizeMeetingRecord } from "./meetingRecord";
 //     Claude-classificatie als vangnet; nooit default naar MMMM.
 //  4. Geeft NOOIT een 5xx terug; zware werk draait na de response (after()), zodat
 //     Zapier/pg_net niet timen-out en niet retryen.
+//  5. De team-mail "review your Drafts for review" gaat HIER uit, direct nadat de taken
+//     in Notion staan — niet meer op een vast cron-moment (dat mailde soms te vroeg of
+//     te laat). Alleen bij >=1 nieuw aangemaakte taak; een re-fire van een al verwerkte
+//     opname wordt hierboven al gededupt (Sync Log Done → skip) en mailt dus niet dubbel.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -794,8 +799,18 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
         `Meeting-record: ${notionUrl(meetingPageId)}`,
         `Sync Log: ${notionUrl(syncLogId)}`,
         meetingRecord?.renamed ? `Meeting hernoemd naar: ${meetingRecord.renamed}` : "",
+        created > 0 ? "Het team krijgt nu direct de 'review your Drafts for review'-mail." : "Geen nieuwe taken → geen team-mail.",
       ]
     );
+
+    // 10. TEAM-MAIL "review your Drafts for review" — nu de drafts er écht staan.
+    //     Best-effort: een mailfout mag de (al geslaagde) verwerking niet omzetten in Failed.
+    let teamMail: { sent: boolean; error?: string } = { sent: false };
+    if (created > 0) {
+      const r = await sendBrandedMail(draftsReviewMail(type.key, created));
+      teamMail = { sent: r.ok, error: r.error };
+      if (!r.ok) console.error(`[plaud-webhook] drafts-review-mail naar team mislukt: ${r.error}`);
+    }
 
     return {
       ok: true,
@@ -806,6 +821,7 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
       meeting: meetingPageId,
       sync_log: notionUrl(syncLogId),
       meetingRecord,
+      teamMail,
     };
   } catch (err: any) {
     // FAIL-SAFE: onverwachte fout -> Failed + mail (nooit stil).
