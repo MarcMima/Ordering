@@ -46,7 +46,7 @@ import {
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
 import { JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
-import { isWeeklyStocktakeDueOnDate } from "@/lib/stocktakeWeek";
+import { isWeeklyStocktakeDueOnDate, isWeeklyPlannedRaw } from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
   isRawVisibleOnStocktakeForLocation,
@@ -192,7 +192,10 @@ function isSupplierOrderDayToday(
   ctx: {
     allowOffScheduleOrdering: boolean;
     locationWeeklyStocktakeDow: number | null;
-  }
+    /** Suppliers whose linked items are all weekly-planned (e.g. GéDé packaging). */
+    weeklyOnlySupplierIds?: Set<string>;
+  },
+  supplierId?: string
 ): boolean {
   if (ctx.allowOffScheduleOrdering) return true;
 
@@ -204,6 +207,12 @@ function isSupplierOrderDayToday(
   // Tuana / Today Food Group (no fixed delivery schedule): weekly stocktake day only.
   if (isOnDemandSupplierName(supplierName) || deliveryDaysJs.length === 0) {
     return isWeeklyKitchenDay;
+  }
+
+  // Weekly-only suppliers (GéDé): order on the weekly stocktake day, delivered on the
+  // next scheduled delivery day (dispatch-order resolves that date). Marc, 09-09.
+  if (isWeeklyKitchenDay && supplierId && ctx.weeklyOnlySupplierIds?.has(supplierId)) {
+    return true;
   }
 
   return isNextCalendarDayDelivery({
@@ -1276,12 +1285,25 @@ export default function OrderingPage() {
     [locationWeeklyStocktakeDow]
   );
 
+  /** Suppliers whose visible linked items are all weekly-planned (GéDé packaging). */
+  const weeklyOnlySupplierIds = useMemo(() => {
+    const out = new Set<string>();
+    for (const [supId, rawIds] of Object.entries(supplierRawIdsBySupplier)) {
+      const ings = rawIds
+        .map((rid) => rawIngredients.find((r) => r.id === rid))
+        .filter((r): r is RawIngredient => r != null && isRawVisibleOnStocktakeForLocation(r, locationId));
+      if (ings.length > 0 && ings.every((r) => isWeeklyPlannedRaw(r))) out.add(supId);
+    }
+    return out;
+  }, [supplierRawIdsBySupplier, rawIngredients, locationId]);
+
   const orderDayContext = useMemo(
     () => ({
       allowOffScheduleOrdering,
       locationWeeklyStocktakeDow,
+      weeklyOnlySupplierIds,
     }),
-    [allowOffScheduleOrdering, locationWeeklyStocktakeDow]
+    [allowOffScheduleOrdering, locationWeeklyStocktakeDow, weeklyOnlySupplierIds]
   );
 
   const deliveryLabelContext = useMemo(
@@ -1392,7 +1414,8 @@ export default function OrderingPage() {
         sup.name,
         deliveryDaysForSup,
         orderingDayAnchor,
-        orderDayContext
+        orderDayContext,
+        sup.id
       );
       const lines = orderBySupplier[sup.id] ?? [];
       const suggestedForSup = Object.entries(suggestedOrder).filter(
@@ -1630,9 +1653,14 @@ export default function OrderingPage() {
         quantity: line.quantity,
         // Wat het systeem adviseerde op verstuurmoment, plus de eventuele reden dat de
         // manager daarvan afweek. Valt terug op de actuele suggestie voor regels die
-        // uit een ouder concept komen (toen nog zonder dit veld).
+        // uit een ouder concept komen (toen nog zonder dit veld). Een regel die de
+        // manager zelf toevoegde terwijl er wél een suggestie was berekend, krijgt 0:
+        // "systeem zei niets, manager bestelde toch" is een leersignaal (Marc, 08-09);
+        // null blijft gereserveerd voor "geen suggestie berekend".
         suggested_base_qty:
-          line.suggested_base_qty ?? baseSuggestedByRaw[line.raw_ingredient_id] ?? null,
+          line.suggested_base_qty ??
+          baseSuggestedByRaw[line.raw_ingredient_id] ??
+          (suggestionSnapshotLines != null ? 0 : null),
         adjustment_reason: line.adjustment_reason ?? null,
         adjustment_note: line.adjustment_note ?? null,
       });
@@ -1932,7 +1960,11 @@ export default function OrderingPage() {
               </p>
             ) : hasWeekdaySchedule ? (
               <p className="mt-1">
-                Deliveries: {formatJsDeliveryDays(deliveryDaysForSup)}. Order the day before delivery.
+                Deliveries: {formatJsDeliveryDays(deliveryDaysForSup)}. Order the day before delivery
+                {weeklyOnlySupplierIds.has(sup.id) && weeklyDayLabel
+                  ? ` or on ${weeklyDayLabel} after the weekly stocktake`
+                  : ""}
+                .
               </p>
             ) : weeklyDayLabel ? (
               <p className="mt-1">Kitchen order day: {weeklyDayLabel} (weekly stocktake).</p>
