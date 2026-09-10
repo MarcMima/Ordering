@@ -60,7 +60,7 @@ import {
   extractPitaStockCounts,
 } from "@/lib/pitaPrepStock";
 import {  isWeeklyPlannedRaw } from "@/lib/stocktakeWeek";
-import { isWeeklyStocktakeDueOnDate, buildOrderingStockByRawId } from "@/lib/stocktakeWeek";
+import { buildOrderingStockByRawId, lastWeeklyDueDateOnOrBefore } from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
   isRawVisibleOnStocktakeForLocation,
@@ -932,19 +932,50 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
   const kindForUi: Record<string, SuggestionOrderKind> = {
     ...(drinkPackCleanup.kindByRaw as Record<string, SuggestionOrderKind>),
   };
-  // Weekly stocktake items (e.g. honey sticks): only on their weekly day.
+  // Weekly stocktake items (e.g. honey sticks, GéDé packaging, Bidfood non-food):
+  // suggested from their weekly day until the next weekly day, unless already ordered
+  // since that weekly count. Before 09-09 they only appeared on the weekly day itself,
+  // which meant Bidfood (order day Tuesday) never saw the Monday count.
   const locationWeeklyDow = loc?.weekly_stocktake_day_of_week ?? null;
-  for (const ing of rawIngredients) {
-    if (!isWeeklyPlannedRaw(ing)) continue;
-    if (
-      isWeeklyStocktakeDueOnDate({
-        dateStr: d,
-        locationWeeklyDow,
-        ingredientWeeklyDow: ing.stocktake_day_of_week,
-      })
-    ) {
-      continue;
+  const weeklyRaws = rawIngredients.filter((ing) => isWeeklyPlannedRaw(ing));
+  const weeklyDueByRaw: Record<string, string | null> = {};
+  let earliestWeeklyDue: string | null = null;
+  for (const ing of weeklyRaws) {
+    const due = lastWeeklyDueDateOnOrBefore({
+      dateStr: d,
+      locationWeeklyDow,
+      ingredientWeeklyDow: ing.stocktake_day_of_week,
+    });
+    weeklyDueByRaw[ing.id] = due;
+    if (due && (earliestWeeklyDue == null || due < earliestWeeklyDue)) earliestWeeklyDue = due;
+  }
+  const orderedSinceDueByRaw = new Set<string>();
+  if (weeklyRaws.length > 0 && earliestWeeklyDue != null) {
+    const ordersRes = await supabase
+      .from("orders")
+      .select("id, order_date, status, order_line_items(raw_ingredient_id)")
+      .eq("location_id", locationId)
+      .gte("order_date", earliestWeeklyDue)
+      .lte("order_date", d)
+      .neq("status", "cancelled");
+    const orderRows =
+      (ordersRes.data as
+        | { id: string; order_date: string; status: string; order_line_items: { raw_ingredient_id: string }[] | null }[]
+        | null) ?? [];
+    for (const o of orderRows) {
+      if (o.status === "draft") continue;
+      for (const li of o.order_line_items ?? []) {
+        const due = weeklyDueByRaw[li.raw_ingredient_id];
+        if (due != null && o.order_date >= due) orderedSinceDueByRaw.add(li.raw_ingredient_id);
+      }
     }
+  }
+  for (const ing of weeklyRaws) {
+    const due = weeklyDueByRaw[ing.id];
+    // due ≤ d < due + 7 by construction; once ordered in that window the line is done
+    // for the week (also on the weekly day itself, so a reload cannot double-order).
+    const keep = due != null && !orderedSinceDueByRaw.has(ing.id);
+    if (keep) continue;
     delete suggestedForUi[ing.id];
     delete kindForUi[ing.id];
     delete baseSuggested[ing.id];

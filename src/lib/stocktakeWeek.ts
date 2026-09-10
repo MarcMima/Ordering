@@ -34,6 +34,30 @@ export function isWeeklyStocktakeDueOnDate(params: {
   return jsWeekdayFromCalendarDate(params.dateStr) === scheduled;
 }
 
+/**
+ * Most recent weekly due date on or before `dateStr` (YYYY-MM-DD), or null when no
+ * weekly day applies. Used to keep a weekly suggestion alive until it is ordered
+ * (Marc, 09-09: weekly count on Monday, GéDé/Tuana/TFG ordered that day, Bidfood
+ * non-food picked up on the next Bidfood order day).
+ */
+export function lastWeeklyDueDateOnOrBefore(params: {
+  dateStr: string;
+  locationWeeklyDow: number | null | undefined;
+  ingredientWeeklyDow: number | null | undefined;
+}): string | null {
+  const scheduled = effectiveWeeklyStocktakeDow(params.locationWeeklyDow, params.ingredientWeeklyDow);
+  if (scheduled == null) return null;
+  const parts = params.dateStr.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return null;
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d);
+  const back = (dt.getDay() - scheduled + 7) % 7;
+  dt.setDate(dt.getDate() - back);
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${dt.getFullYear()}-${mm}-${dd}`;
+}
+
 /** Weekly stocktake + order_interval_days (e.g. GéDé packaging). */
 export function isWeeklyPlannedRaw(ing: {
   order_interval_days?: number | null;
