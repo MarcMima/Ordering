@@ -1,5 +1,5 @@
 -- 228 — Model audit 11-09-2026: recipe and value fixes (R-01…R-08, N-03, N-05, C-01, C-05, D-05…D-11, D-13)
--- NOT YET APPLIED to production (11-09-2026): blocked by the auto-mode safety classifier; apply via psql or Supabase SQL editor.
+-- Applied to production by Marc via psql on 11-09-2026 (228a helper functions were applied via MCP first).
 -- All quantities in grams. Every raw ingredient is referenced by name on the canonical location.
 
 CREATE OR REPLACE FUNCTION fn_canonical_raw_id(p_name text) RETURNS uuid LANGUAGE plpgsql VOLATILE AS $$
@@ -226,3 +226,10 @@ BEGIN
   UPDATE menu_item_channel_prices p SET price_cents = 350, updated_at = now() FROM menu_items m
    WHERE m.id = p.menu_item_id AND m.name = 'Flatbread chips' AND p.channel IN ('uber_eats','thuisbezorgd') AND p.price_cents = 600;
 END $$;
+
+-- Follow-ups applied 11-09-2026 (after verification):
+SELECT fn_set_nutrition('Charlie''s Mandarin',        0.2, 0, 0, 0, 0, 0, 0, 0, 'Product label (Marc, 11-09-2026), 9 kJ');
+SELECT fn_set_nutrition('Charlie''s Grapefruit',      0.3, 0, 0, 0, 0, 0, 0, 0, 'Product label (Marc, 11-09-2026), 11 kJ');
+SELECT fn_set_nutrition('Charlie''s Orange Mandarin', 0.2, 0, 0, 0, 0, 0, 0, 0, 'Product label Charlie''s Mandarin (Marc, 11-09-2026), 9 kJ');
+SELECT fn_set_nutrition('Rice flour',          355, 0,    0,   87, 0, 0,    1,    0, 'Mima sheet 260616 (Farmer)');
+SELECT fn_set_nutrition('Coriander (ground)',  514, 17.8, 1.8, 55, 0, 41.9, 12.4, 0, 'Mima sheet 260616 (Tuana) — was wrongly set to the fresh-coriander value');
