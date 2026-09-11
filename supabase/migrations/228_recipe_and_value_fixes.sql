@@ -233,3 +233,12 @@ SELECT fn_set_nutrition('Charlie''s Grapefruit',      0.3, 0, 0, 0, 0, 0, 0, 0, 
 SELECT fn_set_nutrition('Charlie''s Orange Mandarin', 0.2, 0, 0, 0, 0, 0, 0, 0, 'Product label Charlie''s Mandarin (Marc, 11-09-2026), 9 kJ');
 SELECT fn_set_nutrition('Rice flour',          355, 0,    0,   87, 0, 0,    1,    0, 'Mima sheet 260616 (Farmer)');
 SELECT fn_set_nutrition('Coriander (ground)',  514, 17.8, 1.8, 55, 0, 41.9, 12.4, 0, 'Mima sheet 260616 (Tuana) — was wrongly set to the fresh-coriander value');
+-- Brownie dough per Receptenboek v1.0 (Marc, 11-09-2026): cacao 700 g (was 70 via truncated import name), vanilla 80 g, salt 44 g, baking powder 30 g; batch 7 410 g. Tray: 2 000 g dough -> 20 x 95 g.
+SELECT fn_set_recipe_line('Tahin brownie dough', 'Cacao powder', 700);
+SELECT fn_set_recipe_line('Tahin brownie dough', 'Vanilla extract', 80);
+SELECT fn_set_recipe_line('Tahin brownie dough', 'Salt', 44);
+SELECT fn_set_recipe_line('Tahin brownie dough', 'Baking powder', 30);
+UPDATE prep_items SET recipe_output_amount = 7410, content_amount = 7410 WHERE name = 'Tahin brownie dough';
+UPDATE prep_items SET ingredient_qty_is_per_recipe_batch = true, recipe_output_amount = 1900, recipe_output_unit = 'g', yield_source = 'estimated' WHERE name = 'Brownies';
+SELECT fn_set_subprep_line('Brownies', 'Tahin brownie dough', 2000);
+-- Tuana spice price estimates (replace with real prices): Onion powder 950, Paprika (sweet) 1100, Paprika (smoked) 1400, Baharat 1300 cents/kg, source estimate_20260911.
