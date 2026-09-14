@@ -351,6 +351,7 @@ function defaultEmailForSupplierName(name: string): string | null {
   const n = name.toLowerCase().trim();
   if (n === "gédé" || n === "gedé") return "info@gede.nl";
   if (n === "tuana") return "Info@tuana-kruiden.nl";
+  if (n === "today food group") return "sales@todaytradingcompany.nl";
   return null;
 }
 
