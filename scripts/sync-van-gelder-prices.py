@@ -104,6 +104,44 @@ def fetch_prices() -> dict[str, list[dict]]:
     return per_ean
 
 
+def pack_grams(aantal_packs, size_unit, pack_size, grams_per_piece):
+    """Gewicht van de verpakking die de app bestelt, in grammen.
+
+    `ingredient_prices.pack_size_grams` mag niet leeg zijn, dus moet dit getal
+    er komen. Het mag alleen uit de app komen, niet uit een gok: Van Gelder
+    prijst per verkoopeenheid en dat is, zoals op 15-09-2026 gecontroleerd,
+    exact de verpakking die de app bestelt (rode ui: EUR 32,95 voor 12 kg is
+    EUR 2,75/kg, tegen EUR 2,79/kg in de oude lijst).
+
+    Zelfde omrekening als in het data lake, met opzet: value = gram * prijs /
+    pack_size_grams valt daardoor terug op aantal x prijs, en een aanname als
+    "1 liter is 1 kilo" heft zichzelf op. Voor kostprijs per portie geldt dat
+    NIET -- daar moet een liter olie wel echt 920 gram zijn.
+
+    None betekent: niet te bepalen, dus niet schrijven.
+    """
+    if aantal_packs != 1 or pack_size is None:
+        return None
+    e = (size_unit or "").strip().lower()
+    if e in ("kg", "l"):
+        return float(pack_size) * 1000
+    if e == "g":
+        return float(pack_size)
+    if e == "pcs" and grams_per_piece:
+        return float(pack_size) * float(grams_per_piece)
+    return None
+
+
+def reden(aantal_packs, size_unit, grams_per_piece):
+    if aantal_packs == 0:
+        return "geen verpakking in de app"
+    if aantal_packs > 1:
+        return "meerdere verpakkingen, prijs niet aan een maat te koppelen"
+    if (size_unit or "").lower() == "pcs" and not grams_per_piece:
+        return "stuks zonder gewicht per stuk (vul grams_per_piece in de app)"
+    return f"eenheid {size_unit!r} niet om te rekenen"
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Van Gelder-prijzen naar ingredient_prices.")
     ap.add_argument("--dry-run", action="store_true")
@@ -118,7 +156,15 @@ def main() -> None:
     conn = psycopg2.connect(args.database_url, connect_timeout=30)
     cur = conn.cursor()
     cur.execute("""
-        select si.raw_ingredient_id, si.supplier_id, si.ean_code, ri.name
+        select si.raw_ingredient_id, si.supplier_id, si.ean_code, ri.name,
+               (select count(*) from ingredient_pack_sizes ps
+                 where ps.raw_ingredient_id = si.raw_ingredient_id)          as aantal_packs,
+               (select ps.size_unit from ingredient_pack_sizes ps
+                 where ps.raw_ingredient_id = si.raw_ingredient_id limit 1)  as size_unit,
+               (select ps.size from ingredient_pack_sizes ps
+                 where ps.raw_ingredient_id = si.raw_ingredient_id limit 1)  as pack_size,
+               (select ps.grams_per_piece from ingredient_pack_sizes ps
+                 where ps.raw_ingredient_id = si.raw_ingredient_id limit 1)  as grams_per_piece
         from supplier_ingredients si
         join suppliers s on s.id = si.supplier_id
         join raw_ingredients ri on ri.id = si.raw_ingredient_id
@@ -129,21 +175,33 @@ def main() -> None:
 
     vandaag = date.today()
     gevonden, gemist, rijen = 0, [], []
-    for raw_id, sup_id, ean, naam in koppelingen:
+    overgeslagen = defaultdict(list)
+    for (raw_id, sup_id, ean, naam, aantal_packs,
+         size_unit, pack_size, grams_per_piece) in koppelingen:
         e = normalize_ean(ean)
         regels = per_ean.get(e)
         if not regels:
             gemist.append(f"{naam} ({ean})")
             continue
+        gram = pack_grams(aantal_packs, size_unit, pack_size, grams_per_piece)
+        if gram is None:
+            overgeslagen[reden(aantal_packs, size_unit, grams_per_piece)].append(naam)
+            continue
         # Klantspecifieke prijs wint van een groepsprijs.
         beste = sorted(regels, key=lambda r: (r["groep"].lower() == "group", r["prijs"]))[0]
         gevonden += 1
-        rijen.append((raw_id, sup_id, round(beste["prijs"] * 100), beste["vanaf"] or str(vandaag),
+        rijen.append((raw_id, sup_id, round(beste["prijs"] * 100), gram,
+                      beste["vanaf"] or str(vandaag),
                       f"{BRON}, EAN {e}, klant {beste['klantcode'] or '-'}"))
 
-    print(f"Gematcht: {gevonden}. Geen actieve prijs: {len(gemist)}.")
+    print(f"Gematcht op EAN: {gevonden + sum(len(v) for v in overgeslagen.values())}. "
+          f"Geen actieve prijs: {len(gemist)}.")
     for g in gemist[:15]:
         print("   geen prijs:", g)
+    for r, namen in sorted(overgeslagen.items()):
+        uniek = sorted(set(namen))
+        print(f"   overgeslagen ({len(namen)} koppelingen) -- {r}: {', '.join(uniek)}")
+    print(f"Te schrijven: {gevonden}.")
 
     if args.dry_run:
         for r in rijen[:10]:
@@ -152,7 +210,7 @@ def main() -> None:
         return
 
     nieuw = 0
-    for raw_id, sup_id, cents, vanaf, bron in rijen:
+    for raw_id, sup_id, cents, gram, vanaf, bron in rijen:
         # Niet dubbel schrijven: dezelfde prijs op dezelfde ingangsdatum uit
         # deze bron is geen nieuwe prijs.
         cur.execute("""
@@ -164,10 +222,10 @@ def main() -> None:
             continue
         cur.execute("""
             insert into ingredient_prices
-              (raw_ingredient_id, supplier_id, price_cents, price_includes_vat,
-               effective_date, source, created_by)
-            values (%s,%s,%s,false,%s,%s,'sync-van-gelder-prices')
-        """, (raw_id, sup_id, cents, vanaf, bron))
+              (raw_ingredient_id, supplier_id, price_cents, pack_size_grams,
+               price_includes_vat, effective_date, source, created_by)
+            values (%s,%s,%s,%s,false,%s,%s,'sync-van-gelder-prices')
+        """, (raw_id, sup_id, cents, gram, vanaf, bron))
         nieuw += 1
     conn.commit()
     conn.close()
