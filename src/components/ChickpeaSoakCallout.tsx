@@ -3,7 +3,7 @@ export function ChickpeaSoakCallout({ kg, className = "" }: { kg: number; classN
   if (kg <= 0) return null;
   return (
     <div
-      className={`mb-4 rounded-xl border-2 border-accent-orange/70 bg-gradient-to-br from-brand-orange/20 via-brand-sand/90 to-brand-sand/60 p-5  ring-2 ring-accent-orange/25 print:border-hairline print:bg-background print:text-ink print:shadow-none print:ring-0 ${className}`.trim()}
+      className={`mb-4 border border-hairline-strong border-l-2 border-l-accent-orange bg-surface p-5 print:border-hairline print:bg-background print:text-ink print:shadow-none print:ring-0 ${className}`.trim()}
       role="status"
     >
       <p className="text-sm font-medium uppercase tracking-wider text-accent-orange">Soak today (dry chickpeas)</p>

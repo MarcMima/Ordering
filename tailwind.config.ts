@@ -28,7 +28,7 @@ export default {
           muted: "#6E6A61",
           quiet: "#8A8C7E",
         },
-        hairline: "rgba(44,51,32,0.10)",
+        hairline: { DEFAULT: "rgba(44,51,32,0.10)", strong: "rgba(44,51,32,0.14)" },
         accent: {
           terracotta: brand.terracotta,
           orange: brand.orange,

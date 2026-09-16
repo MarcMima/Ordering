@@ -104,10 +104,6 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background">
       <TopNav />
       <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-        <div
-          className="mb-8 h-1 rounded-full bg-gradient-to-r from-brand-green via-brand-sage to-brand-sand"
-          aria-hidden
-        />
         <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="page-title">Dashboard</h1>
           <Link href="/admin" className="btn-ghost shrink-0 px-2 text-sm">
