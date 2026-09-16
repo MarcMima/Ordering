@@ -43,7 +43,7 @@ export function TopNav() {
         <div className="topnav-mobile-only">
           <Link
             href="/dashboard"
-            className="min-w-0 max-w-[45vw] truncate text-xs font-medium text-ink-soft underline decoration-brand-sage/60 underline-offset-2"
+            className="min-w-0 max-w-[45vw] truncate text-xs text-ink-muted"
             title={currentName}
           >
             {currentName}
@@ -56,15 +56,13 @@ export function TopNav() {
 
         <div className="topnav-desktop-only">
           <span className="topnav-location-row text-sm">
-            <span
-              className="truncate rounded-md bg-surface-muted px-2 py-0.5 font-medium text-brand-green"
-              title={currentName}
-            >
+            <span className="truncate text-ink-muted" title={currentName}>
               {currentName}
             </span>
+            <span className="text-ink-quiet" aria-hidden>·</span>
             <Link
               href="/dashboard"
-              className="shrink-0 text-sm font-medium text-accent-terracotta hover:text-accent-terracotta/80"
+              className="shrink-0 border-b border-brand-green/35 pb-[1px] text-sm text-brand-green hover:text-accent-orange"
             >
               Change location
             </Link>
@@ -78,14 +76,11 @@ export function TopNav() {
           <Link href="/kitchen" className="nav-link">
             Kitchen
           </Link>
-          <Link
-            href="/dashboard/haccp"
-            className="nav-link text-accent-terracotta hover:text-accent-terracotta"
-          >
+          <Link href="/dashboard/haccp" className="nav-link">
             HACCP
           </Link>
           {canViewAdmin && (
-            <Link href="/admin" className="btn-primary px-3 py-1.5 lg:px-3">
+            <Link href="/admin" className="nav-link">
               Admin
             </Link>
           )}
