@@ -85,6 +85,11 @@ export function TopNav() {
             HACCP
           </Link>
           {canViewAdmin && (
+            <Link href="/meeting" className="nav-link">
+              Meeting
+            </Link>
+          )}
+          {canViewAdmin && (
             <Link href="/admin" className="btn-primary px-3 py-1.5 lg:px-3">
               Admin
             </Link>
