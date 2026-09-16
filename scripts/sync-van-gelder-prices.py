@@ -104,6 +104,32 @@ def fetch_prices() -> dict[str, list[dict]]:
     return per_ean
 
 
+def kies_prijs(regels: list[dict], klantcode: str | None) -> dict:
+    """De prijs die voor DEZE vestiging geldt.
+
+    Van Gelder levert twee soorten regels: Type "Group" (klantcode HO1, de
+    horeca-groepsprijs) en Type "Contract" (klantcode MIMAMS1/2/3, per vestiging
+    onderhandeld). Op 15-09-2026 stonden er 98 contractregels tegenover 12.015
+    groepsregels. Een contractprijs van De Pijp mag niet op West worden geplakt,
+    dus de volgorde is: contract van deze klantcode, anders groepsprijs, en pas
+    daarna een contract van een andere vestiging -- want liever een echte
+    Mima-prijs dan helemaal geen.
+    """
+    kc = (klantcode or "").strip().upper()
+    def rang(r):
+        eigen = (r.get("klantcode") or "").upper() == kc and kc != ""
+        groep = r["groep"].lower() == "group"
+        # Binnen dezelfde soort wint de jongste ingangsdatum.
+        return (0 if eigen else 1 if groep else 2, r.get("vanaf") or "")
+    return min(regels, key=lambda r: (rang(r)[0], -_datum_nr(r.get("vanaf"))))
+
+
+def _datum_nr(v: str | None) -> int:
+    """'2026-03-01' -> 20260301, zodat een jongere datum een groter getal is."""
+    d = "".join(c for c in (v or "") if c.isdigit())[:8]
+    return int(d) if d else 0
+
+
 def pack_grams(aantal_packs, size_unit, pack_size, grams_per_piece):
     """Gewicht van de verpakking die de app bestelt, in grammen.
 
@@ -164,7 +190,9 @@ def main() -> None:
                (select ps.size from ingredient_pack_sizes ps
                  where ps.raw_ingredient_id = si.raw_ingredient_id limit 1)  as pack_size,
                (select ps.grams_per_piece from ingredient_pack_sizes ps
-                 where ps.raw_ingredient_id = si.raw_ingredient_id limit 1)  as grams_per_piece
+                 where ps.raw_ingredient_id = si.raw_ingredient_id limit 1)  as grams_per_piece,
+               (select soc.api_customer_code from supplier_order_channels soc
+                 where soc.supplier_id = si.supplier_id limit 1)             as klantcode
         from supplier_ingredients si
         join suppliers s on s.id = si.supplier_id
         join raw_ingredients ri on ri.id = si.raw_ingredient_id
@@ -177,7 +205,7 @@ def main() -> None:
     gevonden, gemist, rijen = 0, [], []
     overgeslagen = defaultdict(list)
     for (raw_id, sup_id, ean, naam, aantal_packs,
-         size_unit, pack_size, grams_per_piece) in koppelingen:
+         size_unit, pack_size, grams_per_piece, klantcode) in koppelingen:
         e = normalize_ean(ean)
         regels = per_ean.get(e)
         if not regels:
@@ -187,8 +215,7 @@ def main() -> None:
         if gram is None:
             overgeslagen[reden(aantal_packs, size_unit, grams_per_piece)].append(naam)
             continue
-        # Klantspecifieke prijs wint van een groepsprijs.
-        beste = sorted(regels, key=lambda r: (r["groep"].lower() == "group", r["prijs"]))[0]
+        beste = kies_prijs(regels, klantcode)
         gevonden += 1
         rijen.append((raw_id, sup_id, round(beste["prijs"] * 100), gram,
                       beste["vanaf"] or str(vandaag),
