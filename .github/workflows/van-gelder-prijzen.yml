@@ -1,0 +1,40 @@
+# Van Gelder-prijzen wekelijks naar ingredient_prices.
+#
+# Waarom een eigen workflow: de prijzen van Van Gelder wijzigen op willekeurige
+# momenten (ingangsdata door het jaar heen), en een sync die alleen draait als
+# iemand er aan denkt is geen sync. Maandagochtend, voor de eerste bestelronde
+# van de week, plus handmatig te starten vanuit het Actions-tabblad.
+#
+# Vereist het secret DATABASE_URL (de session-pooler-URI van het Ordering-
+# project). De Van Gelder-sleutels zelf staan in Supabase secrets achter de
+# edge function import-van-gelder; die komen hier niet langs.
+name: van-gelder-prijzen
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'   # maandag 04:17 UTC = 06:17 Amsterdam
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet psycopg2-binary
+      - name: Prijzen ophalen en wegschrijven
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -o pipefail
+          python3 scripts/sync-van-gelder-prices.py | tee van-gelder-prijzen.log
+      - name: Log bewaren
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: van-gelder-prijzen-log
+          path: van-gelder-prijzen.log
+          retention-days: 30
