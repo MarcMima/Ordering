@@ -20,6 +20,8 @@ import { NextResponse } from "next/server";
 // Verzending gaat via Resend (zelfde conventie als plaud-webhook: RESEND_API_KEY +
 // FROM_EMAIL). Alle team-mail is Engelstalig — Hadi (Operations) leest mee.
 // Opmaak, ontvangers en verzending: src/lib/meetingEmails.ts (gedeeld met de webhook).
+// Sinds 16-09-2026 bevatten de pre-meeting-mails ook de open agendapunten uit de
+// Notion Agenda items-DB (zie fetchAgenda/agendaBlock hieronder).
 
 import {
   type Mail,
@@ -110,7 +112,7 @@ function fmtDate(y: number, m: number, d: number): string {
 }
 
 // ---- Mailinhoud (Engels) --------------------------------------------------
-function preMMMMMail(): Mail {
+function preMMMMMail(agenda: { html: string; text: string }): Mail {
   const subject = "Before Monday's MMMM — update your to-do's";
   const text =
     "Hi team,\n\n" +
@@ -118,6 +120,7 @@ function preMMMMMail(): Mail {
     "through your Mima to-do's in Notion: tick off or dismiss the ones that are already " +
     "done, and update the status of the rest. That way we start Monday with a clean, " +
     "up-to-date list." +
+    agenda.text +
     tasksLink() +
     "\n\nThanks!";
   const html = renderEmail({
@@ -128,6 +131,7 @@ function preMMMMMail(): Mail {
         "minutes to go through your Mima to-do&rsquo;s in Notion: tick off or dismiss the ones " +
         "that are already done, and update the status of the rest.",
       "That way we start Monday with a clean, up-to-date list.",
+      agenda.html,
     ],
     buttonLabel: BTN_LABEL,
     buttonUrl: TASKS_DB_URL,
@@ -135,7 +139,7 @@ function preMMMMMail(): Mail {
   return { to: TEAM, subject, text, html };
 }
 
-function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
+function preMMMWeekMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }): Mail {
   const when = fmtDate(mmm.y, mmm.m, mmm.d);
   const subject = "Monthly Mima Meeting in a week — update your data & prepare";
   const text =
@@ -143,6 +147,7 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
     `The monthly tactical meeting (MMM) is one week from today, on ${when} at 09:00. ` +
     "Time to start preparing: please update your numbers and data and get your domain " +
     "updates ready so we can make good tactical decisions." +
+    agenda.text +
     tasksLink() +
     "\n\nThanks!";
   const html = renderEmail({
@@ -153,6 +158,7 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
         `<strong>${when}</strong> at 09:00.`,
       "Time to start preparing: please update your numbers and data and get your domain " +
         "updates ready so we can make good tactical decisions.",
+      agenda.html,
     ],
     buttonLabel: BTN_LABEL,
     buttonUrl: TASKS_DB_URL,
@@ -160,7 +166,7 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }): Mail {
   return { to: TEAM, subject, text, html };
 }
 
-function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
+function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }): Mail {
   const when = fmtDate(mmm.y, mmm.m, mmm.d);
   const subject = "Monthly Mima Meeting tomorrow — final data check";
   const text =
@@ -168,6 +174,7 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
     `Reminder: the monthly tactical meeting (MMM) is tomorrow, ${when} at 09:00. ` +
     "Please make sure your numbers and data are up to date and your domain updates are " +
     "ready, so we can dive straight in." +
+    agenda.text +
     tasksLink() +
     "\n\nThanks!";
   const html = renderEmail({
@@ -178,6 +185,7 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
         `${when} at 09:00.`,
       "Please make sure your numbers and data are up to date and your domain updates are " +
         "ready, so we can dive straight in.",
+      agenda.html,
     ],
     buttonLabel: BTN_LABEL,
     buttonUrl: TASKS_DB_URL,
@@ -186,12 +194,107 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }): Mail {
 }
 
 
+// ---- Agenda items (Notion "Agenda items"-database) ---------------------------
+// Sinds 16-09-2026 landen gespreksonderwerpen in een aparte Agenda items-DB
+// (Meeting type MMMM/MMM/QMM, Status Proposed/Scheduled/...). De pre-meeting-mails
+// tonen de open punten voor de betreffende meeting, zodat iedereen weet wat er komt.
+// Best-effort: faalt de query (geen toegang, DB verplaatst), dan gaat de mail zonder
+// agenda-blok uit en staat de fout in de response (`agenda.error`).
+const NOTION_VERSION = "2022-06-28";
+const AGENDA_DB_ID = process.env.AGENDA_DB_ID ?? "b73a458189e2484fb5383098404e320e";
+const AGENDA_DB_URL =
+  process.env.AGENDA_DB_URL ?? `https://www.notion.so/${AGENDA_DB_ID.replace(/-/g, "")}`;
+
+type AgendaItem = { topic: string; ask: string; raisedBy: string; minutes: number | null; url: string };
+type AgendaFetch = { ok: boolean; items: AgendaItem[]; error?: string };
+
+async function fetchAgenda(meetingType: "MMMM" | "MMM" | "QMM"): Promise<AgendaFetch> {
+  const token = process.env.NOTION_TOKEN;
+  if (!token) return { ok: false, items: [], error: "NOTION_TOKEN missing" };
+  try {
+    const res = await fetch(`https://api.notion.com/v1/databases/${AGENDA_DB_ID}/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        filter: {
+          and: [
+            { property: "Meeting type", select: { equals: meetingType } },
+            {
+              or: [
+                { property: "Status", select: { equals: "Scheduled" } },
+                { property: "Status", select: { equals: "Proposed" } },
+              ],
+            },
+          ],
+        },
+        sorts: [
+          { property: "Status", direction: "descending" }, // Scheduled vóór Proposed
+          { property: "Created", direction: "ascending" },
+        ],
+        page_size: 25,
+      }),
+    });
+    if (!res.ok) return { ok: false, items: [], error: `${res.status} ${await res.text()}` };
+    type NotionAgendaRow = {
+      url: string;
+      properties: {
+        Topic?: { title?: Array<{ plain_text: string }> };
+        Ask?: { select?: { name?: string } | null };
+        "Time needed (min)"?: { number?: number | null };
+      };
+    };
+    const data = (await res.json()) as { results: NotionAgendaRow[] };
+    const items: AgendaItem[] = data.results.map((r) => {
+      const pr = r.properties ?? {};
+      const topic = (pr["Topic"]?.title ?? []).map((t) => t.plain_text).join("") || "(untitled)";
+      const ask = pr["Ask"]?.select?.name ?? "";
+      const minutes = typeof pr["Time needed (min)"]?.number === "number" ? pr["Time needed (min)"].number : null;
+      // Raised by is een relatie; namen ophalen kost extra calls — we tonen de relatie
+      // niet in de mail. (Wel beschikbaar in Notion zelf.)
+      return { topic, ask, raisedBy: "", minutes, url: r.url };
+    });
+    return { ok: true, items };
+  } catch (e: unknown) {
+    return { ok: false, items: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Agenda-blok voor in de mail (html-paragraaf + platte tekst).
+function agendaBlock(meetingType: "MMMM" | "MMM" | "QMM", a: AgendaFetch): { html: string; text: string } {
+  if (!a.ok || a.items.length === 0) {
+    return {
+      html:
+        `<strong>Agenda:</strong> nothing on the list yet. Got something to discuss? ` +
+        `<a href="${AGENDA_DB_URL}">Add it to the agenda</a> or ask Claude to put it on the agenda.`,
+      text: `\n\nAgenda: nothing on the list yet. Add topics here: ${AGENDA_DB_URL}`,
+    };
+  }
+  const line = (i: AgendaItem) =>
+    `${i.topic}${i.ask ? ` (${i.ask.toLowerCase()}` + (i.minutes ? `, ${i.minutes} min)` : ")") : i.minutes ? ` (${i.minutes} min)` : ""}`;
+  const html =
+    `<strong>On the agenda for this ${meetingType}:</strong><br>` +
+    a.items.map((i) => `&bull; <a href="${i.url}">${esc(line(i))}</a>`).join("<br>") +
+    `<br><a href="${AGENDA_DB_URL}">Add a topic</a>`;
+  const text =
+    `\n\nOn the agenda for this ${meetingType}:\n` +
+    a.items.map((i) => `- ${line(i)}`).join("\n") +
+    `\nAdd a topic: ${AGENDA_DB_URL}`;
+  return { html, text };
+}
+
 // ---- Sync Log-check (is de meeting daadwerkelijk verwerkt?) -----------------
 // De post-meeting-mails gingen tot 09-2026 blind uit ("MMMM is verwerkt"), ook als de
 // pijplijn stil was uitgevallen. Nu: eerst in de Plaud Sync Log kijken. Niets gevonden
 // => geen team-mail maar een alarm naar Marc. Zo is stilte nooit meer "ok".
 const SYNC_LOG_DB_ID = "38821d9d-7c6a-819c-87fb-c10b6a969483";
-const NOTION_VERSION = "2022-06-28";
 
 type ProcessedCheck = { checked: boolean; count: number; tasks: number; error?: string };
 
@@ -289,20 +392,20 @@ export async function GET(req: Request) {
   const test = url.searchParams.get("test");
   if (test) {
     let mail: Mail | null = null;
-    if (test === "preMMMM") mail = preMMMMMail();
+    if (test === "preMMMM") mail = preMMMMMail(agendaBlock("MMMM", await fetchAgenda("MMMM")));
     else if (test === "postMMMM") mail = draftsReviewMail("MMMM", 0);
     else if (test === "preMMMweek") {
       const c = mmmDaysAway(p, 7) ?? firstTuesday(
         p.month === 12 ? p.year + 1 : p.year,
         p.month === 12 ? 1 : p.month + 1,
       );
-      mail = preMMMWeekMail(c);
+      mail = preMMMWeekMail(c, agendaBlock("MMM", await fetchAgenda("MMM")));
     } else if (test === "preMMMday") {
       const c = mmmDaysAway(p, 1) ?? firstTuesday(
         p.month === 12 ? p.year + 1 : p.year,
         p.month === 12 ? 1 : p.month + 1,
       );
-      mail = preMMMDayMail(c);
+      mail = preMMMDayMail(c, agendaBlock("MMM", await fetchAgenda("MMM")));
     }
     if (!mail) {
       return NextResponse.json(
@@ -319,10 +422,16 @@ export async function GET(req: Request) {
   const slotAllows = (s: string) => !slot || slot === s;
 
   const due: { name: string; mail: Mail }[] = [];
+  const agendaErrors: Record<string, string> = {};
+  const agendaFor = async (t: "MMMM" | "MMM" | "QMM") => {
+    const a = await fetchAgenda(t);
+    if (!a.ok && a.error) agendaErrors[t] = a.error;
+    return agendaBlock(t, a);
+  };
 
   // 1. pre-MMMM — vrijdag (5), middag-slot
   if (p.weekday === 5 && slotAllows("afternoon")) {
-    due.push({ name: "pre-MMMM", mail: preMMMMMail() });
+    due.push({ name: "pre-MMMM", mail: preMMMMMail(await agendaFor("MMMM")) });
   }
   // 2. post-MMMM — dinsdag (2), ochtend-slot: ALLEEN VANGNET. De team-mail zelf
   //    ("review your Drafts for review") stuurt de Plaud-webhook zodra de taken er
@@ -344,12 +453,12 @@ export async function GET(req: Request) {
   // 3a. pre-MMM (week) — 7 dagen vóór de eerste-dinsdag-MMM, ochtend-slot
   const mmmWeek = mmmDaysAway(p, 7);
   if (mmmWeek && slotAllows("morning")) {
-    due.push({ name: "pre-MMM-week", mail: preMMMWeekMail(mmmWeek) });
+    due.push({ name: "pre-MMM-week", mail: preMMMWeekMail(mmmWeek, await agendaFor("MMM")) });
   }
   // 3b. pre-MMM (dag) — 1 dag vóór de eerste-dinsdag-MMM, ochtend-slot
   const mmmDay = mmmDaysAway(p, 1);
   if (mmmDay && slotAllows("morning")) {
-    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay) });
+    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay, await agendaFor("MMM")) });
   }
 
   const results: { name: string; to: string[]; ok: boolean; error?: string }[] = [];
@@ -364,5 +473,6 @@ export async function GET(req: Request) {
     weekday: p.weekday,
     slot: slot ?? "all",
     sent: results,
+    agenda: { errors: agendaErrors },
   });
 }
