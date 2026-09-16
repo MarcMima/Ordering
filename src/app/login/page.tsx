@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { isAuthDisabled } from "@/lib/authMode";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 
@@ -42,16 +41,9 @@ function LoginForm() {
   return (
     <div className="mx-auto w-full max-w-sm px-4">
       <div className="mb-8 flex justify-center">
-        <Link href="/login" className="rounded-md bg-surface">
-          <Image
-            src="/mima-logo.png"
-            alt="Mima"
-            width={800}
-            height={426}
-            className="h-12 w-auto max-w-[220px] object-contain"
-            priority
-            unoptimized
-          />
+        <Link href="/login" className="wordmark wordmark-lg" aria-label="Mima — Fresh Mediterranean">
+          <span className="wordmark-name">mima</span>
+          <span className="wordmark-tagline">Fresh · Mediterranean</span>
         </Link>
       </div>
       <h1 className="mb-6 text-center section-title text-xl">

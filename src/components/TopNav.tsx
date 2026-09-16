@@ -24,20 +24,9 @@ export function TopNav() {
   return (
     <nav className="nav-header" aria-label="Site header">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 md:h-14 md:py-0">
-        <Link
-          href="/dashboard"
-          className="relative shrink-0 rounded-md bg-surface"
-          aria-label="Mima — Fresh Mediterranean"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/mima-logo.png"
-            alt=""
-            width={160}
-            height={85}
-            className="mima-logo-img"
-            decoding="async"
-          />
+        <Link href="/dashboard" className="wordmark shrink-0" aria-label="Mima — Fresh Mediterranean">
+          <span className="wordmark-name">mima</span>
+          <span className="wordmark-tagline">Fresh · Mediterranean</span>
         </Link>
 
         <div className="topnav-mobile-only">
