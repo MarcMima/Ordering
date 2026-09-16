@@ -320,7 +320,7 @@ function OrderingHistory() {
       <main className="mx-auto max-w-5xl px-3 py-4 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-xl font-semibold text-ink">History by day</h1>
+            <h1 className="text-xl font-medium text-ink">History by day</h1>
             <p className="help-text">
               {locationName ? `${locationName} — ` : ""}stock count, the suggestion as it stood
               that day, and the order that was actually sent. Read-only.
@@ -341,10 +341,10 @@ function OrderingHistory() {
             value={date}
             max={today}
             onChange={(e) => e.target.value && setDate(e.target.value)}
-            className="rounded-lg border border-brand-green/15 bg-surface px-2 py-1 text-sm text-ink"
+            className="rounded-lg border border-hairline bg-surface px-2 py-1 text-sm text-ink"
           />
           {isPast && (
-            <span className="rounded-full bg-brand-sand/60 px-2 py-0.5 text-xs text-ink-soft">
+            <span className="rounded-full bg-surface-muted px-2 py-0.5 text-xs text-ink-soft">
               Past day — read-only
             </span>
           )}
@@ -363,7 +363,7 @@ function OrderingHistory() {
         {locationId && !loading && !error && data && (
           <>
             <section className="mt-6">
-              <h2 className="font-semibold text-ink">Suggested vs ordered</h2>
+              <h2 className="font-medium text-ink">Suggested vs ordered</h2>
               {data.snapshotLines == null && (
                 <p className="help-text mt-1">
                   No suggestion snapshot for this day. Snapshots are recorded from the moment
@@ -391,7 +391,7 @@ function OrderingHistory() {
                 <div className="mt-2 overflow-x-auto">
                   <table className="w-full min-w-[46rem] text-sm">
                     <thead>
-                      <tr className="border-b border-brand-green/15 text-left text-xs text-ink-soft">
+                      <tr className="border-b border-hairline text-left text-xs text-ink-soft">
                         <th className="py-1.5 pr-2 font-medium">Ingredient</th>
                         <th className="py-1.5 pr-2 font-medium">Supplier</th>
                         <th className="py-1.5 pr-2 text-right font-medium">Suggested</th>
@@ -416,7 +416,7 @@ function OrderingHistory() {
                         return (
                           <tr
                             key={row.rawId}
-                            className="border-b border-brand-green/5 align-top"
+                            className="border-b border-hairline align-top"
                           >
                             <td className="py-1.5 pr-2 font-medium text-ink">{row.name}</td>
                             <td className="py-1.5 pr-2 text-ink-soft">
@@ -428,7 +428,7 @@ function OrderingHistory() {
                             <td
                               className={
                                 deviates
-                                  ? "py-1.5 pr-2 text-right font-semibold tabular-nums text-accent-terracotta"
+                                  ? "py-1.5 pr-2 text-right font-medium tabular-nums text-accent-terracotta"
                                   : "py-1.5 pr-2 text-right tabular-nums text-ink"
                               }
                             >
@@ -466,7 +466,7 @@ function OrderingHistory() {
             </section>
 
             <section className="mt-8">
-              <h2 className="font-semibold text-ink">Sent orders</h2>
+              <h2 className="font-medium text-ink">Sent orders</h2>
               {data.orders.length === 0 ? (
                 <p className="help-text mt-2">No order sent on this day.</p>
               ) : (
@@ -492,7 +492,7 @@ function OrderingHistory() {
             </section>
 
             <section className="mt-8">
-              <h2 className="font-semibold text-ink">Ingredient stock count</h2>
+              <h2 className="font-medium text-ink">Ingredient stock count</h2>
               {stockCountRows.length === 0 ? (
                 <p className="help-text mt-2">No stock count recorded on this day.</p>
               ) : (
@@ -500,7 +500,7 @@ function OrderingHistory() {
                   {stockCountRows.map((row) => (
                     <li
                       key={row.raw_ingredient_id}
-                      className="flex justify-between gap-3 border-b border-brand-green/5 py-1 text-sm"
+                      className="flex justify-between gap-3 border-b border-hairline py-1 text-sm"
                     >
                       <span className="text-ink">{row.name}</span>
                       <span className="tabular-nums text-ink-soft">
@@ -513,7 +513,7 @@ function OrderingHistory() {
             </section>
 
             <section className="mt-8 pb-10">
-              <h2 className="font-semibold text-ink">Prep count</h2>
+              <h2 className="font-medium text-ink">Prep count</h2>
               {prepCountRows.length === 0 ? (
                 <p className="help-text mt-2">No prep count recorded on this day.</p>
               ) : (
@@ -521,7 +521,7 @@ function OrderingHistory() {
                   {prepCountRows.map((row) => (
                     <li
                       key={row.prep_item_id}
-                      className="flex justify-between gap-3 border-b border-brand-green/5 py-1 text-sm"
+                      className="flex justify-between gap-3 border-b border-hairline py-1 text-sm"
                     >
                       <span className="text-ink">{row.prep_items?.name ?? "(unknown)"}</span>
                       <span className="tabular-nums text-ink-soft">

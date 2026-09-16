@@ -135,7 +135,7 @@ export function KitchenMenuContent() {
                       "whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors",
                       active
                         ? "border-brand-green bg-brand-green text-white"
-                        : "border-brand-green/10 bg-surface text-ink-soft hover:border-brand-green/15 hover:bg-background ",
+                        : "border-hairline bg-surface text-ink-soft hover:border-hairline hover:bg-background ",
                     ].join(" ")}
                   >
                     {labelForCategory(cat)}
@@ -156,7 +156,7 @@ export function KitchenMenuContent() {
                   <li key={m.id}>
                     <Link
                       href={`/kitchen/menu/${m.id}`}
-                      className="flex flex-col card px-4 py-3 transition-colors hover:border-brand-green/25 hover:bg-background"
+                      className="flex flex-col card px-4 py-3 transition-colors hover:border-hairline hover:bg-background"
                     >
                       <span className="font-medium text-ink">{m.name}</span>
                       <span className="mt-0.5 text-xs text-ink-soft/70">

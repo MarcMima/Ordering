@@ -1892,18 +1892,18 @@ export default function OrderingPage() {
       !isPlanning && hasOrderWork && (!hasWeekdaySchedule || onDemandSup || tomorrowIsDelivery);
 
     const sectionClass = isPlanning
-      ? "rounded-xl border border-brand-green/10 bg-brand-sand/50 p-3 opacity-80 "
+      ? "rounded-xl border border-hairline bg-surface-muted p-3 opacity-80 "
       : !hasOrderWork
-        ? "rounded-xl border border-dashed border-brand-green/15 bg-background p-4 "
+        ? "rounded-xl border border-dashed border-hairline bg-background p-4 "
         : cardEmphasized
           ? "card "
-          : "rounded-xl border border-dashed border-brand-green/15 bg-background/90 p-4 ";
+          : "rounded-xl border border-dashed border-hairline bg-background/90 p-4 ";
     const headingClass = isPlanning
       ? "font-medium text-ink-soft/80"
       : !hasOrderWork
         ? "font-medium text-ink-soft/80"
         : cardEmphasized
-          ? "font-semibold text-ink"
+          ? "font-medium text-ink"
           : "font-medium text-ink-soft";
     const deliveryMetaClass = isPlanning
       ? "text-xs text-ink-soft/60"
@@ -1940,7 +1940,7 @@ export default function OrderingPage() {
               </span>
             )}
             {onDemandSup && !isPlanning && (
-              <span className="rounded-full bg-brand-sand/50 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
+              <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-ink-soft">
                 On demand
               </span>
             )}
@@ -1951,7 +1951,7 @@ export default function OrderingPage() {
         </div>
 
         {isPlanning && !allowOffScheduleOrdering && (
-          <div className="mb-2 rounded-lg border border-brand-green/10 bg-background/80 px-3 py-2 text-xs text-ink-soft/70">
+          <div className="mb-2 rounded-lg border border-hairline bg-background/80 px-3 py-2 text-xs text-ink-soft/70">
             <p className="font-medium text-ink-soft">Not an order day — preview only</p>
             {onDemandSup && weeklyDayLabel ? (
               <p className="mt-1">
@@ -1992,7 +1992,7 @@ export default function OrderingPage() {
             <button
               type="button"
               onClick={() => togglePlanningExpanded(sup.id)}
-              className="rounded-md border border-brand-sage/50 bg-surface/60 px-2 py-1 text-[11px] font-medium text-ink-soft/80"
+              className="rounded-md border border-hairline bg-surface/60 px-2 py-1 text-[11px] font-medium text-ink-soft/80"
             >
               {planningExpanded ? "Hide preview" : "Show preview"}
             </button>
@@ -2024,8 +2024,8 @@ export default function OrderingPage() {
                   key={`${sup.id}-${lineKey}`}
                   className={
                     isPlanning
-                      ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-dashed border-brand-green/10 bg-background/40 px-3 py-2 text-xs text-ink-soft/70 "
-                      : "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-brand-green/10 bg-background/50 px-3 py-2.5 text-sm "
+                      ? "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-dashed border-hairline bg-background/40 px-3 py-2 text-xs text-ink-soft/70 "
+                      : "flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-hairline bg-background/50 px-3 py-2.5 text-sm "
                   }
                 >
                   <span
@@ -2061,7 +2061,7 @@ export default function OrderingPage() {
                           updateLineQuantity(sup.id, lineKey, Number(raw));
                         }}
                         onBlur={() => snapLineQuantityToColi(sup.id, line)}
-                        className="w-14 rounded border border-brand-green/15 bg-surface px-1 py-0.5 text-right text-sm tabular-nums text-ink"
+                        className="w-14 rounded border border-hairline bg-surface px-1 py-0.5 text-right text-sm tabular-nums text-ink"
                         aria-label={`Quantity for ${row.product}`}
                       />
                     )}
@@ -2122,7 +2122,7 @@ export default function OrderingPage() {
                               className={
                                 active
                                   ? "rounded-full border border-brand-green bg-brand-green/10 px-2 py-0.5 text-xs font-medium text-brand-green"
-                                  : "rounded-full border border-brand-green/20 bg-surface px-2 py-0.5 text-xs text-ink-soft hover:bg-brand-sand/40"
+                                  : "rounded-full border border-hairline bg-surface px-2 py-0.5 text-xs text-ink-soft hover:bg-surface-muted"
                               }
                             >
                               {opt.label}
@@ -2138,7 +2138,7 @@ export default function OrderingPage() {
                             }
                             placeholder="Add a note"
                             aria-label={`Note for ${row.product}`}
-                            className="min-w-[10rem] flex-1 rounded border border-brand-green/15 bg-surface px-2 py-0.5 text-xs text-ink"
+                            className="min-w-[10rem] flex-1 rounded border border-hairline bg-surface px-2 py-0.5 text-xs text-ink"
                           />
                         )}
                       </div>
@@ -2159,7 +2159,7 @@ export default function OrderingPage() {
           const anyLoading = dryRunLoading || sendLoading;
           return (
           <div className="mt-3 flex flex-wrap items-end gap-2">
-            <span className="rounded-md bg-brand-sand/50 px-2 py-1 text-[11px] text-ink-soft">
+            <span className="rounded-md bg-surface-muted px-2 py-1 text-[11px] text-ink-soft">
               Delivery: as soon as possible
             </span>
             <button
@@ -2168,8 +2168,8 @@ export default function OrderingPage() {
               disabled={anyLoading}
               className={`rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-50 ${
                 dryRunLoading
-                  ? "border-brand-green/30 bg-brand-sand/60 text-ink"
-                  : "border-brand-green/15 bg-surface text-ink"
+                  ? "border-hairline bg-surface-muted text-ink"
+                  : "border-hairline bg-surface text-ink"
               }`}
             >
               {dryRunLoading ? "Dry run…" : "Dry run supplier"}
@@ -2198,7 +2198,7 @@ export default function OrderingPage() {
                     [sup.id]: e.target.value,
                   }))
                 }
-                className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs text-ink"
+                className="rounded-lg border border-hairline bg-surface px-3 py-2 text-xs text-ink"
               >
                 <option value="" disabled>
                   Select item…
@@ -2228,7 +2228,7 @@ export default function OrderingPage() {
               type="button"
               onClick={() => selectedNewRaw && addLineForSupplierRaw(sup.id, selectedNewRaw)}
               disabled={!selectedNewRaw}
-              className="rounded-lg border border-brand-green/15 bg-surface px-3 py-2 text-xs font-medium text-ink disabled:opacity-50"
+              className="rounded-lg border border-hairline bg-surface px-3 py-2 text-xs font-medium text-ink disabled:opacity-50"
             >
               Add to order
             </button>
@@ -2317,13 +2317,13 @@ export default function OrderingPage() {
         <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
 
         {locationId && (
-          <div className="mb-4 rounded-xl border border-brand-green/10 bg-brand-sand/40 px-4 py-3">
+          <div className="mb-4 rounded-xl border border-hairline bg-surface-muted px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={resetOrderLinesFromSuggestion}
                 disabled={suggestionRefreshing}
-                className="rounded-lg border border-brand-green/20 bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-brand-sand/40 disabled:cursor-wait disabled:opacity-60"
+                className="rounded-full border border-hairline bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-surface-muted disabled:cursor-wait disabled:opacity-60"
               >
                 {suggestionRefreshing ? "Refreshing from stocktake…" : "Recalculate from stocktake"}
               </button>
@@ -2351,12 +2351,12 @@ export default function OrderingPage() {
                 </span>
               )}
             </div>
-            <label className="mt-3 flex cursor-pointer items-start gap-3 border-t border-brand-green/10 pt-3">
+            <label className="mt-3 flex cursor-pointer items-start gap-3 border-t border-hairline pt-3">
               <input
                 type="checkbox"
                 checked={allowOffScheduleOrdering}
                 onChange={(e) => setAllowOffScheduleOrdering(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-brand-green/30"
+                className="mt-0.5 h-4 w-4 rounded border-hairline"
               />
               <span className="text-sm">
                 <span className="font-medium text-ink">Allow ordering today (off schedule)</span>
@@ -2389,7 +2389,7 @@ export default function OrderingPage() {
           Object.keys(suggestedOrder).length === 0 &&
           suggestedUnassignedRawIds.length === 0 &&
           suggestionInsight && (
-            <div className="mb-6 rounded-xl border border-brand-green/10 bg-brand-sand/50/60 p-4 text-sm text-ink-soft">
+            <div className="mb-6 rounded-xl border border-hairline bg-surface-muted/60 p-4 text-sm text-ink-soft">
               <p className="font-medium text-ink">No automatic suggestion</p>
               <p className="mt-2 text-xs leading-relaxed">
                 The suggestion uses <strong>prep need × cover window − stock</strong> (not stocktake alone). Below is what
@@ -2499,7 +2499,7 @@ export default function OrderingPage() {
             {suppliersByOrderMode.active.map((sup) => renderSupplierCard(sup, "active"))}
 
             {planningSuppliers.length > 0 && !planningSectionExpanded && (
-              <div className="rounded-xl border border-brand-green/10 bg-brand-sand/50/80 px-4 py-3">
+              <div className="rounded-xl border border-hairline bg-surface-muted/80 px-4 py-3">
                 <p className="text-sm font-medium text-ink-soft">Not an order day — suppliers hidden</p>
                 <p className="mt-1 text-xs text-ink-soft/70">
                   {planningSuppliers.map((s) => s.name).join(", ")} has suggestions for reference only.
@@ -2509,7 +2509,7 @@ export default function OrderingPage() {
                 <button
                   type="button"
                   onClick={() => setPlanningSectionExpanded(true)}
-                  className="mt-3 rounded-md border border-brand-sage/50 bg-surface/60 px-3 py-1.5 text-xs font-medium text-ink-soft"
+                  className="mt-3 rounded-md border border-hairline bg-surface/60 px-3 py-1.5 text-xs font-medium text-ink-soft"
                 >
                   Show planning preview
                 </button>
@@ -2523,7 +2523,7 @@ export default function OrderingPage() {
                   <button
                     type="button"
                     onClick={() => setPlanningSectionExpanded(false)}
-                    className="rounded-md border border-brand-sage/50 bg-surface/60 px-2 py-1 text-[11px] font-medium text-ink-soft/80"
+                    className="rounded-md border border-hairline bg-surface/60 px-2 py-1 text-[11px] font-medium text-ink-soft/80"
                   >
                     Hide preview
                   </button>
@@ -2540,7 +2540,7 @@ export default function OrderingPage() {
               type="button"
               onClick={confirmOrder}
               disabled={submitting}
-              className="btn-primary input-lg w-full rounded-xl py-3 text-base font-medium disabled:opacity-50"
+              className="btn-primary input-lg w-full rounded-full py-3 text-base font-medium disabled:opacity-50"
             >
               {submitting ? "Submitting…" : "Confirm order (save only)"}
             </button>

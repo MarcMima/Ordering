@@ -94,10 +94,10 @@ function sourceLabel(source: string) {
 }
 
 function sourceBadge(source: string) {
-  const base = "rounded px-1.5 py-0.5 text-[10px] font-semibold";
-  if (source === "scraper") return `${base} bg-brand-sage/30 text-brand-green`;
-  if (source === "invoice_import") return `${base} bg-brand-sand/70 text-ink-soft`;
-  return `${base} bg-brand-sand/50 text-ink-soft`;
+  const base = "rounded px-1.5 py-0.5 text-[10px] font-medium";
+  if (source === "scraper") return `${base} bg-surface-muted text-brand-green`;
+  if (source === "invoice_import") return `${base} bg-surface-muted text-ink-soft`;
+  return `${base} bg-surface-muted text-ink-soft`;
 }
 
 function AddPriceForm({
@@ -153,7 +153,7 @@ function AddPriceForm({
 
   return (
     <div className="card p-5">
-      <h3 className="mb-4 text-sm font-semibold text-ink">Prijs invoeren</h3>
+      <h3 className="mb-4 text-sm font-medium text-ink">Prijs invoeren</h3>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="col-span-2 sm:col-span-1">
           <label className="mb-1 block text-xs text-ink-soft/70">Grondstof</label>
@@ -261,7 +261,7 @@ function AddPriceForm({
 
 function PriceRow({ entry }: { entry: PriceEntry }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-brand-green/10 px-4 py-3 last:border-0">
+    <div className="flex items-center justify-between gap-3 border-b border-hairline px-4 py-3 last:border-0">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-ink">{entry.ingredient_name}</p>
         <p className="text-xs text-ink-soft/70">
@@ -269,7 +269,7 @@ function PriceRow({ entry }: { entry: PriceEntry }) {
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-semibold tabular-nums text-ink">
+        <p className="text-sm font-medium tabular-nums text-ink">
           {formatPrice(entry.price_cents)}
         </p>
         {entry.price_cents_per_gram != null && (
@@ -288,14 +288,14 @@ function ScraperStatus({ runs }: { runs: ScraperRun[] }) {
   if (!runs.length) return null;
   return (
     <div className="card">
-      <div className="border-b border-brand-green/10 px-4 py-3">
-        <h3 className="text-sm font-semibold text-ink">Laatste scraper runs</h3>
+      <div className="border-b border-hairline px-4 py-3">
+        <h3 className="text-sm font-medium text-ink">Laatste scraper runs</h3>
       </div>
       <div>
         {runs.map((run) => (
           <div
             key={run.id}
-            className="flex items-center justify-between gap-3 border-b border-brand-green/10 px-4 py-3 last:border-0"
+            className="flex items-center justify-between gap-3 border-b border-hairline px-4 py-3 last:border-0"
           >
             <div>
               <p className="text-sm font-medium text-ink">{run.supplier_name}</p>
@@ -303,7 +303,7 @@ function ScraperStatus({ runs }: { runs: ScraperRun[] }) {
             </div>
             <div className="text-right">
               <span
-                className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                className={`rounded px-2 py-0.5 text-xs font-medium ${
                   run.status === "success"
                     ? "badge-success"
                     : run.status === "partial"
@@ -358,7 +358,7 @@ function FoodCostByChannel({
     <div className="mt-6 card">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-ink">Food cost per kanaal</h3>
+          <h3 className="text-sm font-medium text-ink">Food cost per kanaal</h3>
           <p className="help-text">
             Kostprijs incl. waste gedeeld door netto omzet (prijs excl. BTW minus commissie).
             De blend weegt de kanalen met de werkelijke verkoopmix uit het datawarehouse.
@@ -403,7 +403,7 @@ function FoodCostByChannel({
             {items.map(([itemId, itemName]) => {
               const blend = blendByItem.get(itemId);
               return (
-                <tr key={itemId} className="border-t border-brand-green/10">
+                <tr key={itemId} className="border-t border-hairline">
                   <td className="py-1.5 pr-3">{itemName}</td>
                   {channels.map(([key]) => {
                     const row = channelRows.find((r) => r.menu_item_id === itemId && r.channel === key);
@@ -413,7 +413,7 @@ function FoodCostByChannel({
                       </td>
                     );
                   })}
-                  <td className="py-1.5 tabular-nums font-semibold">
+                  <td className="py-1.5 tabular-nums font-medium">
                     {blend?.blended_food_cost_pct != null ? `${blend.blended_food_cost_pct.toFixed(1)}%` : "—"}
                     {blend?.covered_mix_pct != null && blend.covered_mix_pct < 99.5 && (
                       <span className="ml-1 font-normal text-accent-orange">
@@ -571,10 +571,10 @@ export default function AdminPricesPage() {
           placeholder="Zoek grondstof…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-4 w-full card px-4 py-2.5 text-sm shadow-sm placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-brand-sage/50"
+          className="mb-4 w-full card px-4 py-2.5 text-sm  placeholder:text-ink-soft/60 focus:outline-none focus:ring-2 focus:ring-brand-sage/50"
         />
 
-        <div className="mb-6 overflow-hidden rounded-xl border border-brand-green/10">
+        <div className="mb-6 overflow-hidden rounded-xl border border-hairline">
           {filtered.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-ink-soft/60">
               {search ? "Geen resultaten." : "Nog geen prijzen ingevoerd."}
@@ -595,13 +595,13 @@ export default function AdminPricesPage() {
 
         <div className="mt-6 grid gap-4">
           <div className="card">
-            <h3 className="text-sm font-semibold text-ink">Food cost quality checks</h3>
+            <h3 className="text-sm font-medium text-ink">Food cost quality checks</h3>
             {foodCostIssues.length === 0 ? (
               <p className="mt-2 text-xs text-ink-soft/70">Geen issues gevonden.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {foodCostIssues.slice(0, 20).map((row, idx) => (
-                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-brand-green/10 px-2 py-1.5">
+                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-hairline px-2 py-1.5">
                     <span className="font-medium">{row.ingredient_name}</span> · {row.issue_code} · {row.message}
                   </li>
                 ))}
@@ -610,13 +610,13 @@ export default function AdminPricesPage() {
           </div>
 
           <div className="card">
-            <h3 className="text-sm font-semibold text-ink">Nutrition sanity checks</h3>
+            <h3 className="text-sm font-medium text-ink">Nutrition sanity checks</h3>
             {nutritionIssues.length === 0 ? (
               <p className="mt-2 text-xs text-ink-soft/70">Geen issues gevonden.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {nutritionIssues.slice(0, 20).map((row, idx) => (
-                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-brand-green/10 px-2 py-1.5">
+                  <li key={`${row.ingredient_name}-${row.issue_code}-${idx}`} className="rounded border border-hairline px-2 py-1.5">
                     <span className="font-medium">{row.ingredient_name}</span> · {row.issue_code} · {row.message}
                   </li>
                 ))}
@@ -625,13 +625,13 @@ export default function AdminPricesPage() {
           </div>
 
           <div className="card">
-            <h3 className="text-sm font-semibold text-ink">Declared vs computed (kcal)</h3>
+            <h3 className="text-sm font-medium text-ink">Declared vs computed (kcal)</h3>
             {nutritionDiscrepancies.length === 0 ? (
               <p className="mt-2 text-xs text-ink-soft/70">Nog geen afwijkingen om te tonen.</p>
             ) : (
               <ul className="mt-3 space-y-2 text-xs">
                 {nutritionDiscrepancies.slice(0, 20).map((row, idx) => (
-                  <li key={`${row.menu_item_name}-${idx}`} className="rounded border border-brand-green/10 px-2 py-1.5">
+                  <li key={`${row.menu_item_name}-${idx}`} className="rounded border border-hairline px-2 py-1.5">
                     <span className="font-medium">{row.menu_item_name}</span> · declared {row.declared_kcal ?? "—"} kcal ·
                     computed {row.computed_kcal ?? "—"} kcal · diff {row.kcal_diff_pct?.toFixed(1)}%
                     {row.has_lab_inputs ? " · lab input" : ""}
@@ -646,7 +646,7 @@ export default function AdminPricesPage() {
         <div className="alert-warning mt-6 rounded-xl p-4 text-sm">
           <p className="font-medium">Over de automatische scraper</p>
           <p className="mt-1 text-xs leading-relaxed">
-            Edge Function <code className="rounded bg-brand-sand/70 px-1">scrape-prices</code> moet
+            Edge Function <code className="rounded bg-surface-muted px-1">scrape-prices</code> moet
             nog per leverancier worden ingericht. CSV/API van leveranciers is meestal betrouwbaarder dan scrapen.
           </p>
         </div>

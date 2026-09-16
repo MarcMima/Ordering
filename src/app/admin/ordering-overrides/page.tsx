@@ -141,7 +141,7 @@ export default function OrderingOverridesPage() {
         <Link href="/admin" className="text-blue-600 text-sm">
           &larr; Admin
         </Link>
-        <h1 className="text-xl font-bold mt-2 mb-1">Ordering Overrides — {locationName}</h1>
+        <h1 className="text-xl font-medium mt-2 mb-1">Ordering Overrides — {locationName}</h1>
         <p className="text-xs text-ink-soft mb-4">
           Global columns apply to all locations. Location columns apply only to the selected location.
           Leave blank to use the hardcoded defaults.
@@ -163,16 +163,16 @@ export default function OrderingOverridesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="border-b text-left bg-gray-50">
-                  <th className="py-2 px-2 font-semibold">Ingredient</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Global daily-need multiplier">Multiplier (global)</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Min order packs threshold">Min packs</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Max order base units">Max base</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Stock par kind">Par kind</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Stock par min amount (for base) or min packs (for packs)">Par min</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Stock par order packs (MOQ)">Par order packs</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Per-location daily multiplier">Loc multiplier</th>
-                  <th className="py-2 px-2 font-semibold text-right" title="Per-location standing order packs">Loc standing</th>
+                <tr className="border-b text-left bg-surface-muted">
+                  <th className="py-2 px-2 font-medium">Ingredient</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Global daily-need multiplier">Multiplier (global)</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Min order packs threshold">Min packs</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Max order base units">Max base</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Stock par kind">Par kind</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Stock par min amount (for base) or min packs (for packs)">Par min</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Stock par order packs (MOQ)">Par order packs</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Per-location daily multiplier">Loc multiplier</th>
+                  <th className="py-2 px-2 font-medium text-right" title="Per-location standing order packs">Loc standing</th>
                   <th className="py-2 px-2 w-16"></th>
                 </tr>
               </thead>
@@ -277,7 +277,7 @@ function OverrideRow({
   const msg = globalMsg || locMsg;
 
   return (
-    <tr className="border-b hover:bg-gray-50">
+    <tr className="border-b hover:bg-surface-muted">
       <td className="py-1 px-2 font-medium">{row.name}</td>
 
       {/* Global: ordering_daily_need_multiplier */}
@@ -372,7 +372,7 @@ function OverrideRow({
 
       <td className="py-1 px-2 text-xs">
         {disabled ? (
-          <span className="text-gray-400">Saving…</span>
+          <span className="text-ink-quiet">Saving…</span>
         ) : msg ? (
           <span className={msg.startsWith("Error") ? "text-red-600" : "text-green-600"}>{msg}</span>
         ) : null}

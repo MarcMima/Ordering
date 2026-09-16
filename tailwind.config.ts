@@ -18,14 +18,17 @@ export default {
       colors: {
         brand,
         surface: {
-          DEFAULT: "#FFFFFF",
-          muted: "#F5F1E8",
+          DEFAULT: "#FBF8F3",
+          muted: "#F3EEE6",
         },
-        background: "#F5F1E8",
+        background: "#FBF8F3",
         ink: {
-          DEFAULT: "#1A1A1A",
-          soft: "#3D3D3D",
+          DEFAULT: "#2C3320",
+          soft: "#55584C",
+          muted: "#6E6A61",
+          quiet: "#8A8C7E",
         },
+        hairline: "rgba(44,51,32,0.10)",
         accent: {
           terracotta: brand.terracotta,
           orange: brand.orange,
@@ -36,9 +39,12 @@ export default {
         sans: ["var(--font-body)", "system-ui", "sans-serif"],
       },
       borderRadius: {
-        DEFAULT: "0.75rem",
-        lg: "1rem",
-        xl: "1.25rem",
+        DEFAULT: "0px",
+        sm: "0px",
+        md: "0px",
+        lg: "0px",
+        xl: "0px",
+        "2xl": "0px",
       },
     },
   },

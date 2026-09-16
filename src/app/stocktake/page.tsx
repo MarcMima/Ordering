@@ -132,7 +132,7 @@ function PrepCountField({
           const n = parseFloat(raw);
           onCommit(prepItemId, !Number.isFinite(n) || n < 0 ? 0 : n);
         }}
-        className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-brand-green/15 bg-background px-4 text-xl font-medium tabular-nums touch-manipulation"
+        className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-hairline bg-background px-4 text-xl font-medium tabular-nums touch-manipulation"
         aria-label={`Count for ${label}`}
       />
       {isSaving && <span className="text-xs text-ink-soft/60">Saving</span>}
@@ -905,10 +905,10 @@ export default function StocktakePage() {
 
         {/* Date */}
         <section className="mb-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-green/10 bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline bg-surface px-4 py-3">
             <div>
               <span className="block text-xs font-medium uppercase tracking-wide text-ink-soft">Date</span>
-              <p className="mt-0.5 text-sm font-semibold tabular-nums text-ink">
+              <p className="mt-0.5 text-sm font-medium tabular-nums text-ink">
                 {new Date(`${viewDate}T12:00:00`).toLocaleDateString("en-GB", {
                   weekday: "long",
                   day: "numeric",
@@ -921,7 +921,7 @@ export default function StocktakePage() {
               <button
                 type="button"
                 onClick={() => setViewDate((d) => shiftCalendarDateString(d, -1))}
-                className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 touch-manipulation"
+                className="rounded-lg border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted touch-manipulation"
               >
                 Previous day
               </button>
@@ -929,7 +929,7 @@ export default function StocktakePage() {
                 type="button"
                 onClick={() => setViewDate(todayDateStr)}
                 disabled={!isHistoricalView}
-                className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 touch-manipulation disabled:opacity-40"
+                className="rounded-lg border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted touch-manipulation disabled:opacity-40"
               >
                 Today
               </button>
@@ -937,7 +937,7 @@ export default function StocktakePage() {
                 type="button"
                 onClick={() => setViewDate((d) => shiftCalendarDateString(d, 1))}
                 disabled={viewDate >= todayDateStr}
-                className="rounded-lg border border-brand-green/15 bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-brand-sand/40 touch-manipulation disabled:opacity-40"
+                className="rounded-lg border border-hairline bg-background px-3 py-1.5 text-xs font-medium text-ink hover:bg-surface-muted touch-manipulation disabled:opacity-40"
               >
                 Next day
               </button>
@@ -962,7 +962,7 @@ export default function StocktakePage() {
             placeholder="0"
             value={expectedRevenue}
             onChange={(e) => setExpectedRevenue(e.target.value)}
-            className="h-14 w-full min-h-[56px] rounded-xl border border-brand-green/15 bg-surface px-4 text-base touch-manipulation"
+            className="h-14 w-full min-h-[56px] rounded-xl border border-hairline bg-surface px-4 text-base touch-manipulation"
             aria-label="Expected revenue"
           />
           {revenueSaving && (
@@ -975,7 +975,7 @@ export default function StocktakePage() {
             <button
               type="button"
               onClick={() => setShowOnlyMissing((v) => !v)}
-              className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ showOnlyMissing ? "badge-pending" : "border border-brand-green/15 bg-surface text-ink " }`}
+              className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ showOnlyMissing ? "badge-pending" : "border border-hairline bg-surface text-ink " }`}
               aria-pressed={showOnlyMissing}
             >
               {showOnlyMissing ? "Show all" : "Only not counted yet"}
@@ -1002,21 +1002,21 @@ export default function StocktakePage() {
               <span>Finished products progress</span>
               <span>{countedItems} / {totalItems}</span>
             </div>
-            <div className="h-3 w-full overflow-hidden rounded-full bg-brand-sand/60">
+            <div className="h-3 w-full overflow-hidden rounded-full bg-surface-muted">
               <div
                 className="h-full rounded-full bg-brand-green transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
             {totalItems > 1 && (
-              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-brand-green/10 bg-background/80 px-4 py-3">
+              <div className="mt-4 flex flex-col gap-2 rounded-xl border border-hairline bg-background/80 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     disabled={showOnlyMissing}
                     title={showOnlyMissing ? 'Switch filter to "Show all" to reorder items' : undefined}
                     onClick={() => setPrepReorderMode((v) => !v)}
-                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ prepReorderMode ? "bg-brand-green text-white" : "border border-brand-green/15 bg-surface text-ink " } disabled:cursor-not-allowed disabled:opacity-50`}
+                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ prepReorderMode ? "bg-brand-green text-white" : "border border-hairline bg-surface text-ink " } disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-pressed={prepReorderMode}
                   >
                     {prepReorderMode ? "Done reordering" : "Reorder list (drag)"}
@@ -1096,13 +1096,13 @@ export default function StocktakePage() {
         ) : (
           <div className="space-y-8">
             {categoryOrderDisplayed.length === 0 && showOnlyMissing && totalItems > 0 ? (
-              <p className="rounded-xl border border-dashed border-brand-green/15 bg-background px-4 py-6 help-text">
+              <p className="rounded-xl border border-dashed border-hairline bg-background px-4 py-6 help-text">
                 All finished products for this location have been counted.
               </p>
             ) : (
               categoryOrderDisplayed.map((category) => (
               <section key={category}>
-                <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-soft/80">
+                <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-soft/80">
                   {category}
                 </h3>
                 <ul className="space-y-4">
@@ -1151,7 +1151,7 @@ export default function StocktakePage() {
         {/* Group 2: Raw ingredients */}
         {allVisibleRaws.length > 0 && (
           <>
-            <section className="mt-12 border-t border-brand-green/10 pt-10">
+            <section className="mt-12 border-t border-hairline pt-10">
               <h2 className="mb-4 section-title">
                 2. Raw ingredients
               </h2>
@@ -1162,13 +1162,13 @@ export default function StocktakePage() {
                 </p>
               )}
               {rawSubtab === "daily" && !isWeeklyKitchenDay && !showAllDailyRaws && (
-                <div className="mb-4 rounded-xl border border-brand-green/10 bg-brand-sand/40 px-4 py-3">
+                <div className="mb-4 rounded-xl border border-hairline bg-surface-muted px-4 py-3">
                   <label className="flex cursor-pointer items-start gap-3">
                     <input
                       type="checkbox"
                       checked={showAllDailyRaws}
                       onChange={(e) => setShowAllDailyRaws(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-brand-green/30"
+                      className="mt-0.5 h-4 w-4 rounded border-hairline"
                     />
                     <span className="text-sm">
                       <span className="font-medium text-ink">Show all daily items</span>
@@ -1208,7 +1208,7 @@ export default function StocktakePage() {
                   <span>{rawSubtab === "daily" ? "Daily" : "Weekly"} raw progress</span>
                   <span>{countedRaw} / {totalRaw}</span>
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-brand-sand/60">
+                <div className="h-3 w-full overflow-hidden rounded-full bg-surface-muted">
                   <div
                     className="h-full rounded-full bg-accent-orange transition-all duration-300"
                     style={{ width: `${progressRawPercent}%` }}
@@ -1217,14 +1217,14 @@ export default function StocktakePage() {
               </section>
             )}
             {totalRaw > 1 && (
-              <div className="mb-4 flex flex-col gap-2 rounded-xl border border-brand-green/10 bg-background/80 px-4 py-3">
+              <div className="mb-4 flex flex-col gap-2 rounded-xl border border-hairline bg-background/80 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <button
                     type="button"
                     disabled={showOnlyMissing}
                     title={showOnlyMissing ? 'Switch filter to "Show all" to reorder items' : undefined}
                     onClick={() => setRawReorderMode((v) => !v)}
-                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ rawReorderMode ? "bg-brand-green text-white" : "border border-brand-green/15 bg-surface text-ink " } disabled:cursor-not-allowed disabled:opacity-50`}
+                    className={`min-h-[44px] rounded-lg px-4 py-2 text-sm font-medium touch-manipulation ${ rawReorderMode ? "bg-brand-green text-white" : "border border-hairline bg-surface text-ink " } disabled:cursor-not-allowed disabled:opacity-50`}
                     aria-pressed={rawReorderMode}
                   >
                     {rawReorderMode ? "Done reordering" : "Reorder list (drag)"}
@@ -1242,17 +1242,17 @@ export default function StocktakePage() {
               </div>
             )}
             <section className="mt-2">
-              <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-ink-soft/80">
+              <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-ink-soft/80">
                 {rawSubtab === "daily" ? "Daily stock count" : "Weekly stock count"}
               </h3>
               {rawIngredientsForTab.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-brand-green/15 bg-background px-4 py-6 help-text">
+                <p className="rounded-xl border border-dashed border-hairline bg-background px-4 py-6 help-text">
                   {rawSubtab === "daily"
                     ? "No ingredients match “delivery tomorrow” for today, or none are linked to a supplier with a schedule. Check Admin → Suppliers (delivery days) and ingredient–supplier links. Use the Weekly tab for other counts."
                     : "No weekly items yet. Set master column J to 1 (or set a stocktake weekday in Admin) for products you only count weekly."}
                 </p>
               ) : rawTabList.length === 0 && showOnlyMissing ? (
-                <p className="rounded-xl border border-dashed border-brand-green/15 bg-background px-4 py-6 help-text">
+                <p className="rounded-xl border border-dashed border-hairline bg-background px-4 py-6 help-text">
                   Everything in this tab has been counted.
                 </p>
               ) : rawReorderMode && totalRaw > 1 ? (

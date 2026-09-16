@@ -98,7 +98,7 @@ export function ThermometerForm() {
 
       {afwijking != null && (
         <div
-          className={`rounded-lg border px-3 py-2 text-sm ${ warn ? "border-accent-orange bg-brand-sand/60 text-ink" : "border-brand-green/10 bg-background text-ink " }`}
+          className={`rounded-lg border px-3 py-2 text-sm ${ warn ? "border-accent-orange bg-surface-muted text-ink" : "border-hairline bg-background text-ink " }`}
         >
           <strong>Calculated deviation:</strong> {afwijking.toFixed(2)} °C
           {warn && (
@@ -124,7 +124,7 @@ export function ThermometerForm() {
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save test"}
         </button>

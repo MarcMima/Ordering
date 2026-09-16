@@ -92,7 +92,7 @@ export default function HaccpEquipmentAdminPage() {
             <p className="mt-1 help-text">
               Each row is one appliance line on the weekly temperature sheet. Use a different{" "}
               <strong>store ID</strong> for another restaurant layout (set{" "}
-              <code className="rounded bg-brand-sand/60 px-1">locations.haccp_store_id</code>{" "}
+              <code className="rounded bg-surface-muted px-1">locations.haccp_store_id</code>{" "}
               to match).
             </p>
           </div>
@@ -112,7 +112,7 @@ export default function HaccpEquipmentAdminPage() {
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded-lg border border-brand-green/15 px-3 py-2 text-sm"
+            className="rounded-lg border border-hairline px-3 py-2 text-sm"
           >
             Reload
           </button>
@@ -134,10 +134,10 @@ export default function HaccpEquipmentAdminPage() {
         {loading ? (
           <p className="text-ink-soft/80">Loading…</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-brand-green/10">
+          <div className="overflow-x-auto rounded-xl border border-hairline">
             <table className="w-full min-w-[800px] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-brand-green/10 bg-background">
+                <tr className="border-b border-hairline bg-background">
                   <th className="px-2 py-2 text-left">Order</th>
                   <th className="px-2 py-2 text-left">Label</th>
                   <th className="px-2 py-2 text-left">Norm (display)</th>
@@ -150,7 +150,7 @@ export default function HaccpEquipmentAdminPage() {
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.id} className="border-b border-brand-green/10">
+                  <tr key={r.id} className="border-b border-hairline">
                     <td className="p-1">
                       <input
                         type="number"

@@ -25,7 +25,7 @@ export function SortableStocktakeItem({ id, dragLabel, className = "", children 
       <div className="flex items-start gap-2 sm:gap-3">
         <button
           type="button"
-          className="mt-0.5 flex h-14 min-h-[56px] w-11 shrink-0 touch-none select-none items-center justify-center rounded-xl border border-brand-green/10 bg-brand-sand/50 text-ink-soft/80 hover:bg-brand-sand/60"
+          className="mt-0.5 flex h-14 min-h-[56px] w-11 shrink-0 touch-none select-none items-center justify-center rounded-full border border-hairline bg-surface-muted text-ink-soft/80 hover:bg-surface-muted"
           {...attributes}
           {...listeners}
           aria-label={`Hold and drag to reorder: ${dragLabel}`}

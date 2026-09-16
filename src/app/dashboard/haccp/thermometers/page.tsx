@@ -83,7 +83,7 @@ export default function ThermometersPage() {
             <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
               <span className="underline decoration-brand-tan underline-offset-2">Optional: record another test</span>
             </summary>
-            <div className="border-t border-brand-green/10 p-4">
+            <div className="border-t border-hairline p-4">
               <ThermometerForm />
             </div>
           </details>

@@ -55,7 +55,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
   };
 
   const stepClassName = (active: boolean, done: boolean) =>
-    `flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3 ${ active ? "bg-brand-green text-white" : done ? "bg-brand-sage/30 text-brand-green hover:bg-brand-sage/45" : "bg-brand-sand/50 text-ink-soft hover:bg-brand-sand" }`;
+    `flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3 ${ active ? "bg-brand-green text-white" : done ? "bg-surface-muted text-brand-green hover:bg-surface-muted" : "bg-surface-muted text-ink-soft hover:bg-surface-muted" }`;
 
   return (
     <nav aria-label="Daily workflow" className="card mb-6">
@@ -72,7 +72,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
           const inner = (
             <>
               <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${ active ? "bg-white/25 text-white" : done ? "bg-brand-green text-white" : "bg-brand-tan/60 text-ink-soft" }`}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-medium ${ active ? "bg-surface/25 text-white" : done ? "bg-brand-green text-white" : "bg-brand-tan/60 text-ink-soft" }`}
               >
                 {step.short}
               </span>
@@ -111,7 +111,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
           );
         })}
       </ol>
-      <div className="flex flex-wrap items-center gap-3 border-t border-brand-green/10 pt-3">
+      <div className="flex flex-wrap items-center gap-3 border-t border-hairline pt-3">
         {prevStep && (
           <Link href={prevStep.path} className="btn-ghost px-0 text-sm">
             ← Back to {prevStep.label}
@@ -119,7 +119,7 @@ export function DailyWorkflowStepper(props?: DailyWorkflowStepperProps) {
         )}
         {nextStep &&
           (pathname === "/stocktake" ? (
-            <button type="button" onClick={goNext} className="btn-primary min-h-[44px] rounded-xl px-4 py-2.5">
+            <button type="button" onClick={goNext} className="btn-primary min-h-[44px] rounded-full px-4 py-2.5">
               Next: {nextStep.label} →
             </button>
           ) : (

@@ -218,7 +218,7 @@ function HaccpOverviewContent() {
           <div className="flex items-center gap-1 card rounded-lg p-1">
             <Link
               href={`/dashboard/haccp?week=${formatWeekYearParam(prev.week, prev.year)}`}
-              className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
+              className="rounded-md px-3 py-1.5 label hover:bg-surface-muted"
             >
               ← Week
             </Link>
@@ -227,7 +227,7 @@ function HaccpOverviewContent() {
             </span>
             <Link
               href={`/dashboard/haccp?week=${formatWeekYearParam(next.week, next.year)}`}
-              className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
+              className="rounded-md px-3 py-1.5 label hover:bg-surface-muted"
             >
               Week →
             </Link>
@@ -249,7 +249,7 @@ function HaccpOverviewContent() {
           {(cards ?? []).map((c) => (
             <li key={c.href}>
               {c.disabled ? (
-                <div className="block rounded-xl border border-dashed border-brand-green/15 bg-background/80 p-4 opacity-70">
+                <div className="block rounded-xl border border-dashed border-hairline bg-background/80 p-4 opacity-70">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-ink-soft">{c.title}</p>
@@ -261,7 +261,7 @@ function HaccpOverviewContent() {
               ) : (
                 <Link
                   href={c.href}
-                  className={`block rounded-xl border p-4 transition-colors ${ c.muted ? "border-brand-green/10 bg-background/90 opacity-75 hover:border-brand-green/10 hover:bg-brand-sand/50 " : "border-brand-green/10 bg-surface hover:border-brand-green/15 hover:bg-background " }`}
+                  className={`block rounded-xl border p-4 transition-colors ${ c.muted ? "border-hairline bg-background/90 opacity-75 hover:border-hairline hover:bg-surface-muted " : "border-hairline bg-surface hover:border-hairline hover:bg-background " }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -285,7 +285,7 @@ function HaccpOverviewContent() {
                       </p>
                     </div>
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${ c.done === true ? "badge-success" : c.done === false ? "badge-pending" : "bg-brand-sand/50 text-ink-soft" }`}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${ c.done === true ? "badge-success" : c.done === false ? "badge-pending" : "bg-surface-muted text-ink-soft" }`}
                     >
                       {c.done === true ? "Done" : c.done === false ? "Open" : "—"}
                     </span>

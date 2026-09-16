@@ -218,7 +218,7 @@ function StatusCard({
 }) {
   return (
     <Link href={href} className="card-interactive block">
-      <h2 className="font-heading text-base font-semibold text-brand-green">{title}</h2>
+      <h2 className="font-heading text-base font-medium text-brand-green">{title}</h2>
       <div className="mt-2">
         {loading ? (
           <span className="help-text">…</span>

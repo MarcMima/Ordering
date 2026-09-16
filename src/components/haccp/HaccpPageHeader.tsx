@@ -29,7 +29,7 @@ export function HaccpPageHeader({ title, week, year, basePath }: Props) {
         <div className="flex items-center gap-1 card rounded-lg p-1">
           <Link
             href={`${basePath}?week=${prevQ}`}
-            className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
+            className="rounded-md px-3 py-1.5 label hover:bg-surface-muted"
           >
             ← Week
           </Link>
@@ -38,7 +38,7 @@ export function HaccpPageHeader({ title, week, year, basePath }: Props) {
           </span>
           <Link
             href={`${basePath}?week=${nextQ}`}
-            className="rounded-md px-3 py-1.5 label hover:bg-brand-sand/50"
+            className="rounded-md px-3 py-1.5 label hover:bg-surface-muted"
           >
             Week →
           </Link>

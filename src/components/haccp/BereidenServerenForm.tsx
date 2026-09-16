@@ -600,7 +600,7 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
@@ -712,7 +712,7 @@ function MetingenTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] border-collapse text-sm">
         <thead>
-          <tr className="border-b border-brand-green/10 text-left">
+          <tr className="border-b border-hairline text-left">
             <th className="py-2 pr-2">Date</th>
             <th className="py-2 pr-2">Product</th>
             <th className="py-2 pr-2">Temp (°C)</th>
@@ -723,7 +723,7 @@ function MetingenTable({
         </thead>
         <tbody>
           {rows.map((line, i) => (
-            <tr key={i} className="border-b border-brand-green/10">
+            <tr key={i} className="border-b border-hairline">
               <td className="py-1.5 pr-2">
                 <input
                   type="date"

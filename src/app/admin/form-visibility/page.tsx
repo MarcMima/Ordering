@@ -88,7 +88,7 @@ export default function FormVisibilityAdminPage() {
                     checked={r.visible}
                     disabled={savingKey === r.form_key}
                     onChange={(e) => void toggle(r.form_key, e.target.checked)}
-                    className="rounded border-brand-green/15"
+                    className="rounded border-hairline"
                   />
                   Visible
                 </label>

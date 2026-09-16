@@ -91,7 +91,7 @@ export function FeedbackButton() {
         <div
           role="dialog"
           aria-label="Feedback about the app"
-          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-brand-green/15 bg-surface p-3 shadow-lg"
+          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-hairline bg-surface p-3 "
         >
           <div className="flex flex-wrap gap-1.5">
             {FEEDBACK_TYPES.map((opt) => {
@@ -105,7 +105,7 @@ export function FeedbackButton() {
                   className={
                     active
                       ? "rounded-full border border-brand-green bg-brand-green/10 px-2.5 py-0.5 text-xs font-medium text-brand-green"
-                      : "rounded-full border border-brand-green/20 bg-background px-2.5 py-0.5 text-xs text-ink-soft hover:bg-brand-sand/40"
+                      : "rounded-full border border-hairline bg-background px-2.5 py-0.5 text-xs text-ink-soft hover:bg-surface-muted"
                   }
                 >
                   {opt.label}
@@ -121,7 +121,7 @@ export function FeedbackButton() {
             autoFocus
             placeholder="What's on your mind?"
             aria-label="Message"
-            className="mt-2 w-full rounded-lg border border-brand-green/15 bg-background px-2 py-1.5 text-sm text-ink"
+            className="mt-2 w-full rounded-lg border border-hairline bg-background px-2 py-1.5 text-sm text-ink"
           />
 
           {error && (

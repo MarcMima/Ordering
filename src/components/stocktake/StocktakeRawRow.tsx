@@ -174,7 +174,7 @@ export const StocktakeRawRow = memo(function StocktakeRawRow({
             commitFromText(e.currentTarget.value);
             setDraft(null);
           }}
-          className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-brand-green/15 bg-background px-4 text-xl font-medium tabular-nums touch-manipulation"
+          className="h-16 w-full min-h-[56px] min-w-[140px] max-w-[180px] rounded-xl border border-hairline bg-background px-4 text-xl font-medium tabular-nums touch-manipulation"
           aria-label={`Stock ${ing.name}`}
         />
         {isSaving && <span className="text-xs text-ink-soft/60">Saving</span>}

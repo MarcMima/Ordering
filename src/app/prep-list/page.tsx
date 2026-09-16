@@ -64,7 +64,7 @@ function ReasonChips({
           className={`rounded-full border px-3 py-1 text-xs font-medium ${
             value === r.value
               ? "border-brand-green bg-brand-green text-white"
-              : "border-brand-green/25 bg-white/60 text-ink"
+              : "border-hairline bg-surface/60 text-ink"
           }`}
         >
           {r.label}
@@ -683,7 +683,7 @@ export default function PrepListPage() {
               <button
                 type="button"
                 onClick={handlePrint}
-                className="btn-primary rounded-xl px-4 py-2.5 text-sm font-medium"
+                className="btn-primary rounded-full px-4 py-2.5 text-sm font-medium"
               >
                 Print
               </button>
@@ -753,7 +753,7 @@ export default function PrepListPage() {
                     type="button"
                     onClick={handleAddTask}
                     disabled={saving}
-                    className="btn-primary h-10 rounded-xl px-4 text-sm font-medium"
+                    className="btn-primary h-10 rounded-full px-4 text-sm font-medium"
                   >
                     Add task
                   </button>
@@ -767,7 +767,7 @@ export default function PrepListPage() {
                   <strong>{locationName || "this location"}</strong> on {date} only.
                 </p>
                 {removedAdjustments.length > 0 && (
-                  <div className="border-t border-brand-green/10 pt-3">
+                  <div className="border-t border-hairline pt-3">
                     <p className="mb-1 text-sm font-medium text-ink">Removed today</p>
                     <ul className="space-y-1">
                       {removedAdjustments.map((a) => {
@@ -814,7 +814,7 @@ export default function PrepListPage() {
                   {suggestions.map((sg) => (
                     <li
                       key={sg.prepItemId}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-sand/30 px-3 py-2"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-muted px-3 py-2"
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-ink">
@@ -859,15 +859,15 @@ export default function PrepListPage() {
                 const item = row.prep_items!;
                 const priorityClass =
                   priority === 1
-                    ? "border-l-4 border-accent-terracotta bg-brand-sand/40"
+                    ? "border-l-4 border-accent-terracotta bg-surface-muted"
                     : priority === 2
-                      ? "border-l-4 border-accent-orange bg-brand-sand/50"
-                      : "border-l-4 border-brand-green bg-brand-sage/25";
+                      ? "border-l-4 border-accent-orange bg-surface-muted"
+                      : "border-l-4 border-brand-green bg-surface-muted";
 
                 return (
                   <div
                     key={row.id}
-                    className={`rounded-xl border border-brand-green/10 p-4 ${priorityClass}`}
+                    className={`rounded-xl border border-hairline p-4 ${priorityClass}`}
                   >
                     {item.requires_overnight && (
                       <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium">
@@ -875,7 +875,7 @@ export default function PrepListPage() {
                       </div>
                     )}
                     {item.special_alert && (
-                      <div className="mb-2 rounded-lg bg-brand-sage/30 px-3 py-2 text-sm text-brand-green">
+                      <div className="mb-2 rounded-lg bg-surface-muted px-3 py-2 text-sm text-brand-green">
                         {item.special_alert}
                       </div>
                     )}
@@ -884,7 +884,7 @@ export default function PrepListPage() {
                         type="checkbox"
                         checked={!!completed[item.id]}
                         onChange={() => toggleDone(item.id)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded border-brand-green/15"
+                        className="mt-1 h-5 w-5 shrink-0 rounded border-hairline"
                         aria-label={`Done: ${item.name}`}
                       />
                       <div className="min-w-0 flex-1">
@@ -965,14 +965,14 @@ export default function PrepListPage() {
               {customTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="rounded-xl border border-brand-green/10 border-l-4 border-l-brand-green bg-brand-sage/25 p-4"
+                  className="rounded-xl border border-hairline border-l-4 border-l-brand-green bg-surface-muted p-4"
                 >
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       checked={!!completed[task.id]}
                       onChange={() => toggleDone(task.id)}
-                      className="mt-1 h-5 w-5 shrink-0 rounded border-brand-green/15"
+                      className="mt-1 h-5 w-5 shrink-0 rounded border-hairline"
                       aria-label={`Done: ${task.custom_name}`}
                     />
                     <div className="min-w-0 flex-1">
@@ -1004,7 +1004,7 @@ export default function PrepListPage() {
               ))}
 
               {tomorrowRows.length > 0 && (
-                <section className="border-t border-brand-green/10 pt-6">
+                <section className="border-t border-hairline pt-6">
                   <h2 className="mb-3 section-title">
                     Tomorrow (overnight)
                   </h2>
@@ -1013,21 +1013,21 @@ export default function PrepListPage() {
                       const item = row.prep_items!;
                       const priorityClass =
                         priority === 1
-                          ? "border-l-4 border-accent-terracotta bg-brand-sand/40"
+                          ? "border-l-4 border-accent-terracotta bg-surface-muted"
                           : priority === 2
-                            ? "border-l-4 border-accent-orange bg-brand-sand/50"
-                            : "border-l-4 border-brand-green bg-brand-sage/25";
+                            ? "border-l-4 border-accent-orange bg-surface-muted"
+                            : "border-l-4 border-brand-green bg-surface-muted";
 
                       return (
                         <div
                           key={row.id}
-                          className={`rounded-xl border border-brand-green/10 p-4 ${priorityClass}`}
+                          className={`rounded-xl border border-hairline p-4 ${priorityClass}`}
                         >
                           <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium">
                             Overnight: {item.overnight_alert || "Prepare the day before."}
                           </div>
                           {item.special_alert && (
-                            <div className="mb-2 rounded-lg bg-brand-sage/30 px-3 py-2 text-sm text-brand-green">
+                            <div className="mb-2 rounded-lg bg-surface-muted px-3 py-2 text-sm text-brand-green">
                               {item.special_alert}
                             </div>
                           )}
@@ -1036,7 +1036,7 @@ export default function PrepListPage() {
                               type="checkbox"
                               checked={!!completed[item.id]}
                               onChange={() => toggleDone(item.id)}
-                              className="mt-1 h-5 w-5 shrink-0 rounded border-brand-green/15"
+                              className="mt-1 h-5 w-5 shrink-0 rounded border-hairline"
                               aria-label={`Done: ${item.name}`}
                             />
                             <div className="min-w-0 flex-1">

@@ -84,7 +84,7 @@ export default function AdminColliPage() {
         <Link href="/admin" className="text-blue-600 text-sm">
           &larr; Admin
         </Link>
-        <h1 className="text-xl font-bold mt-2 mb-4">
+        <h1 className="text-xl font-medium mt-2 mb-4">
           Order Colli — {locationName}
         </h1>
 
@@ -156,7 +156,7 @@ function ColliRow({
   return (
     <tr className="border-b">
       <td className="py-1">{row.name}</td>
-      <td className="py-1 text-gray-500">{row.unit}</td>
+      <td className="py-1 text-ink-quiet">{row.unit}</td>
       <td className="py-1">
         <input
           type="number"
@@ -173,7 +173,7 @@ function ColliRow({
       </td>
       <td className="py-1 text-xs">
         {isSaving ? (
-          <span className="text-gray-400">Saving...</span>
+          <span className="text-ink-quiet">Saving...</span>
         ) : msg ? (
           <span className={msg.startsWith("Error") ? "text-red-600" : "text-green-600"}>
             {msg}

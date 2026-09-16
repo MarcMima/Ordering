@@ -216,7 +216,7 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        <section className="rounded-2xl border border-brand-sage/50 bg-surface p-4">
+        <section className="rounded-2xl border border-hairline bg-surface p-4">
           <h2 className="text-lg font-medium text-ink">New user</h2>
           <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={createUser}>
             <label className="text-sm text-ink-soft">
@@ -224,7 +224,7 @@ export default function AdminUsersPage() {
               <input
                 value={newUser.email}
                 onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-hairline bg-surface px-3"
                 type="email"
                 required
               />
@@ -234,7 +234,7 @@ export default function AdminUsersPage() {
               <input
                 value={newUser.displayName}
                 onChange={(e) => setNewUser((s) => ({ ...s, displayName: e.target.value }))}
-                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-hairline bg-surface px-3"
               />
             </label>
             <label className="text-sm text-ink-soft">
@@ -242,7 +242,7 @@ export default function AdminUsersPage() {
               <select
                 value={newUser.roleKey}
                 onChange={(e) => setNewUser((s) => ({ ...s, roleKey: e.target.value as NewUserForm["roleKey"] }))}
-                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-hairline bg-surface px-3"
               >
                 {ROLE_OPTIONS.map((r) => (
                   <option key={r.key} value={r.key}>
@@ -256,7 +256,7 @@ export default function AdminUsersPage() {
               <select
                 value={newUser.flow}
                 onChange={(e) => setNewUser((s) => ({ ...s, flow: e.target.value as NewUserForm["flow"] }))}
-                className="mt-1 h-11 w-full rounded-xl border border-brand-green/15 bg-surface px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-hairline bg-surface px-3"
               >
                 <option value="invite">Invite from app</option>
                 <option value="link_existing">Link existing Supabase account</option>
@@ -273,7 +273,7 @@ export default function AdminUsersPage() {
                     locationIds: Array.from(e.target.selectedOptions).map((o) => o.value),
                   }))
                 }
-                className="mt-1 min-h-28 w-full rounded-xl border border-brand-green/15 bg-surface px-3 py-2"
+                className="mt-1 min-h-28 w-full rounded-xl border border-hairline bg-surface px-3 py-2"
               >
                 {sortedLocations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
@@ -286,7 +286,7 @@ export default function AdminUsersPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="btn-primary h-11 rounded-xl px-4 text-sm font-medium disabled:opacity-50"
+                className="btn-primary h-11 rounded-full px-4 text-sm font-medium disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Add user"}
               </button>
@@ -294,14 +294,14 @@ export default function AdminUsersPage() {
           </form>
         </section>
 
-        <section className="rounded-2xl border border-brand-sage/50 bg-surface p-4">
+        <section className="rounded-2xl border border-hairline bg-surface p-4">
           <h2 className="text-lg font-medium text-ink">Existing users</h2>
           <div className="mt-4 space-y-3">
             {users.map((u) => {
               const draft = drafts[u.id];
               if (!draft) return null;
               return (
-                <div key={u.id} className="rounded-xl border border-brand-green/10 p-3">
+                <div key={u.id} className="rounded-xl border border-hairline p-3">
                   <div className="mb-2 help-text">{u.email ?? "(no email)"}</div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="text-sm text-ink-soft">
@@ -314,7 +314,7 @@ export default function AdminUsersPage() {
                             [u.id]: { ...s[u.id], displayName: e.target.value },
                           }))
                         }
-                        className="mt-1 h-10 w-full rounded-lg border border-brand-green/15 bg-surface px-2.5"
+                        className="mt-1 h-10 w-full rounded-lg border border-hairline bg-surface px-2.5"
                       />
                     </label>
                     <label className="text-sm text-ink-soft">
@@ -330,7 +330,7 @@ export default function AdminUsersPage() {
                             },
                           }))
                         }
-                        className="mt-1 h-10 w-full rounded-lg border border-brand-green/15 bg-surface px-2.5"
+                        className="mt-1 h-10 w-full rounded-lg border border-hairline bg-surface px-2.5"
                       >
                         {ROLE_OPTIONS.map((r) => (
                           <option key={r.key} value={r.key}>
@@ -353,7 +353,7 @@ export default function AdminUsersPage() {
                             },
                           }))
                         }
-                        className="mt-1 min-h-24 w-full rounded-lg border border-brand-green/15 bg-surface px-2.5 py-2"
+                        className="mt-1 min-h-24 w-full rounded-lg border border-hairline bg-surface px-2.5 py-2"
                       >
                         {sortedLocations.map((loc) => (
                           <option key={loc.id} value={loc.id}>

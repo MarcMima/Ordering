@@ -57,7 +57,7 @@ export function TopNav() {
         <div className="topnav-desktop-only">
           <span className="topnav-location-row text-sm">
             <span
-              className="truncate rounded-md bg-brand-sand/50 px-2 py-0.5 font-medium text-brand-green"
+              className="truncate rounded-md bg-surface-muted px-2 py-0.5 font-medium text-brand-green"
               title={currentName}
             >
               {currentName}

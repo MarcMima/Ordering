@@ -197,10 +197,10 @@ export function TemperaturenForm({
 
       <section>
         <h2 className="mb-3 section-title">Equipment</h2>
-        <div className="overflow-x-auto rounded-xl border border-brand-green/10">
+        <div className="overflow-x-auto rounded-xl border border-hairline">
           <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-brand-green/10 bg-background">
+              <tr className="border-b border-hairline bg-background">
                 <th className="px-2 py-2 text-left font-medium text-ink-soft">Fridge / unit</th>
                 <th className="px-2 py-2 text-left font-medium text-ink-soft">Norm</th>
                 <th className="px-2 py-2 text-left font-medium text-ink-soft">Temperature</th>
@@ -224,7 +224,7 @@ export function TemperaturenForm({
                     ? normStatus(eq.norm_kind, eq.norm_value, row.exact_temperature as number)
                     : "empty";
                 return (
-                  <tr key={eq.id} className="border-b border-brand-green/10">
+                  <tr key={eq.id} className="border-b border-hairline">
                     <td className="whitespace-nowrap px-2 py-2 font-medium text-ink">
                       {eq.label}
                     </td>
@@ -261,7 +261,7 @@ export function TemperaturenForm({
                     <td className="p-1 text-center">
                       {eq.show_fifo ? (
                         <select
-                          className={`input inline-block w-[4.5rem] py-1 text-xs ${ row.fifo_ok === true ? "border-brand-green bg-brand-sage/25" : row.fifo_ok === false ? "border-accent-terracotta bg-brand-sand/40" : "" }`}
+                          className={`input inline-block w-[4.5rem] py-1 text-xs ${ row.fifo_ok === true ? "border-brand-green bg-surface-muted" : row.fifo_ok === false ? "border-accent-terracotta bg-surface-muted" : "" }`}
                           value={
                             row.fifo_ok === true ? "yes" : row.fifo_ok === false ? "no" : ""
                           }
@@ -282,7 +282,7 @@ export function TemperaturenForm({
                     </td>
                     <td className="p-1 text-center">
                       <select
-                        className={`input inline-block w-[4.5rem] py-1 text-xs ${ row.clean_ok === true ? "border-brand-green bg-brand-sage/25" : row.clean_ok === false ? "border-accent-terracotta bg-brand-sand/40" : "" }`}
+                        className={`input inline-block w-[4.5rem] py-1 text-xs ${ row.clean_ok === true ? "border-brand-green bg-surface-muted" : row.clean_ok === false ? "border-accent-terracotta bg-surface-muted" : "" }`}
                         value={row.clean_ok === true ? "yes" : row.clean_ok === false ? "no" : ""}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -352,7 +352,7 @@ export function TemperaturenForm({
           type="button"
           onClick={() => void save()}
           disabled={saving || equipment.length === 0}
-          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>

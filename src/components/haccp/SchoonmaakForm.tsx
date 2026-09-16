@@ -136,10 +136,10 @@ export function SchoonmaakForm({
         Tap each cell: · → ✓ → ✗ → · (n/a / clean / not clean). Frequentie volgens schoonmaakschema (D=dagelijks,
         W=wekelijks, M=maandelijks, N=na gebruik).
       </p>
-      <div className="overflow-x-auto rounded-xl border border-brand-green/10">
+      <div className="overflow-x-auto rounded-xl border border-hairline">
         <table className="w-full min-w-[980px] border-collapse text-xs sm:text-sm">
           <thead>
-            <tr className="border-b border-brand-green/10 bg-background">
+            <tr className="border-b border-hairline bg-background">
               <th className="sticky left-0 z-10 bg-background px-2 py-2 text-left font-medium">
                 Object
               </th>
@@ -155,7 +155,7 @@ export function SchoonmaakForm({
           </thead>
           <tbody>
             {OBJECTS.map((o) => (
-              <tr key={o.key} className="border-b border-brand-green/10">
+              <tr key={o.key} className="border-b border-hairline">
                 <td className="sticky left-0 z-10 bg-surface px-2 py-1 font-medium text-ink">
                   {o.label}
                 </td>
@@ -171,7 +171,7 @@ export function SchoonmaakForm({
                         type="button"
                         title="Tap to cycle"
                         onClick={() => setDay(o.key, day)}
-                        className={`h-9 w-full rounded-md border text-base font-semibold ${ v === true ? "border-brand-green bg-brand-sage/25 text-brand-green" : v === false ? "border-accent-terracotta bg-brand-sand/40 text-accent-terracotta" : "border-brand-green/10 bg-background text-ink-soft/60 " }`}
+                        className={`h-9 w-full rounded-md border text-base font-medium ${ v === true ? "border-brand-green bg-surface-muted text-brand-green" : v === false ? "border-accent-terracotta bg-surface-muted text-accent-terracotta" : "border-hairline bg-background text-ink-soft/60 " }`}
                       >
                         {triLabel(v)}
                       </button>
@@ -198,7 +198,7 @@ export function SchoonmaakForm({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>

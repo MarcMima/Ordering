@@ -301,7 +301,7 @@ export function LeveranciersDocumentsPanel({
         </ul>
       )}
 
-      <div className="rounded-xl border border-dashed border-brand-green/15 bg-background/80 p-4">
+      <div className="rounded-xl border border-dashed border-hairline bg-background/80 p-4">
         <p className="mb-3 text-sm font-medium text-ink">
           Supplier not in the list above?
         </p>
@@ -325,7 +325,7 @@ export function LeveranciersDocumentsPanel({
             type="button"
             disabled={adding || !newName.trim()}
             onClick={() => void addExtraSupplier()}
-            className="btn-secondary rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+            className="btn-secondary rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
           >
             {adding ? "Adding…" : "Add row"}
           </button>
@@ -372,7 +372,7 @@ function SupplierDocRow({
             <input
               type="file"
               accept=".pdf,image/*,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="max-w-full text-xs text-ink-soft file:mr-2 file:rounded-lg file:border-0 file:bg-brand-sand/50 file:px-2 file:py-1 file:text-sm sm:max-w-[16rem]"
+              className="max-w-full text-xs text-ink-soft file:mr-2 file:rounded-lg file:border-0 file:bg-surface-muted file:px-2 file:py-1 file:text-sm sm:max-w-[16rem]"
               disabled={busy}
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -385,7 +385,7 @@ function SupplierDocRow({
       </div>
 
       {paths.length > 0 ? (
-        <ul className="mt-3 space-y-2 border-t border-brand-green/10 pt-3">
+        <ul className="mt-3 space-y-2 border-t border-hairline pt-3">
           {paths.map((p) => (
             <li
               key={p}
@@ -397,14 +397,14 @@ function SupplierDocRow({
               <span className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  className="rounded-lg border border-brand-green/15 px-2.5 py-1 text-xs font-medium text-ink hover:bg-background"
+                  className="rounded-full border border-hairline px-2.5 py-1 text-xs font-medium text-ink hover:bg-background"
                   onClick={() => onOpenPath(p)}
                 >
                   Open
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg px-2 py-1 text-xs text-accent-terracotta hover:bg-brand-sand/40"
+                  className="rounded-full px-2 py-1 text-xs text-accent-terracotta hover:bg-surface-muted"
                   disabled={removingPath === p}
                   onClick={() => onRemovePath(p)}
                 >

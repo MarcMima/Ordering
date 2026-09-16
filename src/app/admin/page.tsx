@@ -150,40 +150,40 @@ export default function AdminPage() {
       <TopNav />
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-56 shrink-0 border-r border-brand-green/10 bg-surface">
+        <aside className="w-56 shrink-0 border-r border-hairline bg-surface">
           <nav className="p-3 space-y-0.5">
             <button
               onClick={() => setSection("locations")}
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "locations" ? "bg-brand-sand/60 text-ink" : "text-ink-soft hover:bg-brand-sand/50" }`}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "locations" ? "bg-surface-muted text-ink" : "text-ink-soft hover:bg-surface-muted" }`}
             >
               Locations
             </button>
             <button
               onClick={() => setSection("suppliers")}
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "suppliers" ? "bg-brand-sand/60 text-ink" : "text-ink-soft hover:bg-brand-sand/50" }`}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "suppliers" ? "bg-surface-muted text-ink" : "text-ink-soft hover:bg-surface-muted" }`}
             >
               Suppliers
             </button>
             <button
               onClick={() => setSection("products")}
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "products" ? "bg-brand-sand/60 text-ink" : "text-ink-soft hover:bg-brand-sand/50" }`}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "products" ? "bg-surface-muted text-ink" : "text-ink-soft hover:bg-surface-muted" }`}
             >
               Products
             </button>
             <button
               onClick={() => setSection("ingredients")}
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "ingredients" ? "bg-brand-sand/60 text-ink" : "text-ink-soft hover:bg-brand-sand/50" }`}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "ingredients" ? "bg-surface-muted text-ink" : "text-ink-soft hover:bg-surface-muted" }`}
             >
               Ingredients
             </button>
             <button
               onClick={() => setSection("recipes")}
-              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "recipes" ? "bg-brand-sand/60 text-ink" : "text-ink-soft hover:bg-brand-sand/50" }`}
+              className={`w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${ section === "recipes" ? "bg-surface-muted text-ink" : "text-ink-soft hover:bg-surface-muted" }`}
             >
               Recipes
             </button>
           </nav>
-          <div className="space-y-2 border-t border-brand-green/10 p-3">
+          <div className="space-y-2 border-t border-hairline p-3">
             <Link
               href="/admin/haccp-equipment"
               className="block label hover:text-ink"
@@ -334,7 +334,7 @@ function PrepItemsAtLocationPanel({
           type="button"
           onClick={onDownloadCsvTemplate}
           disabled={locationPrepItems.length === 0 || productsLoading || csvBusy}
-          className="rounded-md border border-brand-green/15 px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
+          className="rounded-full border border-hairline px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
         >
           Download CSV
         </button>
@@ -342,13 +342,13 @@ function PrepItemsAtLocationPanel({
           type="button"
           onClick={onOpenCsvPicker}
           disabled={productsLoading || csvBusy}
-          className="rounded-md border border-brand-green/15 px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
+          className="rounded-full border border-hairline px-3 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
         >
           {csvBusy ? "Importing…" : "Upload CSV"}
         </button>
         <span className="text-xs text-ink-soft/70">
-          Columns: <code className="rounded bg-brand-sand/50 px-1">product_name,base_quantity</code> or{" "}
-          <code className="rounded bg-brand-sand/50 px-1">prep_item_id,base_quantity</code>
+          Columns: <code className="rounded bg-surface-muted px-1">product_name,base_quantity</code> or{" "}
+          <code className="rounded bg-surface-muted px-1">prep_item_id,base_quantity</code>
         </span>
       </div>
       {productsLoading ? (
@@ -362,7 +362,7 @@ function PrepItemsAtLocationPanel({
               locationPrepItems.map((row) => (
                 <li
                   key={row.id}
-                  className="flex flex-col gap-2 rounded-md border border-brand-green/10 p-2 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-2 rounded-md border border-hairline p-2 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <span className="min-w-0 font-medium text-ink">
                     {row.prep_items?.name ?? row.prep_item_id}
@@ -377,7 +377,7 @@ function PrepItemsAtLocationPanel({
                         min={0}
                         defaultValue={row.base_quantity ?? 1}
                         onBlur={(e) => void onBaseQuantityBlur(row.id, e.target.value)}
-                        className="w-28 rounded border border-brand-green/15 px-2 py-1 text-sm tabular-nums"
+                        className="w-28 rounded border border-hairline px-2 py-1 text-sm tabular-nums"
                         aria-label={`Base quantity for ${row.prep_items?.name ?? "product"}`}
                       />
                     </label>
@@ -397,7 +397,7 @@ function PrepItemsAtLocationPanel({
             <select
               value={addProductId}
               onChange={(e) => setAddProductId(e.target.value)}
-              className="rounded-md border border-brand-green/15 px-2 py-1.5 text-sm"
+              className="rounded-md border border-hairline px-2 py-1.5 text-sm"
             >
               <option value="">Add a product…</option>
               {prepItems
@@ -644,7 +644,7 @@ function LocationsSection({
               placeholder="Name"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               type="number"
@@ -652,7 +652,7 @@ function LocationsSection({
               placeholder="Full capacity revenue (€)"
               value={form.full_capacity_revenue}
               onChange={(e) => setForm((f) => ({ ...f, full_capacity_revenue: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               type="number"
@@ -662,7 +662,7 @@ function LocationsSection({
               title="Once per order: need × (this + cover days). Evening slice only, e.g. 0.66 = 66% of one day after ~17:00"
               value={form.ordering_evening_day_fraction}
               onChange={(e) => setForm((f) => ({ ...f, ordering_evening_day_fraction: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm sm:col-span-2"
+              className="rounded-md border border-hairline px-3 py-2 text-sm sm:col-span-2"
             />
             <label className="flex flex-col gap-1 sm:col-span-2">
               <span className="text-xs font-medium text-ink-soft">
@@ -673,7 +673,7 @@ function LocationsSection({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, weekly_stocktake_day_of_week: e.target.value }))
                 }
-                className="rounded-md border border-brand-green/15 bg-surface px-3 py-2 text-sm"
+                className="rounded-md border border-hairline bg-surface px-3 py-2 text-sm"
               >
                 <option value="">Per ingredient (use each raw&apos;s weekday)</option>
                 {JS_WEEKDAY_LABELS.map((label, i) => (
@@ -702,7 +702,7 @@ function LocationsSection({
                   weekly_stocktake_day_of_week: "",
                 });
               }}
-              className="rounded-md border border-brand-green/15 px-3 py-1.5 text-sm"
+              className="rounded-md border border-hairline px-3 py-1.5 text-sm"
             >
               Cancel
             </button>
@@ -764,7 +764,7 @@ function LocationsSection({
                             : "",
                       });
                     }}
-                    className="rounded border border-brand-green/15 px-3 py-1.5 text-sm font-medium"
+                    className="rounded border border-hairline px-3 py-1.5 text-sm font-medium"
                   >
                     Edit
                   </button>
@@ -778,7 +778,7 @@ function LocationsSection({
                   </button>
                 </div>
                 {managingProductsLocationId === loc.id && (
-                  <div className="mt-4 rounded-lg border border-brand-green/10 bg-background p-3">
+                  <div className="mt-4 rounded-lg border border-hairline bg-background p-3">
                     <h3 className="mb-2 label">
                       Prep items at this location
                     </h3>
@@ -806,7 +806,7 @@ function LocationsSection({
       {/* Desktop: table */}
       <div className="hidden overflow-x-auto card rounded-lg sm:block">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-brand-green/10 bg-background">
+          <thead className="border-b border-hairline bg-background">
             <tr>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Name</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Full capacity revenue</th>
@@ -828,7 +828,7 @@ function LocationsSection({
               locations.map((loc) => (
                 <Fragment key={loc.id}>
                   {editing?.id === loc.id ? (
-                    <tr key={loc.id} className="border-t border-brand-green/10">
+                    <tr key={loc.id} className="border-t border-hairline">
                     <td colSpan={5} className="px-4 py-3">
                       <div className="grid gap-2 sm:grid-cols-2">
                         <input
@@ -862,7 +862,7 @@ function LocationsSection({
                             onChange={(e) =>
                               setForm((f) => ({ ...f, weekly_stocktake_day_of_week: e.target.value }))
                             }
-                            className="rounded border border-brand-green/15 bg-surface px-2 py-1.5 text-sm"
+                            className="rounded border border-hairline bg-surface px-2 py-1.5 text-sm"
                           >
                             <option value="">Per ingredient</option>
                             {JS_WEEKDAY_LABELS.map((label, i) => (
@@ -910,7 +910,7 @@ function LocationsSection({
                               weekly_stocktake_day_of_week: "",
                             });
                           }}
-                          className="rounded border border-brand-green/15 px-3 py-2 text-sm"
+                          className="rounded border border-hairline px-3 py-2 text-sm"
                         >
                           Cancel
                         </button>
@@ -918,7 +918,7 @@ function LocationsSection({
                     </td>
                   </tr>
                 ) : (
-                  <tr key={loc.id} className="border-t border-brand-green/10">
+                  <tr key={loc.id} className="border-t border-hairline">
                     <td className="px-4 py-2 font-medium">{loc.name}</td>
                     <td className="px-4 py-2">{loc.full_capacity_revenue ?? "—"}</td>
                     <td className="px-4 py-2 text-ink-soft">
@@ -954,7 +954,7 @@ function LocationsSection({
                                   : "",
                             });
                           }}
-                          className="rounded border border-brand-green/15 px-2 py-1 text-xs font-medium text-ink-soft hover:bg-brand-sand/50"
+                          className="rounded border border-hairline px-2 py-1 text-xs font-medium text-ink-soft hover:bg-surface-muted"
                         >
                           Edit
                         </button>
@@ -973,7 +973,7 @@ function LocationsSection({
                   </tr>
                 )}
                   {managingProductsLocationId === loc.id && (
-                    <tr key={`${loc.id}-products`} className="border-t border-brand-green/10 bg-background">
+                    <tr key={`${loc.id}-products`} className="border-t border-hairline bg-background">
                       <td colSpan={5} className="px-4 py-3">
                         <div className="card rounded-lg p-4">
                           <h3 className="mb-3 label">
@@ -1179,7 +1179,7 @@ function IngredientsSection({
     <div>
       <h1 className="mb-2 page-title">Ingredients</h1>
       {currentLocationName ? (
-        <div className="mb-4 rounded-lg border border-brand-green/10 bg-background px-3 py-2 text-sm text-ink-soft">
+        <div className="mb-4 rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink-soft">
           Editing data for: <strong>{currentLocationName}</strong>. To work with another location, go to <Link href="/dashboard" className="underline">Dashboard</Link> and change location.
         </div>
       ) : (
@@ -1202,33 +1202,33 @@ function IngredientsSection({
               placeholder="Name"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               placeholder="Unit (e.g. g, ml, pcs)"
               value={form.unit}
               onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               placeholder="Order planning days (empty=1, 7=weekly)"
               value={form.order_interval_days}
               onChange={(e) => setForm((f) => ({ ...f, order_interval_days: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm sm:col-span-2"
+              className="rounded-md border border-hairline px-3 py-2 text-sm sm:col-span-2"
             />
             <label className="flex items-center gap-2 text-sm text-ink-soft sm:col-span-2">
               <input
                 type="checkbox"
                 checked={form.stocktake_visible}
                 onChange={(e) => setForm((f) => ({ ...f, stocktake_visible: e.target.checked }))}
-                className="rounded border-brand-green/15"
+                className="rounded border-hairline"
               />
               Show on stocktake list
             </label>
             <select
               value={form.item_kind}
               onChange={(e) => setForm((f) => ({ ...f, item_kind: e.target.value as "food" | "non_food" }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
               title="Groups the Add item selector on the ordering page"
             >
               <option value="food">Food</option>
@@ -1237,7 +1237,7 @@ function IngredientsSection({
             <select
               value={form.stocktake_day_of_week}
               onChange={(e) => setForm((f) => ({ ...f, stocktake_day_of_week: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm sm:col-span-2"
+              className="rounded-md border border-hairline px-3 py-2 text-sm sm:col-span-2"
             >
               {stocktakeDowOptions.map((o) => (
                 <option key={o.value || "all"} value={o.value}>
@@ -1267,7 +1267,7 @@ function IngredientsSection({
                   item_kind: "food",
                 });
               }}
-              className="rounded-md border border-brand-green/15 px-3 py-1.5 text-sm"
+              className="rounded-md border border-hairline px-3 py-1.5 text-sm"
             >
               Cancel
             </button>
@@ -1283,7 +1283,7 @@ function IngredientsSection({
       )}
       <div className="overflow-x-auto card rounded-lg">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-brand-green/10 bg-background">
+          <thead className="border-b border-hairline bg-background">
             <tr>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Name</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Unit</th>
@@ -1305,7 +1305,7 @@ function IngredientsSection({
             ) : (
               rawIngredients.map((ing) =>
                 editing?.id === ing.id ? (
-                  <tr key={ing.id} className="border-t border-brand-green/10">
+                  <tr key={ing.id} className="border-t border-hairline">
                     <td colSpan={8} className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <input
@@ -1331,7 +1331,7 @@ function IngredientsSection({
                             type="checkbox"
                             checked={editForm.stocktake_visible}
                             onChange={(e) => setEditForm((f) => ({ ...f, stocktake_visible: e.target.checked }))}
-                            className="rounded border-brand-green/15"
+                            className="rounded border-hairline"
                           />
                           Stocktake
                         </label>
@@ -1366,7 +1366,7 @@ function IngredientsSection({
                         </button>
                       </div>
                       {allergenTypes.length > 0 && (
-                        <div className="mt-3 max-h-48 overflow-y-auto border-t border-brand-green/10 pt-3">
+                        <div className="mt-3 max-h-48 overflow-y-auto border-t border-hairline pt-3">
                           <div className="mb-2 text-xs font-medium text-ink-soft">
                             Allergens (EU, per raw ingredient)
                           </div>
@@ -1375,7 +1375,7 @@ function IngredientsSection({
                               <label key={a.id} className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-soft">
                                 <input
                                   type="checkbox"
-                                  className="rounded border-brand-green/15"
+                                  className="rounded border-hairline"
                                   checked={editingAllergenIds.has(a.id)}
                                   onChange={(e) => {
                                     setEditingAllergenIds((prev) => {
@@ -1395,7 +1395,7 @@ function IngredientsSection({
                     </td>
                   </tr>
                 ) : (
-                  <tr key={ing.id} className="border-t border-brand-green/10">
+                  <tr key={ing.id} className="border-t border-hairline">
                     <td className="px-4 py-2">{ing.name}</td>
                     <td className="px-4 py-2">{ing.unit}</td>
                     <td className="px-4 py-2 text-ink-soft">
@@ -1482,7 +1482,7 @@ function RecipeQuantityRow({
   }, [row.id, row.quantity_per_unit]);
 
   return (
-    <tr className="border-t border-brand-green/10">
+    <tr className="border-t border-hairline">
       <td className="px-4 py-2">{(row.prep_items as { name?: string })?.name ?? "—"}</td>
       <td className="px-4 py-2">{(row.raw_ingredients as { name?: string })?.name ?? "—"}</td>
       <td className="px-4 py-2 text-right">
@@ -1499,7 +1499,7 @@ function RecipeQuantityRow({
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-          className="w-28 rounded border border-brand-green/15 px-2 py-1 text-right text-sm"
+          className="w-28 rounded border border-hairline px-2 py-1 text-right text-sm"
         />
       </td>
       <td className="px-4 py-2 text-right">
@@ -1641,7 +1641,7 @@ function RecipesSection({
     <div>
       <h1 className="mb-2 page-title">Recipes</h1>
       {currentLocationName ? (
-        <div className="mb-4 rounded-lg border border-brand-green/10 bg-background px-3 py-2 text-sm text-ink-soft">
+        <div className="mb-4 rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink-soft">
           Recipes for <strong>{currentLocationName}</strong>. Link prep items (finished products) to raw ingredients with quantity per unit. This drives order suggestions on the Ordering page.
         </div>
       ) : (
@@ -1659,7 +1659,7 @@ function RecipesSection({
                 value={recipeSearch}
                 onChange={(e) => setRecipeSearch(e.target.value)}
                 placeholder="Prep item, raw ingredient, or quantity…"
-                className="w-full rounded-lg border border-brand-green/15 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-hairline px-3 py-2 text-sm"
                 autoComplete="off"
               />
             </label>
@@ -1671,7 +1671,7 @@ function RecipesSection({
           </div>
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b border-brand-green/10">
+              <tr className="border-b border-hairline">
                 <th className="px-4 py-2 text-left font-medium">
                   <button
                     type="button"
@@ -1719,7 +1719,7 @@ function RecipesSection({
                   <select
                     value={form.prep_item_id}
                     onChange={(e) => setForm((f) => ({ ...f, prep_item_id: e.target.value }))}
-                    className="rounded border border-brand-green/15 px-3 py-2 text-sm"
+                    className="rounded border border-hairline px-3 py-2 text-sm"
                   >
                     <option value="">Choose…</option>
                     {prepItemsForLocation.map((p) => (
@@ -1732,7 +1732,7 @@ function RecipesSection({
                   <select
                     value={form.raw_ingredient_id}
                     onChange={(e) => setForm((f) => ({ ...f, raw_ingredient_id: e.target.value }))}
-                    className="rounded border border-brand-green/15 px-3 py-2 text-sm"
+                    className="rounded border border-hairline px-3 py-2 text-sm"
                   >
                     <option value="">Choose…</option>
                     {rawIngredientsForLocation.map((r) => (
@@ -1748,7 +1748,7 @@ function RecipesSection({
                     min="0.01"
                     value={form.quantity_per_unit}
                     onChange={(e) => setForm((f) => ({ ...f, quantity_per_unit: e.target.value }))}
-                    className="w-24 rounded border border-brand-green/15 px-3 py-2 text-sm"
+                    className="w-24 rounded border border-hairline px-3 py-2 text-sm"
                   />
                 </div>
                 <button onClick={() => handleAdd()} disabled={loading || !form.prep_item_id || !form.raw_ingredient_id} className="btn-primary px-3 py-2 text-sm disabled:opacity-50">
@@ -1901,7 +1901,7 @@ function SuppliersSection({
       <h1 className="mb-2 page-title">Suppliers</h1>
       {currentLocationName ? (
         <div className="mb-4 space-y-2">
-          <div className="rounded-lg border border-brand-green/10 bg-background px-3 py-2 text-sm text-ink-soft">
+          <div className="rounded-lg border border-hairline bg-background px-3 py-2 text-sm text-ink-soft">
             Editing data for: <strong>{currentLocationName}</strong>. To work with another location, go to{" "}
             <Link href="/dashboard" className="underline">Dashboard</Link> and change location.
           </div>
@@ -1922,20 +1922,20 @@ function SuppliersSection({
                 placeholder="Name"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+                className="rounded-md border border-hairline px-3 py-2 text-sm"
               />
               <input
                 type="email"
                 placeholder="Contact email"
                 value={form.contact_email}
                 onChange={(e) => setForm((f) => ({ ...f, contact_email: e.target.value }))}
-                className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+                className="rounded-md border border-hairline px-3 py-2 text-sm"
               />
               <input
                 placeholder="Contact info / WhatsApp"
                 value={form.contact_info}
                 onChange={(e) => setForm((f) => ({ ...f, contact_info: e.target.value }))}
-                className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+                className="rounded-md border border-hairline px-3 py-2 text-sm"
               />
               <input
                 type="number"
@@ -1943,7 +1943,7 @@ function SuppliersSection({
                 placeholder="Minimum order value"
                 value={form.minimum_order_value}
                 onChange={(e) => setForm((f) => ({ ...f, minimum_order_value: e.target.value }))}
-                className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+                className="rounded-md border border-hairline px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -1951,7 +1951,7 @@ function SuppliersSection({
               <select
                 value={form.location_id}
                 onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value }))}
-                className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+                className="rounded-md border border-hairline px-3 py-2 text-sm"
               >
                 {locations.map((l) => (
                   <option key={l.id} value={l.id}>{l.name}</option>
@@ -1967,7 +1967,7 @@ function SuppliersSection({
                       type="checkbox"
                       checked={deliveryDays.includes(value)}
                       onChange={() => toggleDay(value)}
-                      className="rounded border-brand-green/15"
+                      className="rounded border-hairline"
                     />
                     {label}
                   </label>
@@ -1995,7 +1995,7 @@ function SuppliersSection({
                 });
                 setDeliveryDays([]);
               }}
-              className="rounded-md border border-brand-green/15 px-3 py-1.5 text-sm"
+              className="rounded-md border border-hairline px-3 py-1.5 text-sm"
             >
               Cancel
             </button>
@@ -2012,7 +2012,7 @@ function SuppliersSection({
 
       <div className="overflow-hidden card rounded-lg">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-brand-green/10 bg-background">
+          <thead className="border-b border-hairline bg-background">
             <tr>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Name</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Location</th>
@@ -2120,7 +2120,7 @@ function SupplierRow({
 
   if (isEditing) {
     return (
-      <tr className="border-t border-brand-green/10">
+      <tr className="border-t border-hairline">
         <td colSpan={5} className="px-4 py-3">
           <div className="space-y-2">
             <div className="grid gap-2 sm:grid-cols-3">
@@ -2171,7 +2171,7 @@ function SupplierRow({
                     type="checkbox"
                     checked={deliveryDays?.includes(value)}
                     onChange={() => toggleDay(value)}
-                    className="rounded border-brand-green/15"
+                    className="rounded border-hairline"
                   />
                   {label.replace(/ \(\d\)$/, "")}
                 </label>
@@ -2196,7 +2196,7 @@ function SupplierRow({
   }
 
   return (
-    <tr className="border-t border-brand-green/10">
+    <tr className="border-t border-hairline">
       <td className="px-4 py-2">{supplier.name}</td>
       <td className="px-4 py-2">{supplier.location_name ?? "—"}</td>
       <td className="px-4 py-2">{supplier.contact_email ?? "—"}</td>
@@ -2302,13 +2302,13 @@ function ProductsSection({
               placeholder="Name"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               placeholder="Unit (bottle, 1/2 GN, …)"
               value={form.unit}
               onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               type="number"
@@ -2316,13 +2316,13 @@ function ProductsSection({
               placeholder="Content per unit (e.g. 750)"
               value={form.content_amount}
               onChange={(e) => setForm((f) => ({ ...f, content_amount: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               placeholder="Content unit (g, ml, …)"
               value={form.content_unit}
               onChange={(e) => setForm((f) => ({ ...f, content_unit: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               type="number"
@@ -2330,13 +2330,13 @@ function ProductsSection({
               placeholder="Recipe output amount (optional)"
               value={form.recipe_output_amount}
               onChange={(e) => setForm((f) => ({ ...f, recipe_output_amount: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               placeholder="Recipe output unit (kg, bottles, …)"
               value={form.recipe_output_unit}
               onChange={(e) => setForm((f) => ({ ...f, recipe_output_unit: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input
@@ -2345,7 +2345,7 @@ function ProductsSection({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, ingredient_qty_is_per_recipe_batch: e.target.checked }))
                 }
-                className="rounded border-brand-green/15"
+                className="rounded border-hairline"
               />
               Ingredient qty is per full recipe batch (ordering scale)
             </label>
@@ -2355,7 +2355,7 @@ function ProductsSection({
               placeholder="Batch size"
               value={form.batch_size}
               onChange={(e) => setForm((f) => ({ ...f, batch_size: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <input
               type="number"
@@ -2363,14 +2363,14 @@ function ProductsSection({
               placeholder="Prep time (hours)"
               value={form.prep_time_hours}
               onChange={(e) => setForm((f) => ({ ...f, prep_time_hours: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm"
+              className="rounded-md border border-hairline px-3 py-2 text-sm"
             />
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={form.requires_overnight}
                 onChange={(e) => setForm((f) => ({ ...f, requires_overnight: e.target.checked }))}
-                className="rounded border-brand-green/15"
+                className="rounded border-hairline"
               />
               Requires overnight
             </label>
@@ -2378,13 +2378,13 @@ function ProductsSection({
               placeholder="Overnight alert"
               value={form.overnight_alert}
               onChange={(e) => setForm((f) => ({ ...f, overnight_alert: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm sm:col-span-2"
+              className="rounded-md border border-hairline px-3 py-2 text-sm sm:col-span-2"
             />
             <input
               placeholder="Special alert"
               value={form.special_alert}
               onChange={(e) => setForm((f) => ({ ...f, special_alert: e.target.value }))}
-              className="rounded-md border border-brand-green/15 px-3 py-2 text-sm sm:col-span-2"
+              className="rounded-md border border-hairline px-3 py-2 text-sm sm:col-span-2"
             />
           </div>
           <div className="mt-3 flex gap-2">
@@ -2413,7 +2413,7 @@ function ProductsSection({
                   special_alert: "",
                 });
               }}
-              className="rounded-md border border-brand-green/15 px-3 py-1.5 text-sm"
+              className="rounded-md border border-hairline px-3 py-1.5 text-sm"
             >
               Cancel
             </button>
@@ -2430,7 +2430,7 @@ function ProductsSection({
 
       <div className="overflow-x-auto card rounded-lg">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-brand-green/10 bg-background">
+          <thead className="border-b border-hairline bg-background">
             <tr>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Name</th>
               <th className="px-4 py-2 text-left font-medium text-ink-soft">Unit</th>
@@ -2453,7 +2453,7 @@ function ProductsSection({
             ) : (
               prepItems.map((item) =>
                 editing?.id === item.id ? (
-                  <tr key={item.id} className="border-t border-brand-green/10">
+                  <tr key={item.id} className="border-t border-hairline">
                     <td colSpan={9} className="px-4 py-3">
                       <div className="grid gap-2 sm:grid-cols-2">
                         <input
@@ -2500,7 +2500,7 @@ function ProductsSection({
                             type="checkbox"
                             checked={form.requires_overnight}
                             onChange={(e) => setForm((f) => ({ ...f, requires_overnight: e.target.checked }))}
-                            className="rounded border-brand-green/15"
+                            className="rounded border-hairline"
                           />
                           Requires overnight
                         </label>
@@ -2535,7 +2535,7 @@ function ProductsSection({
                     </td>
                   </tr>
                 ) : (
-                  <tr key={item.id} className="border-t border-brand-green/10">
+                  <tr key={item.id} className="border-t border-hairline">
                     <td className="px-4 py-2">{item.name}</td>
                     <td className="px-4 py-2">{item.unit ?? "—"}</td>
                     <td className="px-4 py-2">

@@ -193,10 +193,10 @@ export function IngangscontroleForm({
     return (
       <section className="space-y-2">
         <h2 className="section-title">{supplier}</h2>
-        <div className="overflow-x-auto rounded-xl border border-brand-green/10">
+        <div className="overflow-x-auto rounded-xl border border-hairline">
           <table className="w-full min-w-[720px] border-collapse text-sm">
             <thead>
-              <tr className="border-b border-brand-green/10 bg-background text-left">
+              <tr className="border-b border-hairline bg-background text-left">
                 <th className="px-2 py-2 font-medium text-ink-soft">#</th>
                 <th className="px-2 py-2 font-medium text-ink-soft">Product</th>
                 <th className="px-2 py-2 font-medium text-ink-soft">Type</th>
@@ -215,7 +215,7 @@ export function IngangscontroleForm({
                     ? lteMaxStatus(r.temperatuur, 7)
                     : "empty";
                 return (
-                  <tr key={`${supplier}-${j}`} className="border-b border-brand-green/10">
+                  <tr key={`${supplier}-${j}`} className="border-b border-hairline">
                     <td className="px-2 py-1.5 tabular-nums text-ink-soft/80">{j + 1}</td>
                     <td className="p-1">
                       <input
@@ -352,7 +352,7 @@ export function IngangscontroleForm({
           type="button"
           onClick={() => void save()}
           disabled={saving}
-          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
+          className="btn-primary rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>

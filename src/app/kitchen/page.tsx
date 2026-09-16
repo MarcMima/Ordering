@@ -28,7 +28,7 @@ export default function KitchenHubPage() {
             <li key={t.href}>
               <Link
                 href={t.href}
-                className="block card transition-colors hover:border-brand-green/15 hover:bg-background"
+                className="block card transition-colors hover:border-hairline hover:bg-background"
               >
                 <span className="block font-medium text-ink">{t.title}</span>
                 <span className="mt-1 block help-text">{t.description}</span>

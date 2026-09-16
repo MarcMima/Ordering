@@ -197,7 +197,7 @@ export default function KitchenMenuItemPage() {
                   <select
                     value={selectedBaseOptionId ?? ""}
                     onChange={(e) => setSelectedBaseOptionId(e.target.value || null)}
-                    className="h-10 w-full max-w-sm rounded-lg border border-brand-green/15 bg-surface px-3 text-sm"
+                    className="h-10 w-full max-w-sm rounded-lg border border-hairline bg-surface px-3 text-sm"
                   >
                     {bowlBaseOptions.map((opt) => (
                       <option key={opt.id} value={opt.bowl_base_option_id ?? ""}>
@@ -228,7 +228,7 @@ export default function KitchenMenuItemPage() {
               )}
               {nutritionSource && (
                 <div className="mt-2">
-                  <span className="rounded bg-brand-sand/50 px-2 py-0.5 text-[10px] font-semibold text-ink-soft">
+                  <span className="rounded bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-ink-soft">
                     {nutritionSource === "declared_override"
                       ? "Declared override"
                       : nutritionSource === "computed_with_lab"
@@ -276,7 +276,7 @@ export default function KitchenMenuItemPage() {
                   {allergens.map((a) => (
                     <li
                       key={a.id}
-                      className="rounded-lg border border-brand-green/10 bg-background px-2.5 py-1 text-xs font-medium text-ink"
+                      className="rounded-lg border border-hairline bg-background px-2.5 py-1 text-xs font-medium text-ink"
                     >
                       {a.label_nl}
                     </li>
