@@ -24,6 +24,8 @@ export type BaseSuggestion = {
   occurrences: number;
   /** Dates (YYYY-MM-DD) of those corrections, newest first. */
   dates: string[];
+  /** Kitchen notes on those corrections, newest first, deduplicated (max 3). */
+  notes: string[];
 };
 
 export type SuggestionDecision = {
@@ -35,6 +37,23 @@ export type SuggestionDecision = {
 export const SUGGESTION_MIN_OCCURRENCES = 3;
 /** Ignore differences smaller than this share of the current base. */
 export const SUGGESTION_MIN_RELATIVE_CHANGE = 0.15;
+
+/**
+ * A note that describes a habit rather than a one-off ("we always make 3", "never enough on
+ * Fridays") is a structural signal, even when the chip picked was "Event".
+ */
+const STRUCTURAL_NOTE =
+  /\b(always|usually|normally|every\s*(day|time|shift|week|morning)|each\s*day|daily|standard|never\s+enough|too\s+(little|much|few|many)|we\s+(always\s+)?(make|need|prep))\b/i;
+
+export function isStructuralNote(note: string | null | undefined): boolean {
+  return !!note && STRUCTURAL_NOTE.test(note);
+}
+
+/** Does this correction say something about the model (as opposed to a one-off)? */
+export function countsAsStructural(a: Pick<PrepListAdjustment, "reason" | "reason_note">): boolean {
+  if (a.reason === "event") return isStructuralNote(a.reason_note);
+  return true;
+}
 
 function median(values: number[]): number {
   const s = [...values].sort((a, b) => a - b);
@@ -83,17 +102,22 @@ export function computeBaseSuggestions(params: {
     if (!prev || d.created_at > prev) lastDecisionAt[d.prep_item_id] = d.created_at;
   }
 
-  const byItem: Record<string, { implied: number[]; dates: Set<string> }> = {};
+  const byItem: Record<
+    string,
+    { implied: number[]; dates: Set<string>; notes: { at: string; text: string }[] }
+  > = {};
   for (const a of adjustments) {
     if (!a.prep_item_id) continue;
-    if (a.reason === "event") continue;
+    if (!countsAsStructural(a)) continue;
     const cutoff = lastDecisionAt[a.prep_item_id];
     if (cutoff && (a.updated_at ?? a.created_at ?? "") <= cutoff) continue;
     const implied = impliedBaseFromAdjustment(a);
     if (implied == null) continue;
-    const bucket = (byItem[a.prep_item_id] ??= { implied: [], dates: new Set() });
+    const bucket = (byItem[a.prep_item_id] ??= { implied: [], dates: new Set(), notes: [] });
     bucket.implied.push(implied);
     bucket.dates.add(a.date);
+    const note = a.reason_note?.trim();
+    if (note) bucket.notes.push({ at: a.updated_at ?? a.created_at ?? a.date, text: note });
   }
 
   const out: BaseSuggestion[] = [];
@@ -113,6 +137,11 @@ export function computeBaseSuggestions(params: {
       suggestedBase: suggested,
       occurrences: bucket.dates.size,
       dates: [...bucket.dates].sort().reverse(),
+      notes: [
+        ...new Set(
+          [...bucket.notes].sort((x, y) => y.at.localeCompare(x.at)).map((n) => n.text)
+        ),
+      ].slice(0, 3),
     });
   }
   out.sort((a, b) => b.occurrences - a.occurrences || a.name.localeCompare(b.name));
