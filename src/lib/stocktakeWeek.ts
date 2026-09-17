@@ -132,21 +132,6 @@ export function latestCountDateByRawId(
   return out;
 }
 
-/**
- * Non-food is suggested only on the weekly stocktake day, or when the item itself was
- * counted today (feedback De Pijp, 17-09: mid-week non-food suggestions felt like noise).
- * No carry-over "until ordered" for non-food; it stays orderable via "Add item".
- */
-export function isNonFoodSuggestionDay(params: {
-  dateStr: string;
-  locationWeeklyDow: number | null | undefined;
-  ingredientWeeklyDow: number | null | undefined;
-  lastCountDate: string | null | undefined;
-}): boolean {
-  if (params.lastCountDate === params.dateStr) return true;
-  return isWeeklyStocktakeDueOnDate(params);
-}
-
 /** "Mon 14 Sep" */
 export function formatCountDateLabel(dateStr: string): string {
   const parts = dateStr.split("-").map(Number);

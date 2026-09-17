@@ -555,8 +555,6 @@ export default function OrderingPage() {
   const [mediSaladNeedPrep, setMediSaladNeedPrep] = useState(0);
   const [currentRawStockById, setCurrentRawStockById] = useState<Record<string, number>>({});
   const [stockCountDateByRawId, setStockCountDateByRawId] = useState<Record<string, string>>({});
-  const [deferredWeeklySuggested, setDeferredWeeklySuggested] = useState<Record<string, number>>({});
-  const [deferredOpenBySupplier, setDeferredOpenBySupplier] = useState<Record<string, boolean>>({});
   const [currentPrepStockById, setCurrentPrepStockById] = useState<Record<string, number>>({});
   const [revenueTargetCentsForDraft, setRevenueTargetCentsForDraft] = useState<number | null>(null);
   const [supplierRawIdsBySupplier, setSupplierRawIdsBySupplier] = useState<Record<string, string[]>>({});
@@ -965,7 +963,6 @@ export default function OrderingPage() {
         setPrepStocktakeComplete(result.prepStocktakeComplete);
         setCurrentRawStockById(result.currentRawStockById);
         setStockCountDateByRawId(result.stockCountDateByRawId);
-        setDeferredWeeklySuggested(result.deferredWeeklySuggested);
         setCurrentPrepStockById(result.currentPrepStockById);
         setRevenueTargetCentsForDraft(result.revenueTargetCents);
         setSupplierRawIdsBySupplier(result.supplierRawIdsBySupplier);
@@ -1567,7 +1564,7 @@ export default function OrderingPage() {
     }
   };
 
-  const addLineForSupplierRaw = (supplierId: string, rawId: string, quantity = 1) => {
+  const addLineForSupplierRaw = (supplierId: string, rawId: string) => {
     const ing = rawIngredients.find((r) => r.id === rawId);
     if (!ing) return;
     const allPacks = packSizesByIngredient[rawId] ?? [];
@@ -1620,7 +1617,7 @@ export default function OrderingPage() {
       size: best?.size ?? (kind === "stocktake" ? 1 : 0),
       size_unit: best?.size_unit ?? (kind === "stocktake" ? ing.unit ?? "" : ""),
       price_cents: best?.price_cents ?? null,
-      quantity: Math.max(1, quantity),
+      quantity: 1,
     };
     setManualOrderOverrides((prev) => {
       const base = { ...(prev ?? autoOrderBySupplierRef.current) };
@@ -2254,70 +2251,6 @@ export default function OrderingPage() {
             </button>
           </div>
         )}
-
-        {!isPlanning &&
-          (() => {
-            const inOrder = new Set(lines.map((l) => l.raw_ingredient_id));
-            const missed = Object.entries(deferredWeeklySuggested).filter(
-              ([rid, packs]) =>
-                packs > 0 &&
-                !inOrder.has(rid) &&
-                suggestionSupplierByRaw[rid] === sup.id
-            );
-            if (missed.length === 0) return null;
-            const open = !!deferredOpenBySupplier[sup.id];
-            const nameOf = (rid: string) => rawIngredients.find((r) => r.id === rid)?.name ?? rid;
-            missed.sort(([a], [b]) => nameOf(a).localeCompare(nameOf(b)));
-            return (
-              <div className="mt-3 rounded-lg border border-dashed border-hairline px-3 py-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setDeferredOpenBySupplier((prev) => ({ ...prev, [sup.id]: !open }))
-                  }
-                  className="font-medium text-ink-soft"
-                  aria-expanded={open}
-                >
-                  {open ? "▾" : "▸"} Weekly items not ordered on Monday ({missed.length})
-                </button>
-                {open && (
-                  <div className="mt-2 space-y-1.5">
-                    <ul className="space-y-1">
-                      {missed.map(([rid, packs]) => {
-                        const countDate = stockCountDateByRawId[rid];
-                        return (
-                          <li key={rid} className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-ink">
-                              {nameOf(rid)} · {packs}
-                              {countDate && (
-                                <span className="ml-2 text-[11px] text-ink-soft/60">
-                                  count from {formatCountDateLabel(countDate)}
-                                </span>
-                              )}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => addLineForSupplierRaw(sup.id, rid, packs)}
-                              className="rounded border border-hairline bg-surface px-2 py-0.5 font-medium text-ink"
-                            >
-                              Add
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <button
-                      type="button"
-                      onClick={() => missed.forEach(([rid, packs]) => addLineForSupplierRaw(sup.id, rid, packs))}
-                      className="rounded border border-hairline bg-surface px-2 py-0.5 font-medium text-ink"
-                    >
-                      Add all
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
 
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.message && (
           <p
