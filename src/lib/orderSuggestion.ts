@@ -61,7 +61,6 @@ import {
 } from "@/lib/pitaPrepStock";
 import {
   buildOrderingStockByRawId,
-  isNonFoodSuggestionDay,
   isWeeklyPlannedRaw,
   lastWeeklyDueDateOnOrBefore,
   latestCountDateByRawId,
@@ -983,35 +982,10 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     const due = weeklyDueByRaw[ing.id];
     // due ≤ d < due + 7 by construction; once ordered in that window the line is done
     // for the week (also on the weekly day itself, so a reload cannot double-order).
-    // Food keeps that carry-over; non-food only shows on its count day (17-09).
-    const keep =
-      due != null &&
-      !orderedSinceDueByRaw.has(ing.id) &&
-      (ing.item_kind !== "non_food" ||
-        isNonFoodSuggestionDay({
-          dateStr: d,
-          locationWeeklyDow,
-          ingredientWeeklyDow: ing.stocktake_day_of_week,
-          lastCountDate: countDateByRaw[ing.id],
-        }));
+    // Non-food follows the same rule (Marc, 17-09): counted on Monday, it goes with the
+    // next Bidfood order (Wednesday, delivered Thursday) and stays until ordered.
+    const keep = due != null && !orderedSinceDueByRaw.has(ing.id);
     if (keep) continue;
-    delete suggestedForUi[ing.id];
-    delete kindForUi[ing.id];
-    delete baseSuggested[ing.id];
-  }
-  // Non-food that is not weekly-planned follows the same day rule.
-  for (const ing of rawIngredients) {
-    if (ing.item_kind !== "non_food" || isWeeklyPlannedRaw(ing)) continue;
-    if (
-      isNonFoodSuggestionDay({
-        dateStr: d,
-        locationWeeklyDow,
-        ingredientWeeklyDow: ing.stocktake_day_of_week,
-        lastCountDate: countDateByRaw[ing.id],
-      })
-    ) {
-      continue;
-    }
     delete suggestedForUi[ing.id];
     delete kindForUi[ing.id];
     delete baseSuggested[ing.id];
