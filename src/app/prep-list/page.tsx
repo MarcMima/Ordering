@@ -845,17 +845,32 @@ export default function PrepListPage() {
   return (
     <div className="min-h-screen bg-background font-sans">
       <TopNav />
-      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="section-title text-xl sm:text-2xl">
-            Prep List
-          </h1>
-          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80">
+      <main className="prep-print-root mx-auto max-w-2xl px-4 py-6 sm:px-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="prep-print-title section-title text-xl sm:text-2xl">
+              Prep List
+              <span className="print-only hidden">
+                {" "}
+                · {locationName} · {date}
+              </span>
+            </h1>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="btn-primary rounded-full px-4 py-1.5 text-sm font-medium no-print"
+            >
+              Print
+            </button>
+          </div>
+          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80 no-print">
             Dashboard
           </Link>
         </div>
 
-        <DailyWorkflowStepper />
+        <div className="no-print">
+          <DailyWorkflowStepper />
+        </div>
 
         {error && (
           <div className="alert-error mb-4 rounded-xl p-4 text-sm">
@@ -909,13 +924,6 @@ export default function PrepListPage() {
           <>
             <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
             <div className="mt-6 flex flex-wrap items-center gap-2 no-print">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="btn-primary rounded-full px-4 py-2.5 text-sm font-medium"
-              >
-                Print
-              </button>
               <button
                 type="button"
                 onClick={() => setEditing((v) => !v)}

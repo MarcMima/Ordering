@@ -434,6 +434,7 @@ a {
     color: var(--ink);
   }
   nav[aria-label="Main navigation"],
+  nav[aria-label="Site header"],
   .no-print,
   [data-print-hide] {
     display: none !important;
@@ -445,4 +446,76 @@ a {
     size: A4;
     margin: 1.5cm;
   }
+
+  /* Prep list: one A4 to hang on the wall (feedback West / De Pijp, 17-09). */
+  .prep-print-root {
+    page: preplist;
+    max-width: none !important;
+    padding: 0 !important;
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+  .prep-print-root .prep-print-title {
+    font-size: 13px !important;
+    margin: 0;
+  }
+  .prep-print-root > div:first-child {
+    margin-bottom: 4px !important;
+  }
+  .prep-print-root .print-only {
+    display: inline !important;
+  }
+  .prep-print-root .prep-print-list {
+    margin-top: 4px !important;
+    column-count: 2;
+    column-gap: 6mm;
+  }
+  .prep-print-root .prep-print-list > * {
+    margin: 0 0 3px !important;
+  }
+  .prep-print-root .prep-card {
+    break-inside: avoid;
+    padding: 3px 5px !important;
+    border-radius: 3px !important;
+    border-width: 0.5px !important;
+    border-left-width: 2px !important;
+    background: white !important;
+  }
+  .prep-print-root .prep-card > .flex {
+    gap: 5px !important;
+    align-items: center !important;
+  }
+  .prep-print-root .prep-check {
+    width: 10px !important;
+    height: 10px !important;
+    margin-top: 0 !important;
+  }
+  .prep-print-root .prep-line {
+    margin: 0 !important;
+    font-size: 10.5px !important;
+    line-height: 1.25 !important;
+  }
+  .prep-print-root .prep-line .help-text,
+  .prep-print-root .prep-line.help-text {
+    font-size: 9.5px !important;
+  }
+  .prep-print-root .prep-alert {
+    margin: 0 0 2px !important;
+    padding: 1px 4px !important;
+    font-size: 9.5px !important;
+  }
+  .prep-print-root .mb-4 {
+    margin-bottom: 4px !important;
+  }
+  .prep-print-root .p-5 {
+    padding: 4px 6px !important;
+  }
+  .prep-print-root .p-5 .mt-3 {
+    margin-top: 2px !important;
+  }
+}
+
+@page preplist {
+  size: A4;
+  margin: 8mm;
 }
