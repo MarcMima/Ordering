@@ -1,5 +1,6 @@
 "use client";
 
+import { DecimalInput } from "@/components/haccp/DecimalInput";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
@@ -125,13 +126,6 @@ export function TemperaturenForm({
     );
   }
 
-  function parseNum(s: string): number | null {
-    const t = s.trim();
-    if (t === "") return null;
-    const n = Number(t.replace(",", "."));
-    return Number.isFinite(n) ? n : null;
-  }
-
   async function save() {
     setSaving(true);
     setMessage(null);
@@ -232,27 +226,19 @@ export function TemperaturenForm({
                       {eq.norm_display}
                     </td>
                     <td className="p-1">
-                      <input
-                        type="text"
-                        inputMode="decimal"
+                      <DecimalInput
                         className={temperatureInputClass(st, "min-w-[4rem]")}
-                        value={row.temperature == null ? "" : String(row.temperature)}
-                        onChange={(e) =>
-                          patchReading(eq.id, { temperature: parseNum(e.target.value) })
-                        }
+                        value={row.temperature}
+                        onValueChange={(n) => patchReading(eq.id, { temperature: n })}
                         aria-invalid={bad}
                       />
                     </td>
                     <td className="p-1">
                       {eq.show_exact_temp ? (
-                        <input
-                          type="text"
-                          inputMode="decimal"
+                        <DecimalInput
                           className={temperatureInputClass(exactSt, "min-w-[4rem]")}
-                          value={row.exact_temperature == null ? "" : String(row.exact_temperature)}
-                          onChange={(e) =>
-                            patchReading(eq.id, { exact_temperature: parseNum(e.target.value) })
-                          }
+                          value={row.exact_temperature}
+                          onValueChange={(n) => patchReading(eq.id, { exact_temperature: n })}
                         />
                       ) : (
                         <span className="text-ink-soft/60">—</span>
