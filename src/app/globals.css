@@ -447,6 +447,15 @@ a {
     margin: 1.5cm;
   }
 
+  /* 100vh is a full page in print: min-h-screen (+ the app shell's pb-20) made every
+     printed page overflow, and Chrome then pushed the prep list to page 2. */
+  .min-h-screen {
+    min-height: 0 !important;
+  }
+  .pb-20 {
+    padding-bottom: 0 !important;
+  }
+
   /* Prep list: one A4 to hang on the wall (feedback West / De Pijp, 17-09). */
   .prep-print-root {
     page: preplist;
