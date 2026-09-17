@@ -46,7 +46,11 @@ import {
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
 import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
 import { JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
-import { isWeeklyStocktakeDueOnDate, isWeeklyPlannedRaw } from "@/lib/stocktakeWeek";
+import {
+  formatCountDateLabel,
+  isWeeklyStocktakeDueOnDate,
+  isWeeklyPlannedRaw,
+} from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
   isRawVisibleOnStocktakeForLocation,
@@ -550,6 +554,7 @@ export default function OrderingPage() {
   /** Medi salad daily prep count for Pijp/Zuidas VG tub swap (from location_prep_items). */
   const [mediSaladNeedPrep, setMediSaladNeedPrep] = useState(0);
   const [currentRawStockById, setCurrentRawStockById] = useState<Record<string, number>>({});
+  const [stockCountDateByRawId, setStockCountDateByRawId] = useState<Record<string, string>>({});
   const [currentPrepStockById, setCurrentPrepStockById] = useState<Record<string, number>>({});
   const [revenueTargetCentsForDraft, setRevenueTargetCentsForDraft] = useState<number | null>(null);
   const [supplierRawIdsBySupplier, setSupplierRawIdsBySupplier] = useState<Record<string, string[]>>({});
@@ -957,6 +962,7 @@ export default function OrderingPage() {
         setSuggestionLoadError(null);
         setPrepStocktakeComplete(result.prepStocktakeComplete);
         setCurrentRawStockById(result.currentRawStockById);
+        setStockCountDateByRawId(result.stockCountDateByRawId);
         setCurrentPrepStockById(result.currentPrepStockById);
         setRevenueTargetCentsForDraft(result.revenueTargetCents);
         setSupplierRawIdsBySupplier(result.supplierRawIdsBySupplier);
@@ -2036,6 +2042,17 @@ export default function OrderingPage() {
                     }
                   >
                     {row.product}
+                    {(() => {
+                      // Where does this suggestion come from? Answer it before a manager asks (17-09).
+                      if (suggestedQuantityForLine(sup.id, lineKey) <= 0) return null;
+                      const countDate = stockCountDateByRawId[line.raw_ingredient_id];
+                      if (countDate === todayDateStr) return null;
+                      return (
+                        <span className="ml-2 whitespace-nowrap text-[11px] font-normal text-ink-soft/60">
+                          {countDate ? `count from ${formatCountDateLabel(countDate)}` : "no recent count"}
+                        </span>
+                      );
+                    })()}
                   </span>
                   <span
                     className={
