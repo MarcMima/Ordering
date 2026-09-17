@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
 import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
@@ -72,6 +72,110 @@ function ReasonChips({
       ))}
     </div>
   );
+}
+
+const NOTE_PLACEHOLDER = "Tell us why, so the model can learn";
+const NOTE_SAVE_DELAY_MS = 800;
+
+/**
+ * Free-text note next to a reason. Saves debounced while typing and immediately on blur,
+ * like the adjustment note on /ordering. Always shown for "Other"; optional for the rest.
+ */
+function ReasonNote({
+  value,
+  onSave,
+  onDone,
+  label,
+}: {
+  value: string | null | undefined;
+  onSave: (note: string | null) => void;
+  onDone?: () => void;
+  label: string;
+}) {
+  const [text, setText] = useState(value ?? "");
+  const [lastValue, setLastValue] = useState(value ?? "");
+  const saved = useRef(value ?? "");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  if (lastValue !== (value ?? "")) {
+    setLastValue(value ?? "");
+    setText(value ?? "");
+  }
+  useEffect(() => {
+    saved.current = value ?? "";
+  }, [value]);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+  const flush = (next: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const trimmed = next.trim();
+    if (trimmed === saved.current.trim()) return;
+    saved.current = trimmed;
+    onSave(trimmed || null);
+  };
+  return (
+    <input
+      type="text"
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value;
+        setText(next);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => flush(next), NOTE_SAVE_DELAY_MS);
+      }}
+      onBlur={() => {
+        flush(text);
+        if (text.trim()) onDone?.();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      placeholder={NOTE_PLACEHOLDER}
+      aria-label={label}
+      className="input h-9 w-full text-sm"
+    />
+  );
+}
+
+/** Reason chips plus the note field: required-visible for "Other", optional for the rest. */
+function ReasonEditor({
+  reason,
+  note,
+  onPick,
+  onSaveNote,
+  onDone,
+  disabled,
+  label,
+}: {
+  reason: string | null | undefined;
+  note: string | null | undefined;
+  onPick: (r: AdjustmentReason) => void;
+  onSaveNote: (note: string | null) => void;
+  onDone?: () => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  const [wantsNote, setWantsNote] = useState(false);
+  const showNote = reason === "other" || (!!reason && (wantsNote || !!note));
+  return (
+    <div className="space-y-2">
+      <ReasonChips value={reason} onPick={onPick} disabled={disabled} />
+      {showNote ? (
+        <ReasonNote value={note} onSave={onSaveNote} onDone={onDone} label={label} />
+      ) : reason ? (
+        <button type="button" onClick={() => setWantsNote(true)} className="help-text underline">
+          Add a note (optional)
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** "Other — we always make 3" */
+function reasonWithNote(reason: string | null | undefined, note: string | null | undefined): string {
+  const label = reasonLabel(reason);
+  return note?.trim() ? `${label} — ${note.trim()}` : label;
 }
 
 type LocationPrepItemRow = {
@@ -164,6 +268,7 @@ export default function PrepListPage() {
   const [decisions, setDecisions] = useState<SuggestionDecision[]>([]);
   const [pendingReasonId, setPendingReasonId] = useState<string | null>(null);
   const [addReason, setAddReason] = useState<AdjustmentReason | null>(null);
+  const [addNote, setAddNote] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [addItemId, setAddItemId] = useState<string>("");
@@ -462,7 +567,12 @@ export default function PrepListPage() {
   /** Insert or update the adjustment row for an existing prep item. */
   const upsertItemAdjustment = (
     prepItemId: string,
-    patch: { make_override?: number | null; removed?: boolean; reason?: AdjustmentReason | null },
+    patch: {
+      make_override?: number | null;
+      removed?: boolean;
+      reason?: AdjustmentReason | null;
+      reason_note?: string | null;
+    },
     snapshot?: { modelMake: number; modelNeeded: number; stock: number }
   ) =>
     runSave(async () => {
@@ -476,6 +586,8 @@ export default function PrepListPage() {
         make_override: patch.make_override ?? existing?.make_override ?? null,
         removed: patch.removed ?? existing?.removed ?? false,
         reason: patch.reason ?? existing?.reason ?? null,
+        reason_note:
+          patch.reason_note !== undefined ? patch.reason_note : existing?.reason_note ?? null,
         model_make: snapshot?.modelMake ?? existing?.model_make ?? null,
         model_needed: snapshot?.modelNeeded ?? existing?.model_needed ?? null,
         stock_at_edit: snapshot?.stock ?? existing?.stock_at_edit ?? null,
@@ -503,8 +615,27 @@ export default function PrepListPage() {
         .select("*")
         .single();
       if (err) throw new Error(err.message);
+      const saved = data as PrepListAdjustment;
+      mergeAdjustment(saved);
+      // "Other" needs its note first; the editor closes when the note field is left.
+      if (reason !== "other" || saved.reason_note?.trim()) {
+        setPendingReasonId((cur) => (cur === id ? null : cur));
+      } else {
+        setPendingReasonId(id);
+      }
+    });
+
+  const setReasonNote = (id: string, reason_note: string | null) =>
+    runSave(async () => {
+      const supabase = createClient();
+      const { data, error: err } = await supabase
+        .from("prep_list_adjustments")
+        .update({ reason_note, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select("*")
+        .single();
+      if (err) throw new Error(err.message);
       mergeAdjustment(data as PrepListAdjustment);
-      setPendingReasonId((cur) => (cur === id ? null : cur));
     });
 
   const deleteAdjustment = (id: string) =>
@@ -565,11 +696,16 @@ export default function PrepListPage() {
       setError("Pick a reason for adding this task.");
       return;
     }
+    const note = addNote.trim() || null;
+    if (addReason === "other" && !note) {
+      setError("Tell us why you picked Other.");
+      return;
+    }
     if (addItemId) {
       const hiddenRow = hiddenRows.find((r) => r.row.prep_item_id === addItemId);
       void upsertItemAdjustment(
         addItemId,
-        { make_override: qty, removed: false, reason: addReason },
+        { make_override: qty, removed: false, reason: addReason, reason_note: note },
         hiddenRow
           ? { modelMake: hiddenRow.toMake, modelNeeded: hiddenRow.needed, stock: hiddenRow.currentStock }
           : undefined
@@ -577,6 +713,7 @@ export default function PrepListPage() {
       setAddItemId("");
       setAddQty("1");
       setAddReason(null);
+      setAddNote("");
       return;
     }
     const name = addName.trim();
@@ -596,6 +733,7 @@ export default function PrepListPage() {
           custom_unit: addUnit.trim() || null,
           make_override: qty,
           reason: addReason,
+          reason_note: note,
           revenue_multiplier: revenueMultiplier,
         })
         .select("*")
@@ -606,6 +744,7 @@ export default function PrepListPage() {
       setAddUnit("");
       setAddQty("1");
       setAddReason(null);
+      setAddNote("");
     });
   };
 
@@ -613,20 +752,125 @@ export default function PrepListPage() {
 
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
 
+  const renderPrepRow = ({ row, needed, toMake, priority, currentStock, override, modelToMake }: PrepRow) => {
+    const item = row.prep_items!;
+    const priorityClass =
+      priority === 1
+        ? "border-l-4 border-accent-terracotta bg-surface-muted"
+        : priority === 2
+          ? "border-l-4 border-accent-orange bg-surface-muted"
+          : "border-l-4 border-brand-green bg-surface-muted";
+    const snapshot = { modelMake: modelToMake, modelNeeded: needed, stock: currentStock };
+    return (
+      <div key={row.id} className={`prep-card rounded-xl border border-hairline p-4 ${priorityClass}`}>
+        {item.requires_overnight && item.overnight_alert && (
+          <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium no-print">
+            {item.overnight_alert}
+          </div>
+        )}
+        {item.special_alert && (
+          <div className="prep-alert mb-2 rounded-lg bg-surface-muted px-3 py-2 text-sm text-brand-green">
+            {item.special_alert}
+          </div>
+        )}
+        <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={!!completed[item.id]}
+            onChange={() => toggleDone(item.id)}
+            className="prep-check mt-1 h-5 w-5 shrink-0 rounded border-hairline"
+            aria-label={`Done: ${item.name}`}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="prep-line">
+              <span className="font-medium text-ink">{item.name}</span>
+              {item.requires_overnight && <span className="help-text"> (overnight)</span>}
+              {item.unit && <span className="help-text"> · {item.unit}</span>}
+            </p>
+            <p className="prep-line mt-1 help-text">
+              Stock: {formatPrepQuantity(currentStock)} · Needed: {formatPrepQuantity(needed)} · Make:{" "}
+              <strong>{formatPrepQuantity(toMake)}</strong>
+              {item.batch_size != null && item.batch_size > 0 && <span> (batch {item.batch_size})</span>}
+              {override?.make_override != null && (
+                <span className="ml-1 text-accent-terracotta">(edited)</span>
+              )}
+            </p>
+          </div>
+          {editing && (
+            <div className="flex shrink-0 items-center gap-2 no-print">
+              <MakeInput
+                value={toMake}
+                onCommit={(n) => void upsertItemAdjustment(item.id, { make_override: n }, snapshot)}
+                label={`Make: ${item.name}`}
+              />
+              <button
+                type="button"
+                onClick={() => void upsertItemAdjustment(item.id, { removed: true }, snapshot)}
+                className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+        {editing && override && !override.removed && (
+          <div className="mt-3 no-print">
+            {override.reason && pendingReasonId !== override.id ? (
+              <p className="help-text">
+                Reason: {reasonWithNote(override.reason, override.reason_note)}{" "}
+                <button type="button" onClick={() => setPendingReasonId(override.id)} className="underline">
+                  change
+                </button>
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <span className="label block">Why did you change this?</span>
+                <ReasonEditor
+                  reason={override.reason}
+                  note={override.reason_note}
+                  onPick={(r) => void setReason(override.id, r)}
+                  onSaveNote={(n) => void setReasonNote(override.id, n)}
+                  onDone={() => setPendingReasonId((cur) => (cur === override.id ? null : cur))}
+                  disabled={saving}
+                  label={`Note for ${item.name}`}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background font-sans">
       <TopNav />
-      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="section-title text-xl sm:text-2xl">
-            Prep List
-          </h1>
-          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80">
+      <main className="prep-print-root mx-auto max-w-2xl px-4 py-6 sm:px-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="prep-print-title section-title text-xl sm:text-2xl">
+              Prep List
+              <span className="print-only hidden">
+                {" "}
+                · {locationName} · {date}
+              </span>
+            </h1>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="btn-primary rounded-full px-4 py-1.5 text-sm font-medium no-print"
+            >
+              Print
+            </button>
+          </div>
+          <Link href="/dashboard" className="text-sm font-medium text-ink-soft/80 no-print">
             Dashboard
           </Link>
         </div>
 
-        <DailyWorkflowStepper />
+        <div className="no-print">
+          <DailyWorkflowStepper />
+        </div>
 
         {error && (
           <div className="alert-error mb-4 rounded-xl p-4 text-sm">
@@ -680,13 +924,6 @@ export default function PrepListPage() {
           <>
             <ChickpeaSoakCallout kg={soakDryChickpeasKg} />
             <div className="mt-6 flex flex-wrap items-center gap-2 no-print">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="btn-primary rounded-full px-4 py-2.5 text-sm font-medium"
-              >
-                Print
-              </button>
               <button
                 type="button"
                 onClick={() => setEditing((v) => !v)}
@@ -760,7 +997,21 @@ export default function PrepListPage() {
                 </div>
                 <div>
                   <span className="mb-1 block label">Why?</span>
-                  <ReasonChips value={addReason} onPick={setAddReason} disabled={saving} />
+                  <div className="space-y-2">
+                    <ReasonChips value={addReason} onPick={setAddReason} disabled={saving} />
+                    {addReason && (
+                      <input
+                        type="text"
+                        value={addNote}
+                        onChange={(e) => setAddNote(e.target.value)}
+                        placeholder={
+                          addReason === "other" ? NOTE_PLACEHOLDER : `${NOTE_PLACEHOLDER} (optional)`
+                        }
+                        aria-label="Note for this task"
+                        className="input h-9 w-full text-sm"
+                      />
+                    )}
+                  </div>
                 </div>
                 <p className="help-text">
                   Pick an item the model left off today, or type a custom task. Changes apply to{" "}
@@ -778,10 +1029,22 @@ export default function PrepListPage() {
                         return (
                           <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                             <span className="text-ink-soft line-through">{name}</span>
-                            {a.prep_item_id && !a.reason && (
-                              <ReasonChips value={a.reason} onPick={(r) => void setReason(a.id, r)} disabled={saving} />
+                            {a.prep_item_id && (!a.reason || pendingReasonId === a.id) && (
+                              <div className="w-full">
+                                <ReasonEditor
+                                  reason={a.reason}
+                                  note={a.reason_note}
+                                  onPick={(r) => void setReason(a.id, r)}
+                                  onSaveNote={(n) => void setReasonNote(a.id, n)}
+                                  onDone={() => setPendingReasonId((cur) => (cur === a.id ? null : cur))}
+                                  disabled={saving}
+                                  label={`Note for ${name}`}
+                                />
+                              </div>
                             )}
-                            {a.reason && <span className="help-text">{reasonLabel(a.reason)}</span>}
+                            {a.reason && pendingReasonId !== a.id && (
+                              <span className="help-text">{reasonWithNote(a.reason, a.reason_note)}</span>
+                            )}
                             <button
                               type="button"
                               onClick={() =>
@@ -825,6 +1088,9 @@ export default function PrepListPage() {
                           Base {formatPrepQuantity(sg.currentBase)} → <strong>{formatPrepQuantity(sg.suggestedBase)}</strong>{" "}
                           · corrected on {sg.occurrences} days (last {sg.dates[0]})
                         </p>
+                        {sg.notes.length > 0 && (
+                          <p className="help-text italic">Kitchen: “{sg.notes.join("” · “")}”</p>
+                        )}
                       </div>
                       <div className="flex shrink-0 gap-2">
                         <button
@@ -854,131 +1120,25 @@ export default function PrepListPage() {
               </section>
             )}
 
-            <div className="mt-6 space-y-6">
-              {todayRows.map(({ row, needed, toMake, priority, currentStock, override, modelToMake }) => {
-                const item = row.prep_items!;
-                const priorityClass =
-                  priority === 1
-                    ? "border-l-4 border-accent-terracotta bg-surface-muted"
-                    : priority === 2
-                      ? "border-l-4 border-accent-orange bg-surface-muted"
-                      : "border-l-4 border-brand-green bg-surface-muted";
-
-                return (
-                  <div
-                    key={row.id}
-                    className={`rounded-xl border border-hairline p-4 ${priorityClass}`}
-                  >
-                    {item.requires_overnight && (
-                      <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium">
-                        Overnight: {item.overnight_alert || "Prepare the day before."}
-                      </div>
-                    )}
-                    {item.special_alert && (
-                      <div className="mb-2 rounded-lg bg-surface-muted px-3 py-2 text-sm text-brand-green">
-                        {item.special_alert}
-                      </div>
-                    )}
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={!!completed[item.id]}
-                        onChange={() => toggleDone(item.id)}
-                        className="mt-1 h-5 w-5 shrink-0 rounded border-hairline"
-                        aria-label={`Done: ${item.name}`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-ink">{item.name}</p>
-                        {item.unit && (
-                          <p className="help-text">{item.unit}</p>
-                        )}
-                        <p className="mt-1 help-text">
-                          Stock: {formatPrepQuantity(currentStock)} · Needed:{" "}
-                          {formatPrepQuantity(needed)} · Make:{" "}
-                          <strong>{formatPrepQuantity(toMake)}</strong>
-                          {item.batch_size != null && item.batch_size > 0 && (
-                            <span> (batch {item.batch_size})</span>
-                          )}
-                          {override?.make_override != null && (
-                            <span className="ml-1 text-accent-terracotta">(edited)</span>
-                          )}
-                        </p>
-                      </div>
-                      {editing && (
-                        <div className="flex shrink-0 items-center gap-2 no-print">
-                          <MakeInput
-                            value={toMake}
-                            onCommit={(n) =>
-                              void upsertItemAdjustment(
-                                item.id,
-                                { make_override: n },
-                                { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
-                              )
-                            }
-                            label={`Make: ${item.name}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void upsertItemAdjustment(
-                                item.id,
-                                { removed: true },
-                                { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
-                              )
-                            }
-                            className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {editing && override && !override.removed && (
-                      <div className="mt-3 no-print">
-                        {override.reason && pendingReasonId !== override.id ? (
-                          <p className="help-text">
-                            Reason: {reasonLabel(override.reason)}{" "}
-                            <button
-                              type="button"
-                              onClick={() => setPendingReasonId(override.id)}
-                              className="underline"
-                            >
-                              change
-                            </button>
-                          </p>
-                        ) : (
-                          <div className="space-y-1">
-                            <span className="label block">Why did you change this?</span>
-                            <ReasonChips
-                              value={override.reason}
-                              onPick={(r) => void setReason(override.id, r)}
-                              disabled={saving}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="prep-print-list mt-6 space-y-3">
+              {todayRows.map((r) => renderPrepRow(r))}
 
               {customTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-xl border border-hairline border-l-4 border-l-brand-green bg-surface-muted p-4"
-                >
+                <div key={task.id} className="prep-card rounded-xl border border-hairline border-l-4 border-l-brand-green bg-surface-muted p-4">
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       checked={!!completed[task.id]}
                       onChange={() => toggleDone(task.id)}
-                      className="mt-1 h-5 w-5 shrink-0 rounded border-hairline"
+                      className="prep-check mt-1 h-5 w-5 shrink-0 rounded border-hairline"
                       aria-label={`Done: ${task.custom_name}`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-ink">{task.custom_name}</p>
-                      {task.custom_unit && <p className="help-text">{task.custom_unit}</p>}
-                      <p className="mt-1 help-text">
+                      <p className="prep-line">
+                        <span className="font-medium text-ink">{task.custom_name}</span>
+                        {task.custom_unit && <span className="help-text"> · {task.custom_unit}</span>}
+                      </p>
+                      <p className="prep-line mt-1 help-text">
                         Make: <strong>{formatPrepQuantity(Number(task.make_override ?? 0))}</strong>
                         <span className="ml-1 text-accent-terracotta">(added by kitchen)</span>
                       </p>
@@ -1004,115 +1164,9 @@ export default function PrepListPage() {
               ))}
 
               {tomorrowRows.length > 0 && (
-                <section className="border-t border-hairline pt-6">
-                  <h2 className="mb-3 section-title">
-                    Tomorrow (overnight)
-                  </h2>
-                  <div className="space-y-4">
-                    {tomorrowRows.map(({ row, needed, toMake, priority, currentStock, override, modelToMake }) => {
-                      const item = row.prep_items!;
-                      const priorityClass =
-                        priority === 1
-                          ? "border-l-4 border-accent-terracotta bg-surface-muted"
-                          : priority === 2
-                            ? "border-l-4 border-accent-orange bg-surface-muted"
-                            : "border-l-4 border-brand-green bg-surface-muted";
-
-                      return (
-                        <div
-                          key={row.id}
-                          className={`rounded-xl border border-hairline p-4 ${priorityClass}`}
-                        >
-                          <div className="alert-warning mb-2 rounded-lg px-3 py-2 text-sm font-medium">
-                            Overnight: {item.overnight_alert || "Prepare the day before."}
-                          </div>
-                          {item.special_alert && (
-                            <div className="mb-2 rounded-lg bg-surface-muted px-3 py-2 text-sm text-brand-green">
-                              {item.special_alert}
-                            </div>
-                          )}
-                          <div className="flex items-start gap-3">
-                            <input
-                              type="checkbox"
-                              checked={!!completed[item.id]}
-                              onChange={() => toggleDone(item.id)}
-                              className="mt-1 h-5 w-5 shrink-0 rounded border-hairline"
-                              aria-label={`Done: ${item.name}`}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-ink">{item.name}</p>
-                              {item.unit && (
-                                <p className="help-text">{item.unit}</p>
-                              )}
-                              <p className="mt-1 help-text">
-                                Stock: {formatPrepQuantity(currentStock)} · Needed:{" "}
-                                {formatPrepQuantity(needed)} · Make:{" "}
-                                <strong>{formatPrepQuantity(toMake)}</strong>
-                                {override?.make_override != null && (
-                                  <span className="ml-1 text-accent-terracotta">(edited)</span>
-                                )}
-                              </p>
-                            </div>
-                            {editing && (
-                              <div className="flex shrink-0 items-center gap-2 no-print">
-                                <MakeInput
-                                  value={toMake}
-                                  onCommit={(n) =>
-                                    void upsertItemAdjustment(
-                                      item.id,
-                                      { make_override: n },
-                                      { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
-                                    )
-                                  }
-                                  label={`Make: ${item.name}`}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void upsertItemAdjustment(
-                                      item.id,
-                                      { removed: true },
-                                      { modelMake: modelToMake, modelNeeded: needed, stock: currentStock }
-                                    )
-                                  }
-                                  className="btn-ghost rounded-lg px-3 py-2 text-xs font-medium"
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          {editing && override && !override.removed && (
-                            <div className="mt-3 no-print">
-                              {override.reason && pendingReasonId !== override.id ? (
-                                <p className="help-text">
-                                  Reason: {reasonLabel(override.reason)}{" "}
-                                  <button
-                                    type="button"
-                                    onClick={() => setPendingReasonId(override.id)}
-                                    className="underline"
-                                  >
-                                    change
-                                  </button>
-                                </p>
-                              ) : (
-                                <div className="space-y-1">
-                                  <span className="label block">Why did you change this?</span>
-                                  <ReasonChips
-                                    value={override.reason}
-                                    onPick={(r) => void setReason(override.id, r)}
-                                    disabled={saving}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
+                <h2 className="section-title no-print border-t border-hairline pt-6">Tomorrow (overnight)</h2>
               )}
+              {tomorrowRows.map((r) => renderPrepRow(r))}
             </div>
           </>
         )}

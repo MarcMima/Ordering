@@ -992,6 +992,8 @@ export function applyMinOrderPackThresholds(params: {
 /**
  * Weekly items (order_interval_days ≥ 2) without prep-driven need: plan ~1 stocktake unit
  * per interval (e.g. one box per week for GéDé packaging).
+ * Not for non-food: "one pack a week" is an assumption, not usage. Non-food runs on par
+ * (stock_par_*, see applyStockParToBaseSuggested) since 17-09.
  */
 export function mergeWeeklyIntervalDailyNeed(params: {
   dailyRawNeed: Record<string, number>;
@@ -1003,6 +1005,7 @@ export function mergeWeeklyIntervalDailyNeed(params: {
 }): Record<string, number> {
   const out = { ...params.dailyRawNeed };
   for (const ing of params.rawIngredients) {
+    if (ing.item_kind === "non_food") continue;
     const interval = ing.order_interval_days;
     if (interval == null || interval < 2) continue;
     const sd = ing.stocktake_day_of_week;

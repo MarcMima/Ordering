@@ -117,3 +117,42 @@ export function buildOrderingStockByRawId(params: {
   }
   return out;
 }
+
+/** Latest count date per raw on or before `todayDateStr` (the count the suggestion is based on). */
+export function latestCountDateByRawId(
+  rows: StockCountRow[],
+  todayDateStr: string
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.date > todayDateStr) continue;
+    const prev = out[row.raw_ingredient_id];
+    if (!prev || row.date > prev) out[row.raw_ingredient_id] = row.date;
+  }
+  return out;
+}
+
+/**
+ * Non-food is suggested only on the weekly stocktake day, or when the item itself was
+ * counted today (feedback De Pijp, 17-09: mid-week non-food suggestions felt like noise).
+ * No carry-over "until ordered" for non-food; it stays orderable via "Add item".
+ */
+export function isNonFoodSuggestionDay(params: {
+  dateStr: string;
+  locationWeeklyDow: number | null | undefined;
+  ingredientWeeklyDow: number | null | undefined;
+  lastCountDate: string | null | undefined;
+}): boolean {
+  if (params.lastCountDate === params.dateStr) return true;
+  return isWeeklyStocktakeDueOnDate(params);
+}
+
+/** "Mon 14 Sep" */
+export function formatCountDateLabel(dateStr: string): string {
+  const parts = dateStr.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return dateStr;
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${JS_WEEKDAY_LABELS[dt.getDay()]} ${d} ${months[m - 1]}`;
+}
