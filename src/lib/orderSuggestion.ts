@@ -59,8 +59,13 @@ import {
   applyCombinedPitaStockCredit,
   extractPitaStockCounts,
 } from "@/lib/pitaPrepStock";
-import {  isWeeklyPlannedRaw } from "@/lib/stocktakeWeek";
-import { buildOrderingStockByRawId, lastWeeklyDueDateOnOrBefore } from "@/lib/stocktakeWeek";
+import {
+  buildOrderingStockByRawId,
+  isNonFoodSuggestionDay,
+  isWeeklyPlannedRaw,
+  lastWeeklyDueDateOnOrBefore,
+  latestCountDateByRawId,
+} from "@/lib/stocktakeWeek";
 import {
   isPrepVisibleOnStocktake,
   isRawVisibleOnStocktakeForLocation,
@@ -129,6 +134,8 @@ export type OrderSuggestionOutcome =
       ok: true;
       prepStocktakeComplete: boolean;
       currentRawStockById: Record<string, number>;
+      /** Date (YYYY-MM-DD) of the stock count each raw's suggestion is based on. */
+      stockCountDateByRawId: Record<string, string>;
       currentPrepStockById: Record<string, number>;
       revenueTargetCents: number | null;
       supplierRawIdsBySupplier: Record<string, string[]>;
@@ -460,6 +467,7 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     rawIngredients,
   });
   const stockListToday = stockRows.filter((s) => s.date === d);
+  const countDateByRaw = latestCountDateByRawId(stockRows, d);
 
   const schedulesBySupplierJsEarly: Record<string, number[]> = {};
   for (const s of schedules) {
@@ -732,6 +740,7 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
             rawIngredients,
             currentRawStock: currentStock,
             prepStockCreditByRawId,
+            countedRawIds: new Set(Object.keys(countDateByRaw)),
             baseSuggested: applyPrepBatchIngredientShortfall({
               recipeFiltered,
               locationPrepItems: lpi,
@@ -974,8 +983,35 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     const due = weeklyDueByRaw[ing.id];
     // due ≤ d < due + 7 by construction; once ordered in that window the line is done
     // for the week (also on the weekly day itself, so a reload cannot double-order).
-    const keep = due != null && !orderedSinceDueByRaw.has(ing.id);
+    // Food keeps that carry-over; non-food only shows on its count day (17-09).
+    const keep =
+      due != null &&
+      !orderedSinceDueByRaw.has(ing.id) &&
+      (ing.item_kind !== "non_food" ||
+        isNonFoodSuggestionDay({
+          dateStr: d,
+          locationWeeklyDow,
+          ingredientWeeklyDow: ing.stocktake_day_of_week,
+          lastCountDate: countDateByRaw[ing.id],
+        }));
     if (keep) continue;
+    delete suggestedForUi[ing.id];
+    delete kindForUi[ing.id];
+    delete baseSuggested[ing.id];
+  }
+  // Non-food that is not weekly-planned follows the same day rule.
+  for (const ing of rawIngredients) {
+    if (ing.item_kind !== "non_food" || isWeeklyPlannedRaw(ing)) continue;
+    if (
+      isNonFoodSuggestionDay({
+        dateStr: d,
+        locationWeeklyDow,
+        ingredientWeeklyDow: ing.stocktake_day_of_week,
+        lastCountDate: countDateByRaw[ing.id],
+      })
+    ) {
+      continue;
+    }
     delete suggestedForUi[ing.id];
     delete kindForUi[ing.id];
     delete baseSuggested[ing.id];
@@ -1039,6 +1075,7 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     ok: true,
     prepStocktakeComplete: prepComplete,
     currentRawStockById: currentStock,
+    stockCountDateByRawId: countDateByRaw,
     currentPrepStockById: prepStockByPrepItemId,
     revenueTargetCents: revCents,
     supplierRawIdsBySupplier: supplierRawIds,

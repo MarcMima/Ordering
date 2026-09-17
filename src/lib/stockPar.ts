@@ -87,12 +87,25 @@ export function applyStockParToBaseSuggested(params: {
   prepStockCreditByRawId?: Record<string, number>;
   baseSuggested: Record<string, number>;
   orderPackByRawId: Record<string, IngredientPackSize | null>;
+  /** Raws with a stock count in the loaded window. Non-food without a count is never suggested. */
+  countedRawIds?: ReadonlySet<string>;
 }): Record<string, number> {
-  const { rawIngredients, currentRawStock, prepStockCreditByRawId, baseSuggested, orderPackByRawId } =
-    params;
+  const {
+    rawIngredients,
+    currentRawStock,
+    prepStockCreditByRawId,
+    baseSuggested,
+    orderPackByRawId,
+    countedRawIds,
+  } = params;
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
     if (!isRawVisibleOnStocktake(ing)) continue;
+    // An uncounted non-food item is "unknown", not "zero": don't fill every shelf on a guess.
+    if (ing.item_kind === "non_food" && countedRawIds && !countedRawIds.has(ing.id)) {
+      delete out[ing.id];
+      continue;
+    }
     // Prefer DB columns; fall back to hardcoded map.
     const rule =
       dbParRuleForIngredient(ing) ??
