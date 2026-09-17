@@ -26,8 +26,11 @@ export function isMediSaladPrepItem(prepName: string | null | undefined): boolea
 }
 
 /**
- * Prep-list visibility with kitchen rules on top of stock-% priority.
- * Low-container toppings and medi salad stay visible when stock is tight.
+ * Prep-list visibility on top of stock-% priority.
+ * Nothing to make = not on the list (kitchen feedback 17-09: "Make 0 mint = don't make
+ * mint"); such items can still be added for today via Edit → Add task. Until 17-09,
+ * low-container toppings (isLowContainerPrepItem) and medi salad were shown with
+ * Make 0 when only one container was left; that rule is gone.
  */
 export function resolvePrepListPriority(params: {
   prepName: string;
@@ -36,19 +39,8 @@ export function resolvePrepListPriority(params: {
   toMake: number;
   prepTimeHours: number | null;
 }): PrepPriority {
-  const { prepName, currentStock, needed, toMake, prepTimeHours } = params;
-  let priority = getPrepPriority({ currentStock, needed, prepTimeHours });
-  if (priority === "hidden" && toMake > 0) priority = 3;
-
-  if (priority !== "hidden" || needed <= 0) return priority;
-
-  if (isLowContainerPrepItem(prepName) && currentStock <= 1) {
-    return currentStock <= 0 ? 1 : 2;
-  }
-
-  if (isMediSaladPrepItem(prepName) && currentStock < needed) {
-    return currentStock <= 0 ? 1 : currentStock <= 1 ? 2 : 3;
-  }
-
-  return priority;
+  const { currentStock, needed, toMake, prepTimeHours } = params;
+  if (!(toMake > 0)) return "hidden";
+  const priority = getPrepPriority({ currentStock, needed, prepTimeHours });
+  return priority === "hidden" ? 3 : priority;
 }
