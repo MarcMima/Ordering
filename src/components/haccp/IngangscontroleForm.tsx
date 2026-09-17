@@ -1,5 +1,6 @@
 "use client";
 
+import { DecimalInput } from "@/components/haccp/DecimalInput";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
@@ -239,21 +240,13 @@ export function IngangscontroleForm({
                       </select>
                     </td>
                     <td className="p-1">
-                      <input
-                        type="text"
-                        inputMode="decimal"
+                      <DecimalInput
                         className={temperatureInputClass(
                           r.soort === "V" ? chillStatus : "empty",
                           "min-w-[4rem] py-1 text-sm"
                         )}
-                        value={r.temperatuur ?? ""}
-                        onChange={(e) => {
-                          const t = e.target.value.trim();
-                          const num = Number(t.replace(",", "."));
-                          updateFlat(i, {
-                            temperatuur: t === "" ? null : isFinite(num) ? num : null,
-                          });
-                        }}
+                        value={r.temperatuur}
+                        onValueChange={(n) => updateFlat(i, { temperatuur: n })}
                         placeholder={r.soort === "V" ? "≤7" : "—"}
                       />
                     </td>

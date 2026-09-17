@@ -1,5 +1,6 @@
 "use client";
 
+import { DecimalInput } from "@/components/haccp/DecimalInput";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
@@ -64,13 +65,6 @@ function parseMetingen(raw: unknown, minRows: number): HaccpBereidenMetingRow[] 
   }));
   while (mapped.length < minRows) mapped.push(emptyMeting());
   return mapped;
-}
-
-function parseNum(s: string): number | null {
-  const t = s.trim();
-  if (t === "") return null;
-  const n = Number(t.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
 }
 
 function defaultRow(storeId: number, week: number, year: number): HaccpBereidenRow {
@@ -321,46 +315,37 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
                 <label className="text-sm">
                   <span className="mb-1 block text-ink-soft">Start temp (°C)</span>
                   <span className="mb-1 block text-xs text-ink-soft/70">Norm ≥ 75 °C</span>
-                  <input
+                  <DecimalInput
                     className={temperatureInputClass(
                       gteMinStatus(row.terugkoelen_temp_begin, 75),
                       "w-full tabular-nums"
                     )}
-                    inputMode="decimal"
-                    value={row.terugkoelen_temp_begin ?? ""}
-                    onChange={(e) =>
-                      setRow((r) => ({ ...r, terugkoelen_temp_begin: parseNum(e.target.value) }))
-                    }
+                    value={row.terugkoelen_temp_begin}
+                    onValueChange={(n) => setRow((r) => ({ ...r, terugkoelen_temp_begin: n }))}
                   />
                 </label>
                 <label className="text-sm">
                   <span className="mb-1 block text-ink-soft">After 2 h (°C)</span>
                   <span className="mb-1 block text-xs text-ink-soft/70">Target ≤ 20 °C</span>
-                  <input
+                  <DecimalInput
                     className={temperatureInputClass(
                       lteMaxStatus(row.terugkoelen_temp_2uur, 20),
                       "w-full tabular-nums"
                     )}
-                    inputMode="decimal"
-                    value={row.terugkoelen_temp_2uur ?? ""}
-                    onChange={(e) =>
-                      setRow((r) => ({ ...r, terugkoelen_temp_2uur: parseNum(e.target.value) }))
-                    }
+                    value={row.terugkoelen_temp_2uur}
+                    onValueChange={(n) => setRow((r) => ({ ...r, terugkoelen_temp_2uur: n }))}
                   />
                 </label>
                 <label className="text-sm">
                   <span className="mb-1 block text-ink-soft">After 5 h (°C)</span>
                   <span className="mb-1 block text-xs text-ink-soft/70">Target ≤ 7 °C</span>
-                  <input
+                  <DecimalInput
                     className={temperatureInputClass(
                       lteMaxStatus(row.terugkoelen_temp_5uur, 7),
                       "w-full tabular-nums"
                     )}
-                    inputMode="decimal"
-                    value={row.terugkoelen_temp_5uur ?? ""}
-                    onChange={(e) =>
-                      setRow((r) => ({ ...r, terugkoelen_temp_5uur: parseNum(e.target.value) }))
-                    }
+                    value={row.terugkoelen_temp_5uur}
+                    onValueChange={(n) => setRow((r) => ({ ...r, terugkoelen_temp_5uur: n }))}
                   />
                 </label>
               </div>
@@ -471,25 +456,19 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
               <label className="text-sm">
                 <span className="mb-1 block text-ink-soft">Warm (°C)</span>
                 <span className="mb-1 block text-xs text-ink-soft/70">≥ 60 °C</span>
-                <input
+                <DecimalInput
                   className={temperatureInputClass(gteMinStatus(row.serveertemp_warm, 60), "tabular-nums")}
-                  inputMode="decimal"
-                  value={row.serveertemp_warm ?? ""}
-                  onChange={(e) =>
-                    setRow((r) => ({ ...r, serveertemp_warm: parseNum(e.target.value) }))
-                  }
+                  value={row.serveertemp_warm}
+                  onValueChange={(n) => setRow((r) => ({ ...r, serveertemp_warm: n }))}
                 />
               </label>
               <label className="text-sm">
                 <span className="mb-1 block text-ink-soft">Cold (°C)</span>
                 <span className="mb-1 block text-xs text-ink-soft/70">≤ 7 °C</span>
-                <input
+                <DecimalInput
                   className={temperatureInputClass(lteMaxStatus(row.serveertemp_koud, 7), "tabular-nums")}
-                  inputMode="decimal"
-                  value={row.serveertemp_koud ?? ""}
-                  onChange={(e) =>
-                    setRow((r) => ({ ...r, serveertemp_koud: parseNum(e.target.value) }))
-                  }
+                  value={row.serveertemp_koud}
+                  onValueChange={(n) => setRow((r) => ({ ...r, serveertemp_koud: n }))}
                 />
               </label>
               <label className="sm:col-span-2 text-sm">
@@ -522,13 +501,10 @@ export function BereidenServerenForm({ weekNumber, year, initial, onSaved }: Pro
               <label className="block max-w-xs text-sm">
                 <span className="mb-1 block text-ink-soft">Reheat time (minutes)</span>
                 <span className="mb-1 block text-xs text-ink-soft/70">Norm: within &lt; 60 minutes</span>
-                <input
+                <DecimalInput
                   className="input tabular-nums"
-                  inputMode="decimal"
-                  value={row.regenereer_tijd_minuten ?? ""}
-                  onChange={(e) =>
-                    setRow((r) => ({ ...r, regenereer_tijd_minuten: parseNum(e.target.value) }))
-                  }
+                  value={row.regenereer_tijd_minuten}
+                  onValueChange={(n) => setRow((r) => ({ ...r, regenereer_tijd_minuten: n }))}
                 />
               </label>
               <p className="text-xs text-ink-soft/70">Frequency (paper): 1× per week</p>
@@ -755,14 +731,13 @@ function MetingenTable({
                 )}
               </td>
               <td className="py-1.5 pr-2">
-                <input
+                <DecimalInput
                   className={temperatureInputClass(
                     tempStatusFromNorm(line.temp, limits),
                     "py-1 tabular-nums"
                   )}
-                  inputMode="decimal"
-                  value={line.temp ?? ""}
-                  onChange={(e) => patch(i, { temp: parseNum(e.target.value) })}
+                  value={line.temp}
+                  onValueChange={(n) => patch(i, { temp: n })}
                 />
               </td>
               <td className="py-1.5 pr-2 text-xs text-ink-soft/70">{norm}</td>
