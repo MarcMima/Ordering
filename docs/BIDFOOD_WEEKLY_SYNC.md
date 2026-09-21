@@ -125,6 +125,12 @@ Rules:
 - The stored label mentions a drained weight ("uitlekgewicht", "drained") →
   left alone; that is a deliberate, lower figure (Kalamata olives: 5,2 kg gross,
   2,7 kg drained).
+  The price is still refreshed on the drained weight. This is a known
+  exception and is NOT mentioned in the mail as long as the file's weight is the
+  gross weight named in the label ("Pot 5,2 kg, uitlekgewicht 2,7 kg" and the
+  file says 5,2 kg). It is only reported when the file's weight is not in the
+  label: the unit may have changed and the drained weight may be stale. So
+  always put the gross weight in a drained-weight label.
 - No price on record yet and the file has a net weight → the file's price and
   pack are written as the first price, listed under "First price taken from the
   file".

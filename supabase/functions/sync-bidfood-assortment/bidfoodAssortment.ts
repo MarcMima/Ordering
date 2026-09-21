@@ -117,6 +117,24 @@ function isDeliberatePackSize(label: string | null): boolean {
   return /uitlek|drained|afgegoten|netto\s*gewicht/i.test(label ?? "");
 }
 
+// A deliberate label normally also names the gross weight of the unit, e.g.
+// "Pot 5,2 kg, uitlekgewicht 2,7 kg". As long as the file still reports that
+// gross weight, the exception is known and approved and needs no weekly
+// mention. Only when the file's weight is NOT in the label (the jar may have
+// changed, so the drained weight may be stale) is it worth a human look.
+function labelMentionsWeight(label: string | null, grams: number): boolean {
+  if (!label || grams <= 0) return false;
+  const re = /(\d+(?:[.,]\d+)?)\s*(kg|kilo|g|gr|gram)\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(label)) !== null) {
+    const n = parseFloat(match[1].replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) continue;
+    const g = /^k/i.test(match[2]) ? n * 1000 : n;
+    if ((Math.abs(g - grams) / grams) * 100 <= PACK_TOLERANCE_PCT) return true;
+  }
+  return false;
+}
+
 function packLabel(row: AssortmentRow): string {
   const parts = [row.uomDescription || row.uom];
   if (row.salesFactor > 1) parts.push(`${row.salesFactor} x ${row.contentDescription}`);
@@ -526,15 +544,22 @@ export async function runBidfoodAssortmentSync(params: {
         let packCorrected = false;
         if (!countBased && filePackGrams > 0 && packDiffPct > PACK_TOLERANCE_PCT) {
           if (isDeliberatePackSize(base.pack_size_label)) {
-            priceNotes.push({
-              ingredient: ing,
-              location: loc,
-              code: effectiveCode,
-              newCents: newPriceCents,
-              reason: `File says this unit is ${(filePackGrams / 1000).toFixed(2)} kg, the price is kept on ${(
-                basePack / 1000
-              ).toFixed(2)} kg (${base.pack_size_label}) — left untouched on purpose`,
-            });
+            // Known exception: the pack size stays as recorded and the price
+            // below is still refreshed on it. Stay silent unless the file's
+            // gross weight no longer matches the one named in the label.
+            if (!labelMentionsWeight(base.pack_size_label, filePackGrams)) {
+              priceNotes.push({
+                ingredient: ing,
+                location: loc,
+                code: effectiveCode,
+                newCents: newPriceCents,
+                reason: `File now says this unit is ${(filePackGrams / 1000).toFixed(
+                  2
+                )} kg, which is not the gross weight in the label (${base.pack_size_label}). The unit may have changed: check whether the recorded ${(
+                  basePack / 1000
+                ).toFixed(2)} kg is still right. Pack size left untouched; the price itself is still refreshed`,
+              });
+            }
           } else {
             effectivePack = filePackGrams;
             packCorrected = true;
