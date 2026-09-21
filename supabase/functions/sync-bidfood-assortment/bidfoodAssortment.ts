@@ -107,6 +107,10 @@ export type SyncResult = {
 // size does not by itself look like a price explosion.
 const PRICE_JUMP_LIMIT_PCT = 50;
 
+// A refreshed price that moves less than this per kg is routine: it does not
+// trigger the report mail by itself and is only counted, not listed.
+export const PRICE_ALERT_THRESHOLD_PCT = 5;
+
 // Pack sizes closer than this are treated as the same; Bidfood rounds.
 const PACK_TOLERANCE_PCT = 2;
 
@@ -697,6 +701,12 @@ export async function runBidfoodAssortmentSync(params: {
     errors,
   };
 
+  // Quiet runs send no mail, so the summary (same text as the mail body) is
+  // always logged and kept with the run to be found later.
+  const emailWorthy = needsAttention(result);
+  const summaryText = formatSyncReportEmail(result, fileName).text;
+  console.log(`[bidfood-sync] report mail ${emailWorthy ? "due" : "skipped"}\n${summaryText}`);
+
   if (!dryRun) {
     await supabase.from("bidfood_assortment_runs").insert({
       source,
@@ -716,6 +726,8 @@ export async function runBidfoodAssortmentSync(params: {
         price_notes: priceNotes,
         pack_changes: packChanges,
         prices_added: pricesAdded,
+        email_worthy: emailWorthy,
+        summary_text: summaryText,
       },
     });
   }
@@ -723,16 +735,25 @@ export async function runBidfoodAssortmentSync(params: {
   return result;
 }
 
+// Judged on the percentage as the mail prints it (one decimal), so a line
+// shown as "+5.0%" is never counted among the smaller ones.
+export function isNotablePriceChange(p: PriceChange): boolean {
+  return Math.round(Math.abs(p.pct) * 10) / 10 >= PRICE_ALERT_THRESHOLD_PCT;
+}
+
+// Whether the report mail is worth reading. Approved drained-weight exceptions
+// never reach priceNotes, so every note counts. First prices added and price
+// moves under the threshold do not send a mail on their own.
 export function needsAttention(result: SyncResult): boolean {
   return (
     result.errors.length > 0 ||
+    !result.ok ||
     result.inactive > 0 ||
     result.notInFile > 0 ||
-    result.priceChanges.length > 0 ||
-    result.priceNotes.length > 0 ||
+    result.autoReplaced > 0 ||
     result.packChanges.length > 0 ||
-    result.pricesAdded.length > 0 ||
-    !result.ok
+    result.priceNotes.length > 0 ||
+    result.priceChanges.some(isNotablePriceChange)
   );
 }
 
@@ -761,7 +782,10 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
   const issues = result.lines.filter((l) => l.action !== "ok" && l.action !== "updated");
   const parts: string[] = [];
   if (issues.length > 0) parts.push(`${issues.length} attention`);
-  if (result.priceChanges.length > 0) parts.push(`${result.priceChanges.length} price changes`);
+  const notablePrices = result.priceChanges.filter(isNotablePriceChange).length;
+  if (notablePrices > 0) {
+    parts.push(`${notablePrices} price changes of ${PRICE_ALERT_THRESHOLD_PCT}%+`);
+  }
   if (result.packChanges.length > 0) parts.push(`${result.packChanges.length} pack fixes`);
   if (result.pricesAdded.length > 0) parts.push(`${result.pricesAdded.length} new prices`);
   if (result.priceNotes.length > 0) parts.push(`${result.priceNotes.length} prices to check`);
@@ -827,8 +851,10 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
       result.priceChanges,
       (p) => `${p.ingredient}|${p.code}|${p.uom}|${p.oldCents}|${p.newCents}`
     ).sort((a, b) => Math.abs(b.row.pct) - Math.abs(a.row.pct));
+    const notable = collapsed.filter(({ row }) => isNotablePriceChange(row));
+    const smaller = collapsed.length - notable.length;
     lines.push(`Prices refreshed${result.dryRun ? " (would be)" : ""}:`);
-    for (const { row: p, count } of collapsed) {
+    for (const { row: p, count } of notable) {
       const move = `${p.pct > 0 ? "+" : ""}${p.pct.toFixed(1)}% per kg`;
       const body =
         p.oldGrams && p.newGrams
@@ -838,6 +864,11 @@ export function formatSyncReportEmail(result: SyncResult, fileName?: string): { 
           : `${euro(p.oldCents)} -> ${euro(p.newCents)} (${move})`;
       const deposit = p.depositCents ? ` incl. deposit ${euro(p.depositCents)}` : "";
       lines.push(`- ${p.ingredient}: ${body}${deposit} — art ${p.code}${p.uom}${times(count)}`);
+    }
+    if (smaller > 0) {
+      lines.push(
+        `${smaller} smaller change${smaller > 1 ? "s" : ""} under ${PRICE_ALERT_THRESHOLD_PCT}%`
+      );
     }
     lines.push("");
   }
