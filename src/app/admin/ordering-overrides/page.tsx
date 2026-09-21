@@ -41,7 +41,7 @@ export default function OrderingOverridesPage() {
       supabase
         .from("raw_ingredients")
         .select(
-          "id, name, unit, location_id, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs"
+          "id, name, unit, location_id, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, stock_par_mode"
         )
         .eq("location_id", locationId)
         .order("name"),
@@ -169,6 +169,7 @@ export default function OrderingOverridesPage() {
                   <th className="py-2 px-2 font-medium text-right" title="Min order packs threshold">Min packs</th>
                   <th className="py-2 px-2 font-medium text-right" title="Max order base units">Max base</th>
                   <th className="py-2 px-2 font-medium text-right" title="Stock par kind">Par kind</th>
+                  <th className="py-2 px-2 font-medium text-right" title="replace (default): par-managed only — no line at/above par, shortfall below. floor: minimum next to the need-based suggestion.">Par mode</th>
                   <th className="py-2 px-2 font-medium text-right" title="Stock par min amount (for base) or min packs (for packs)">Par min</th>
                   <th className="py-2 px-2 font-medium text-right" title="Stock par order packs (MOQ)">Par order packs</th>
                   <th className="py-2 px-2 font-medium text-right" title="Per-location daily multiplier">Loc multiplier</th>
@@ -237,10 +238,12 @@ function SelectCell({
   value,
   onCommit,
   disabled,
+  options = ["base", "packs"],
 }: {
   value: string | null | undefined;
   onCommit: (v: string | null) => void;
   disabled: boolean;
+  options?: string[];
 }) {
   return (
     <select
@@ -250,8 +253,11 @@ function SelectCell({
       disabled={disabled}
     >
       <option value="">—</option>
-      <option value="base">base</option>
-      <option value="packs">packs</option>
+      {options.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
     </select>
   );
 }
@@ -315,6 +321,20 @@ function OverrideRow({
           onCommit={(v) => onSaveGlobal({ stock_par_kind: v })}
           disabled={disabled}
         />
+      </td>
+
+      {/* Global: stock_par_mode */}
+      <td className="py-1 px-2 text-right">
+        {row.stock_par_kind ? (
+          <SelectCell
+            value={row.stock_par_mode}
+            onCommit={(v) => onSaveGlobal({ stock_par_mode: v })}
+            disabled={disabled}
+            options={["replace", "floor"]}
+          />
+        ) : (
+          <span className="text-ink-soft">—</span>
+        )}
       </td>
 
       {/* Global: stock_par_min_amount / stock_par_min_packs */}
