@@ -51,9 +51,16 @@ Deliberately conservative, because the pack size decides cost-per-gram:
 ## Report mail
 
 Sent to `marc@mimafood.nl` (override with the `BIDFOOD_SYNC_REPORT_TO` secret)
-whenever there are inactive articles, articles missing from the file, price
-changes, prices that need a look, or errors. A clean week with no price moves
-sends nothing.
+only when it is worth reading: inactive articles, articles missing from the
+file, auto-replaced articles, corrected pack sizes, prices that were not applied
+(approved drained-weight exceptions do not count), a refreshed price that moved
+5% or more per kg (`PRICE_ALERT_THRESHOLD_PCT`), or errors.
+
+Under "Prices refreshed" only the moves of 5% or more are listed; the rest is one
+line ("2 smaller changes under 5%"). A week with only small moves or first
+prices sends nothing. Every run still logs the full summary (same text as the
+mail body) to the function log and, for real runs, to
+`bidfood_assortment_runs.report_json` (`summary_text`, `email_worthy`).
 
 ## The Apps Script
 
