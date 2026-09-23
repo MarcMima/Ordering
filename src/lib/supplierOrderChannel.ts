@@ -39,8 +39,8 @@ export function buildSupplierOrderChannelUpsert(
     return {
       supplier_id: supplierId,
       channel: "email",
-      email_to: email || "Info@tuana-kruiden.nl",
-      email_subject_template: "Bestelling MIMA kruiden — {datum} (levering {leverdatum})",
+      email_to: email || "info@tuana-kruiden.nl",
+      email_subject_template: "Bestelling MIMA {datum} — levering {leverdatum}",
       auto_send: false,
     };
   }
