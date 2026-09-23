@@ -48,6 +48,7 @@ export function renderEmail(opts: {
   paragraphs: string[];
   buttonLabel?: string;
   buttonUrl?: string;
+  footer?: string;
 }): string {
   const paras = opts.paragraphs
     .map((p) => `<p style="margin:14px 0 0 0;">${p}</p>`)
@@ -77,7 +78,7 @@ export function renderEmail(opts: {
     `<tr><td style="padding:24px 36px 4px 36px;">${button}</td></tr>` +
     `<tr><td style="padding:26px 36px 28px 36px;">` +
     `<div style="height:1px;background:${C_LINE};margin-bottom:16px;"></div>` +
-    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C_MUTED};">${EMAIL_FOOTER}</div>` +
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:${C_MUTED};">${opts.footer ?? EMAIL_FOOTER}</div>` +
     `</td></tr>` +
     `</table></td></tr></table>`
   );

@@ -13,6 +13,9 @@ import { NextResponse } from "next/server";
 //                   dat de taken daadwerkelijk in Notion staan (src/lib/meetingEmails.ts).
 //                   De dinsdag-ochtend hier is alleen nog een VANGNET: staat er geen
 //                   verwerkte MMMM in de Sync Log, dan krijgt Marc een alarm.
+//   4. manager-homework — elke DONDERDAG (ochtend): de restaurantmanagers krijgen de drie
+//                   toezeggingen uit hun maandag-check-in ("the week ahead") als huiswerk
+//                   (src/lib/managerHomework.ts, sinds 23-09-2026).
 //   3. pre-MMM    — TWEE momenten vóór de MMM (eerste DINSDAG v/d maand): een week
 //                   ervoor (de vorige dinsdag) én een dag ervoor (de maandag). Team
 //                   updatet data en bereidt zaken voor.
@@ -34,6 +37,7 @@ import {
   draftsReviewMail,
   sendBrandedMail as sendMail,
 } from "@/lib/meetingEmails";
+import { managerHomeworkMails } from "@/lib/managerHomework";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -407,9 +411,16 @@ export async function GET(req: Request) {
       );
       mail = preMMMDayMail(c, agendaBlock("MMM", await fetchAgenda("MMM")));
     }
+    else if (test === "managerHomework") {
+      // Test: alle manager-mails naar Marc, niet naar de managers.
+      const h = await managerHomeworkMails([MARC]);
+      const out = [];
+      for (const m of h.mails) out.push({ name: m.name, ...(await sendMail(m.mail)) });
+      return NextResponse.json({ ok: !h.error && out.every((o) => o.ok), test, sent: out, error: h.error });
+    }
     if (!mail) {
       return NextResponse.json(
-        { error: "unknown test value (use preMMMM | postMMMM | preMMMweek | preMMMday)" },
+        { error: "unknown test value (use preMMMM | postMMMM | preMMMweek | preMMMday | managerHomework)" },
         { status: 400 },
       );
     }
@@ -459,6 +470,13 @@ export async function GET(req: Request) {
   const mmmDay = mmmDaysAway(p, 1);
   if (mmmDay && slotAllows("morning")) {
     due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay, await agendaFor("MMM")) });
+  }
+
+  // 4. manager-homework — donderdag (4), ochtend-slot: huiswerk uit de maandag-check-in.
+  if (p.weekday === 4 && slotAllows("morning")) {
+    const h = await managerHomeworkMails();
+    if (h.error) agendaErrors["managerHomework"] = h.error;
+    due.push(...h.mails);
   }
 
   const results: { name: string; to: string[]; ok: boolean; error?: string }[] = [];

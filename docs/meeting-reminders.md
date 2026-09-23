@@ -41,3 +41,6 @@ curl "https://ordering-alpha.vercel.app/api/meeting-reminders?secret=<CRON_SECRE
 `test`-waarden: `preMMMM` | `postMMMM` | `preMMMweek` | `preMMMday`. Forceert die ene mail (echt verstuurd naar het team), ongeacht de datum — puur om verzending/deliverability te checken. Haal de test-call weg zodra het werkt.
 
 Een gewone call zonder `test` (`?secret=…`) stuurt alleen wat vandaag daadwerkelijk aan de beurt is — op een niet-matchende dag dus niets.
+
+## Donderdag: huiswerk voor de restaurantmanagers (23-09-2026)
+Elke donderdag in het ochtend-slot krijgt elke manager uit `meeting_people` (role manager) de drie toezeggingen ("the week ahead") uit zijn maandag-check-in in `manager_checkins` (week_start = de maandag van de afgelopen volle week). Geen toezeggingen opgeslagen: mail die daarom vraagt. Test naar Marc: `?secret=<CRON_SECRET>&test=managerHomework`. Code: `src/lib/managerHomework.ts`. Knop linkt naar MEETINGS_URL (default https://mima-meetings.vercel.app).
