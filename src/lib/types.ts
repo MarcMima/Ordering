@@ -75,6 +75,12 @@ export interface RawIngredient {
   stock_par_min_packs?: number | null;
   /** For kind=packs: order this many packs when par is triggered (MOQ). Null = shortfall only. */
   stock_par_order_packs?: number | null;
+  /**
+   * How the par combines with the recipe-driven suggestion.
+   * 'replace' (default, null): par-managed only — at/above par the line is dropped, below par only the shortfall.
+   * 'floor': the par is a minimum next to the need-based suggestion (max of both) and survives product gates.
+   */
+  stock_par_mode?: "replace" | "floor" | null;
   created_at?: string;
   updated_at?: string;
 }

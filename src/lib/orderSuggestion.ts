@@ -47,7 +47,7 @@ import {
   parsleyOrderSplit,
   passesMinOrderPackThreshold,
 } from "@/lib/orderingAdjustments";
-import { applyStockParToBaseSuggested } from "@/lib/stockPar";
+import { applyStockParFloorAfterGates, applyStockParToBaseSuggested } from "@/lib/stockPar";
 import {
   applyDrinkTrayParToBaseSuggested,
   applyDrinkTrayStandingPacks,
@@ -176,7 +176,7 @@ export function normSupplierName(name: string): string {
   return (name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-export const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, item_kind, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
+export const RAW_INGREDIENTS_WITH_PACKS_SELECT = `id, name, unit, location_id, order_interval_days, stocktake_visible, item_kind, stocktake_day_of_week, stocktake_unit_label, stocktake_content_amount, stocktake_content_unit, order_pack_multiple, ordering_daily_need_multiplier, ordering_min_order_packs, ordering_max_order_base, ordering_min_order_base, stock_par_kind, stock_par_min_amount, stock_par_min_packs, stock_par_order_packs, stock_par_mode, ingredient_pack_sizes ( id, raw_ingredient_id, size, size_unit, price_cents, pack_purpose, display_unit_label, grams_per_piece, order_pack_multiple )`;
 
 type RawWithNestedPacks = RawIngredient & {
   ingredient_pack_sizes?: IngredientPackSize[] | IngredientPackSize | null;
@@ -698,6 +698,13 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     baseSuggested: applyCombinedPitaStockCredit({
       ...pitaStock,
       rawIngredients,
+      // Explicit 'floor' pars survive the product gates below (mint prep gate, Sabich containers, …).
+      baseSuggested: applyStockParFloorAfterGates({
+      rawIngredients,
+      currentRawStock: currentStock,
+      prepStockCreditByRawId,
+      countedRawIds: new Set(Object.keys(countDateByRaw)),
+      orderPackByRawId,
       baseSuggested: applyAubergineSabichMinContainers({
       rawIngredients,
       locationPrepItems: lpi,
@@ -773,6 +780,7 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
           }),
         }),
       }),
+    }),
     }),
     }),
     }),

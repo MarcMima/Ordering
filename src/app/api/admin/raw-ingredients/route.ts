@@ -12,6 +12,7 @@ const ALLOWED_FIELDS = new Set([
   "stock_par_min_amount",
   "stock_par_min_packs",
   "stock_par_order_packs",
+  "stock_par_mode",
 ]);
 
 export async function PATCH(request: Request) {

@@ -77,11 +77,7 @@ function dbParRuleForIngredient(ing: RawIngredient): StockParRule | null {
   return null;
 }
 
-/**
- * Par-managed items: suppress when effective stock (raw + finished prep credit) is at par;
- * otherwise order only the shortfall to par — never stack cover-window bulk on top.
- */
-export function applyStockParToBaseSuggested(params: {
+type StockParParams = {
   rawIngredients: RawIngredient[];
   currentRawStock: Record<string, number>;
   prepStockCreditByRawId?: Record<string, number>;
@@ -89,15 +85,53 @@ export function applyStockParToBaseSuggested(params: {
   orderPackByRawId: Record<string, IngredientPackSize | null>;
   /** Raws with a stock count in the loaded window. Non-food without a count is never suggested. */
   countedRawIds?: ReadonlySet<string>;
-}): Record<string, number> {
-  const {
-    rawIngredients,
-    currentRawStock,
-    prepStockCreditByRawId,
-    baseSuggested,
-    orderPackByRawId,
-    countedRawIds,
-  } = params;
+};
+
+/** 'floor' only applies to an explicit DB par; the hardcoded map is always par-managed ('replace'). */
+export function isFloorParIngredient(ing: RawIngredient): boolean {
+  return ing.stock_par_mode === "floor" && dbParRuleForIngredient(ing) != null;
+}
+
+/**
+ * Par state for one ingredient: target level, effective stock (raw + finished prep credit)
+ * and what to order when below par. Null when no usable par rule applies.
+ */
+function parStateForIngredient(
+  ing: RawIngredient,
+  params: Pick<StockParParams, "currentRawStock" | "prepStockCreditByRawId" | "orderPackByRawId">
+): { minBase: number; stock: number; orderBase: number } | null {
+  // Prefer DB columns; fall back to hardcoded map.
+  const rule =
+    dbParRuleForIngredient(ing) ??
+    MIN_STOCK_PAR_BY_RAW_NAME[(ing.name ?? "").toLowerCase().trim()] ??
+    null;
+  if (rule == null) return null;
+  const orderPack = params.orderPackByRawId[ing.id] ?? null;
+  const minBase = minBaseAmountForPar({ ing, rule, orderPack });
+  if (minBase == null || minBase <= 0) return null;
+  const stock =
+    (params.currentRawStock[ing.id] ?? 0) + (params.prepStockCreditByRawId?.[ing.id] ?? 0);
+  let orderBase = Math.max(0, minBase - stock);
+  if (rule.kind === "packs" && rule.orderPacks != null && orderPack) {
+    const basePerPack = packSizeToBaseAmount(orderPack, ing.unit ?? "");
+    if (basePerPack != null && basePerPack > 0) {
+      orderBase = rule.orderPacks * basePerPack;
+    }
+  }
+  return { minBase, stock, orderBase };
+}
+
+/**
+ * Par-managed items ('replace', the default): suppress when effective stock (raw + finished
+ * prep credit) is at par; otherwise order only the shortfall to par — never stack
+ * cover-window bulk on top.
+ *
+ * 'floor' items (stock_par_mode = 'floor'): the recipe-driven suggestion stays as it is; below
+ * par the line is raised to at least the par order. Meant for recipe-driven products where the
+ * need-based suggestion is right in principle but the kitchen wants a minimum on the shelf.
+ */
+export function applyStockParToBaseSuggested(params: StockParParams): Record<string, number> {
+  const { rawIngredients, baseSuggested, countedRawIds } = params;
   const out = { ...baseSuggested };
   for (const ing of rawIngredients) {
     if (!isRawVisibleOnStocktake(ing)) continue;
@@ -106,34 +140,37 @@ export function applyStockParToBaseSuggested(params: {
       delete out[ing.id];
       continue;
     }
-    // Prefer DB columns; fall back to hardcoded map.
-    const rule =
-      dbParRuleForIngredient(ing) ??
-      MIN_STOCK_PAR_BY_RAW_NAME[(ing.name ?? "").toLowerCase().trim()] ??
-      null;
-    if (rule == null) continue;
-    const minBase = minBaseAmountForPar({
-      ing,
-      rule,
-      orderPack: orderPackByRawId[ing.id] ?? null,
-    });
-    if (minBase == null || minBase <= 0) continue;
-    const stock = (currentRawStock[ing.id] ?? 0) + (prepStockCreditByRawId?.[ing.id] ?? 0);
-    if (stock >= minBase) {
+    const par = parStateForIngredient(ing, params);
+    if (par == null) continue;
+    if (isFloorParIngredient(ing)) {
+      if (par.stock < par.minBase) out[ing.id] = Math.max(out[ing.id] ?? 0, par.orderBase);
+      continue;
+    }
+    if (par.stock >= par.minBase) {
       delete out[ing.id];
       continue;
     }
-    let orderBase = minBase - stock;
-    if (rule.kind === "packs" && rule.orderPacks != null) {
-      const pack = orderPackByRawId[ing.id];
-      if (pack) {
-        const basePerPack = packSizeToBaseAmount(pack, ing.unit ?? "");
-        if (basePerPack != null && basePerPack > 0) {
-          orderBase = rule.orderPacks * basePerPack;
-        }
-      }
-    }
-    out[ing.id] = orderBase;
+    out[ing.id] = par.orderBase;
+  }
+  return out;
+}
+
+/**
+ * Second pass for 'floor' pars, run after the product-specific gates (mint prep gate,
+ * aubergine/Sabich containers, flour, garlic, …). Those gates drop a line on their own
+ * criteria; an explicit floor par is a deliberate "keep at least this on the shelf" and
+ * has to survive them. Only ever raises a line — never removes or lowers one.
+ */
+export function applyStockParFloorAfterGates(params: StockParParams): Record<string, number> {
+  const { rawIngredients, baseSuggested, countedRawIds } = params;
+  const out = { ...baseSuggested };
+  for (const ing of rawIngredients) {
+    if (!isRawVisibleOnStocktake(ing)) continue;
+    if (!isFloorParIngredient(ing)) continue;
+    if (ing.item_kind === "non_food" && countedRawIds && !countedRawIds.has(ing.id)) continue;
+    const par = parStateForIngredient(ing, params);
+    if (par == null || par.stock >= par.minBase || par.orderBase <= 0) continue;
+    out[ing.id] = Math.max(out[ing.id] ?? 0, par.orderBase);
   }
   return out;
 }
