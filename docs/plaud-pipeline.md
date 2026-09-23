@@ -39,7 +39,7 @@ Check-modus: `{"mode":"check","recordings":[{"file_id","title","create_time","du
 
 1. Kandidaat? `duration_sec ≥ 900` (of transcript ≥ 8000 tekens) óf summary bevat `DOMAIN UPDATES`. Anders: stil negeren (memo).
 2. Al bekend? Sync Log op Plaud file ID → op Key (`sha256(create_time|title)`) → op zelfde dag + zelfde titel (legacy-rijen). Done/Processing → overslaan. Failed/Ignored → alleen opnieuw bij andere bron of expliciete `meeting_type`.
-3. Type: `meeting_type`-override → regex (meeting-naam in eerste 4000 tekens, woordvolgorde-tolerant; los woord weekly/monthly/quarterly in eerste 600 tekens; titel) → Claude-classificatie. Geen management-meeting → rij **Ignored**. Management-meeting zonder type → rij **Failed** + mail.
+3. Type: `meeting_type`-override → regex (meeting-naam in eerste 4000 tekens, woordvolgorde-tolerant; weekly/monthly/quarterly direct voor "meeting" in eerste 600 tekens; titel) → Claude-classificatie. Alleen de override, de uitgesproken meeting-naam of DOMAIN UPDATES in de summary routeert direct; een treffer op opening of titel is een hint die de classificatie eerst moet bevestigen. Geen management-meeting → rij **Ignored**. Management-meeting zonder type → rij **Failed** + mail. (Aanleiding 23-09-2026: een 1-op-1 Marc x Hadi die opende met "the weekly manager check-in" werd als MMMM verwerkt en aan week 39 gehangen.)
 4. Meeting-record in de juiste periode (week/maand/kwartaal, Europe/Amsterdam). Ontbreekt → **Failed** + mail.
 5. Extractie: summary heeft `NEW TO-DO'S` → **Template** (1-op-1 bullets); anders **Transcript**.
 6. Taken → Tasks-DB als "Drafts for review" (dedup laag 2 op Sync ID), meeting-record afronden, Sync Log **Done**, bevestigingsmail.

@@ -50,7 +50,7 @@ export const MEETING_TYPES: MeetingType[] = [
       /\bQMM\b/,
       /strategic\s+meeting/i,
     ],
-    weakWords: /\bquarterly\b/i,
+    weakWords: /\bquarterly\s+(?:[a-z]+\s+){0,2}meeting\b/i,
     meetingDbId: QMM_DB_ID,
     taskRelation: "Created in QMM",
     horizon: "Strategic",
@@ -67,7 +67,7 @@ export const MEETING_TYPES: MeetingType[] = [
       /\bMMM\b/,
       /tactical\s+meeting/i,
     ],
-    weakWords: /\bmonthly\b/i,
+    weakWords: /\bmonthly\s+(?:[a-z]+\s+){0,2}meeting\b/i,
     meetingDbId: MMM_DB_ID,
     taskRelation: "Created in MMM",
     horizon: "Tactical",
@@ -85,7 +85,7 @@ export const MEETING_TYPES: MeetingType[] = [
       /\bMMMM\b/,
       /operational\s+meeting/i,
     ],
-    weakWords: /\bweekly\b/i,
+    weakWords: /\bweekly\s+(?:[a-z]+\s+){0,2}meeting\b/i,
     meetingDbId: MMMM_DB_ID,
     taskRelation: "Created in meeting",
     horizon: "Operational",
@@ -102,17 +102,29 @@ export function meetingTypeByKey(key: string | null | undefined): MeetingType | 
 
 // Drie-laags deterministische detectie (precedence Q>M>W in elke laag):
 //  1) sterke frase (de meeting-naam) in de eerste TRANSCRIPT_WINDOW tekens;
-//  2) los woord weekly/monthly/quarterly in de echte opening (OPENING_WINDOW);
+//  2) weekly/monthly/quarterly direct voor "meeting" in de echte opening (OPENING_WINDOW);
 //  3) titel bevat weekly/monthly/quarterly (los woord).
+// Alleen laag 1 is sterk genoeg om zonder controle te routeren. Laag 2 en 3 zijn
+// hints: de route laat de Claude-classificatie dan eerst bevestigen dat het een
+// management-meeting is (les van 23-09-2026: "We are discussing the weekly manager
+// check-in" in een 1-op-1 Marc x Hadi werd als MMMM verwerkt en aan week 39 gehangen).
 // Geeft null als niets matcht; de route probeert dan de Claude-classificatie.
-export function detectMeetingType(title: string, transcript = ""): MeetingType | null {
+export type DetectionLayer = "phrase" | "opening" | "title";
+export function detectMeetingTypeWithLayer(
+  title: string,
+  transcript = ""
+): { type: MeetingType; layer: DetectionLayer } | null {
   const head = (transcript ?? "").slice(0, TRANSCRIPT_WINDOW);
-  for (const mt of MEETING_TYPES) if (mt.strongPhrases.some((re) => re.test(head))) return mt;
+  for (const mt of MEETING_TYPES) if (mt.strongPhrases.some((re) => re.test(head))) return { type: mt, layer: "phrase" };
   const opening = head.slice(0, OPENING_WINDOW);
-  for (const mt of MEETING_TYPES) if (mt.weakWords.test(opening)) return mt;
+  for (const mt of MEETING_TYPES) if (mt.weakWords.test(opening)) return { type: mt, layer: "opening" };
   const t = title ?? "";
-  for (const mt of MEETING_TYPES) if (mt.keyword.test(t)) return mt;
+  for (const mt of MEETING_TYPES) if (mt.keyword.test(t)) return { type: mt, layer: "title" };
   return null;
+}
+
+export function detectMeetingType(title: string, transcript = ""): MeetingType | null {
+  return detectMeetingTypeWithLayer(title, transcript)?.type ?? null;
 }
 
 // Normaliseer apostrof-varianten/casing voor sectiedetectie.
@@ -259,6 +271,7 @@ export function buildClassifierPrompt(): string {
 - "MMM": the monthly Mima Monthly Meeting — tactical review of numbers per location, staffing, marketing, pricing; horizon 1-6 months.
 - "QMM": the quarterly Quarterly Mima Meeting — strategic, 6+ months, governance.
 Anything else (supplier calls, handovers with other staff, interviews, personal memos, customer conversations) is NOT a management meeting.
+A one-on-one or working session between two of them about a single topic (for example Marc and Hadi designing the managers' weekly check-in, or Marc and Michiel going through a supplier offer) is NOT a management meeting either, even when words like "weekly", "monthly" or "meeting" come up. The management meetings are announced by name at the start and go through domain updates per person.
 
 You get the recording TITLE, DURATION and the OPENING of the transcript. Respond with ONLY a JSON object:
 {"management_meeting": true|false, "type": "MMMM"|"MMM"|"QMM"|null, "confidence": "high"|"medium"|"low", "reason": "<one sentence>"}

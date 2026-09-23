@@ -5,7 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   type MeetingType,
   type Period,
-  detectMeetingType,
+  detectMeetingTypeWithLayer,
   meetingTypeByKey,
   isValidSummary,
   hasTodoSection,
@@ -656,7 +656,14 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
     }
 
     // 3. TYPE-DETECTIE: override -> regex (frase/opening/titel) -> Claude-classificatie.
-    let type: MeetingType | null = rec.typeOverride ?? detectMeetingType(rec.title, rec.transcript);
+    //    Alleen een override, de uitgesproken meeting-naam (laag "phrase") of de
+    //    DOMAIN UPDATES-structuur routeert direct. Een los "weekly"/"monthly" in de
+    //    opening of titel is een hint: de classificatie moet eerst bevestigen dat het
+    //    een management-meeting is (23-09-2026: 1-op-1 over de "weekly manager
+    //    check-in" werd als MMMM verwerkt).
+    const detected = rec.typeOverride ? null : detectMeetingTypeWithLayer(rec.title, rec.transcript);
+    const trusted = rec.typeOverride !== null || hasStructure || detected?.layer === "phrase";
+    let type: MeetingType | null = rec.typeOverride ?? (trusted ? detected?.type ?? null : null);
     let classification: Classification | null = null;
     if (!type) {
       classification = await classifyRecording(anthropic, rec);
@@ -674,7 +681,7 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
         });
         return { ok: true, ignored: true, reason: "not a management meeting", sync_log: notionUrl(syncLogId) };
       }
-      type = classification.type;
+      type = classification.type ?? detected?.type ?? null;
     }
 
     if (!type) {
