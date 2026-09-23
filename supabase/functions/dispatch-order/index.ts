@@ -1508,30 +1508,34 @@ async function diagnoseBidfoodAvailability(
 
 // ─── E-mail (Tuana, Today Food Group) ────────────────────────────────────────
 
-function buildOrderEmailBody(order: Order): string {
-  const locationLabel = order.location_name?.trim() || order.location_id;
+function buildOrderEmailLines(order: Order): string[] {
   const supplierName = (order.supplier?.name ?? "").toLowerCase().trim();
   const isGede = supplierName === "gédé" || supplierName === "gedé";
+  const isVg = isVanGelderSupplierName(order.supplier?.name);
+  return order.order_line_items.map((line, idx) => {
+    const lineCode = isVg
+      ? line.supplier_ingredient?.ean_code ?? null
+      : line.supplier_ingredient?.supplier_article_code ??
+        line.supplier_ingredient?.supplier_sku ??
+        line.supplier_ingredient?.ean_code ??
+        null;
+    const name = line.supplier_ingredient?.supplier_article_name ?? line.raw_ingredient.name;
+    const rawUnit = (line.supplier_ingredient?.order_unit ?? line.unit ?? "").trim();
+    const unit =
+      isGede && /^(stuk|stuks)$/i.test(rawUnit)
+        ? "COLLI"
+        : rawUnit;
+    const codePrefix = lineCode ? `[${lineCode}] ` : "";
+    return `${idx + 1}. ${codePrefix}${name} — ${Math.ceil(line.quantity)} ${unit}`.trim();
+  });
+}
+
+function buildOrderEmailBody(order: Order): string {
+  const locationLabel = order.location_name?.trim() || order.location_id;
   const orderNumber = buildOrderNumber(order);
-  const lines = order.order_line_items
-    .map((line, idx) => {
-      const isVg = isVanGelderSupplierName(order.supplier?.name);
-      const lineCode = isVg
-        ? line.supplier_ingredient?.ean_code ?? null
-        : line.supplier_ingredient?.supplier_article_code ??
-          line.supplier_ingredient?.supplier_sku ??
-          line.supplier_ingredient?.ean_code ??
-          null;
-      const name = line.supplier_ingredient?.supplier_article_name ?? line.raw_ingredient.name;
-      const rawUnit = (line.supplier_ingredient?.order_unit ?? line.unit ?? "").trim();
-      const unit =
-        isGede && /^(stuk|stuks)$/i.test(rawUnit)
-          ? "COLLI"
-          : rawUnit;
-      const codePrefix = lineCode ? `[${lineCode}] ` : "";
-      return `${idx + 1}. ${codePrefix}${name} — ${Math.ceil(line.quantity)} ${unit}`.trim();
-    })
-    .join("\n");
+  // Blank line between order lines: Outlook strips "extra" single line breaks in
+  // plain-text mail, which glued all lines together for GéDé (23-09-2026).
+  const lines = buildOrderEmailLines(order).join("\n\n");
 
   return `Hello ${order.supplier.name},
 
@@ -1544,6 +1548,36 @@ ${lines}
 ${order.notes ? `\nNote: ${order.notes}\n` : ""}
 Kind regards,
 MIMA Kitchen`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** HTML version so mail clients show one order line per row. */
+function buildOrderEmailHtml(order: Order): string {
+  const locationLabel = order.location_name?.trim() || order.location_id;
+  const orderNumber = buildOrderNumber(order);
+  const rows = buildOrderEmailLines(order)
+    .map((l) => `<p style="margin:0 0 8px 0">${escapeHtml(l)}</p>`)
+    .join("\n");
+  const note = order.notes
+    ? `<p style="margin:16px 0 0 0"><strong>Note:</strong> ${escapeHtml(order.notes)}</p>`
+    : "";
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5">
+<p>Hello ${escapeHtml(order.supplier.name ?? "")},</p>
+<p>Please deliver this order as soon as possible.<br>
+Order number: ${escapeHtml(orderNumber)}<br>
+Location: ${escapeHtml(locationLabel)}<br>
+Order date: ${escapeHtml(String(order.order_date))}</p>
+${rows}
+${note}
+<p style="margin-top:16px">Kind regards,<br>MIMA Kitchen</p>
+</div>`;
 }
 
 async function dispatchEmail(
@@ -1616,6 +1650,7 @@ async function dispatchEmail(
       cc: ccList,
       subject,
       text: body,
+      html: buildOrderEmailHtml(order),
     }),
   });
 
