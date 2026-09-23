@@ -350,7 +350,7 @@ function pickSupplierChannel(value: ChannelConfig | ChannelConfig[] | null | und
 function defaultEmailForSupplierName(name: string): string | null {
   const n = name.toLowerCase().trim();
   if (n === "gédé" || n === "gedé") return "info@gede.nl";
-  if (n === "tuana") return "Info@tuana-kruiden.nl";
+  if (n === "tuana") return "info@tuana-kruiden.nl";
   if (n === "today food group") return "sales@todaytradingcompany.nl";
   return null;
 }
@@ -386,10 +386,7 @@ function enrichChannelFromSupplier(
       out.email_cc?.trim() || defaultEmailCcForSupplierName(supplier.name ?? "") || null;
     if (!out.email_subject_template) {
       const n = (supplier.name ?? "").toLowerCase().trim();
-      if (n === "tuana") {
-        out.email_subject_template =
-          "Bestelling MIMA kruiden — {datum} (levering {leverdatum})";
-      } else if (n === "today food group") {
+      if (n === "today food group") {
         out.email_subject_template = "Bestelling MIMA — {datum} (levering {leverdatum})";
       } else {
         out.email_subject_template = "Bestelling MIMA {datum} — levering {leverdatum}";
@@ -1526,7 +1523,12 @@ function buildOrderEmailLines(order: Order): string[] {
         ? "COLLI"
         : rawUnit;
     const codePrefix = lineCode ? `[${lineCode}] ` : "";
-    return `${idx + 1}. ${codePrefix}${name} — ${Math.ceil(line.quantity)} ${unit}`.trim();
+    // No order unit (e.g. Tuana): state the pack size, so "5" reads as "5 × 1 kg".
+    const qty =
+      !unit && line.pack_size?.size
+        ? `${Math.ceil(line.quantity)} × ${Number(line.pack_size.size)} ${line.pack_size.size_unit}`
+        : `${Math.ceil(line.quantity)} ${unit}`;
+    return `${idx + 1}. ${codePrefix}${name} — ${qty}`.trim();
   });
 }
 
