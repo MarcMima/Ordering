@@ -67,3 +67,9 @@ docs/van-gelder-mima-assortiment-status.xlsx
 
 # Supabase CLI local state (regenerated on connect, not source)
 supabase/.temp/
+
+# Local exports and Claude working files: these belong on the NAS, not in git
+exports_*.xlsx
+tmp_*.json
+Claude outputs/
+.claude/worktrees/
