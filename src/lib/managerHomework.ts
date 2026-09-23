@@ -63,9 +63,12 @@ export async function managerHomeworkMails(testTo?: string[]): Promise<{ mails: 
     if (people.error) throw new Error(people.error.message);
     if (checkins.error) throw new Error(checkins.error.message);
     const rows = (checkins.data ?? []) as Row[];
-    const mails = ((people.data ?? []) as Person[]).map((p) => {
+    // Only managers who used the digital check-in this week get a mail. Without a check-in
+    // row there is nothing to remind them of (and no mail before they have been introduced).
+    const mails = ((people.data ?? []) as Person[]).flatMap((p) => {
       const row = rows.find((r) => r.location === p.location);
-      return { name: `manager-homework-${p.location}`, mail: homeworkMail(p, row?.data?.weekAhead ?? [], testTo ?? [p.email]) };
+      if (!row) return [];
+      return [{ name: `manager-homework-${p.location}`, mail: homeworkMail(p, row.data?.weekAhead ?? [], testTo ?? [p.email]) }];
     });
     return { mails };
   } catch (e: unknown) {
