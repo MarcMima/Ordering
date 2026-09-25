@@ -151,6 +151,8 @@ type DispatchResult = {
   error?: string;
   message_body?: string;
   deferred_until_1800?: boolean;
+  /** Java Bakery: wa.me link for staff to ask whether the order e-mail was seen. */
+  whatsapp_confirm_url?: string;
 };
 
 
@@ -1674,6 +1676,22 @@ async function dispatchEmail(
 
 // ─── WhatsApp (Java Bakery) ───────────────────────────────────────────────────
 
+/** Prefilled WhatsApp for staff: "did you see our order e-mail?" (Java reads mail since 25-09-2026). */
+function buildJavaWhatsAppCheckUrl(order: Order, channel: ChannelConfig): string {
+  const phone = (channel.whatsapp_phone || order.supplier.contact_info || "+31620517867").replace(/[^0-9]/g, "");
+  const locationLabel = order.location_name?.trim() || order.location_id;
+  const lines = buildOrderEmailLines(order).map((l) => `- ${l.replace(/^\d+\.\s*/, "")}`);
+  const text = [
+    `Hi Bilal, this is ${locationLabel}.`,
+    `We just sent our order by e-mail to ${channel.email_to ?? "java.bakkerij@gmail.com"}:`,
+    `Order number: ${buildOrderNumber(order)}`,
+    ...lines,
+    "",
+    "Could you please confirm you have seen it? Thank you!",
+  ].join("\n");
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+}
+
 function buildWhatsAppMessage(order: Order): string {
   const locationLabel = order.location_name?.trim() || order.location_id;
   const lines = order.order_line_items
@@ -2058,8 +2076,10 @@ Deno.serve(async (req: Request) => {
 
     const isJavaBakery = (typedOrder.supplier?.name ?? "").toLowerCase().trim() === "java bakery";
     const nowHour = amsterdamHourNow();
+    // Java Bakery by e-mail goes out immediately (Marc, 25-09-2026) so staff can check via
+    // WhatsApp right away; only the old WhatsApp channel still waits for 18:00.
     const shouldDeferJava =
-      (channel.channel === "whatsapp" || channel.channel === "email") &&
+      channel.channel === "whatsapp" &&
       isJavaBakery &&
       !dry_run &&
       action !== "force_send_java_now" &&
@@ -2093,6 +2113,10 @@ Deno.serve(async (req: Request) => {
           error: `Onbekend kanaal: ${channel.channel}`,
         };
       }
+    }
+
+    if (isJavaBakery && channel.channel === "email" && result.success) {
+      result.whatsapp_confirm_url = buildJavaWhatsAppCheckUrl(typedOrder, channel);
     }
 
     // Update dispatch log
