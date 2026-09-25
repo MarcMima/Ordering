@@ -151,8 +151,9 @@ type DispatchResult = {
   error?: string;
   message_body?: string;
   deferred_until_1800?: boolean;
-  /** Java Bakery: wa.me link for staff to ask whether the order e-mail was seen. */
-  whatsapp_confirm_url?: string;
+  /** Java Bakery: example WhatsApp text for staff to check the order e-mail was seen. */
+  whatsapp_check_message?: string;
+  whatsapp_check_phone?: string;
 };
 
 
@@ -291,6 +292,56 @@ function managerEmailForLocation(locationName: string | null | undefined): strin
   if (n.includes("zuidas")) return "zuidas@mimafood.nl";
   if (n.includes("west") || n.includes("amsterdam")) return "jph@mimafood.nl";
   return null;
+}
+
+/** How suppliers should read our locations (Van Gelder delivery addresses, 25-09-2026). */
+const LOCATION_DELIVERY: Record<string, { label: string; address: string }> = {
+  "ea231a2a-bc44-4ab1-bf26-9dcabdeb7c2a": {
+    label: "Mima West",
+    address: "Jan Pieter Heijestraat 180, 1054 MN Amsterdam",
+  },
+  "ffcc1a45-82c3-46ea-97bb-74f94db45c68": {
+    label: "Mima De Pijp",
+    address: "Ceintuurbaan 326, 1075 GM Amsterdam",
+  },
+  "59f20987-be63-4579-b447-2ede73320a1b": {
+    label: "Mima Zuidas",
+    address: "Arnold Schönberglaan 7, 1082 MJ Amsterdam",
+  },
+};
+
+function locationForSupplier(order: Order): { label: string; address: string | null } {
+  const known = LOCATION_DELIVERY[order.location_id];
+  if (known) return known;
+  return { label: order.location_name?.trim() || order.location_id, address: null };
+}
+
+/** "Friday 26 September 2026" for an ISO date. */
+function formatLongDate(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Java Bakery orders for the next delivery day, normally tomorrow. */
+function javaDeliveryPhrase(order: Order): string {
+  const delivery = orderDeliveryDate(order);
+  const when = formatLongDate(delivery);
+  return delivery === addDaysIso(order.order_date, 1) ? `tomorrow, ${when}` : `on ${when}`;
+}
+
+function isJavaBakeryName(name: string | null | undefined): boolean {
+  return (name ?? "").toLowerCase().trim() === "java bakery";
 }
 
 async function sendManagerSkippedLinesEmail(params: {
@@ -1538,18 +1589,19 @@ function buildOrderEmailLines(order: Order): string[] {
 }
 
 function buildOrderEmailBody(order: Order): string {
-  const locationLabel = order.location_name?.trim() || order.location_id;
+  const loc = locationForSupplier(order);
   const orderNumber = buildOrderNumber(order);
+  const isJava = isJavaBakeryName(order.supplier?.name);
   // Blank line between order lines: Outlook strips "extra" single line breaks in
   // plain-text mail, which glued all lines together for GéDé (23-09-2026).
   const lines = buildOrderEmailLines(order).join("\n\n");
 
   return `Hello ${order.supplier.name},
 
-Please deliver this order as soon as possible.
+${isJava ? `Please deliver this order ${javaDeliveryPhrase(order)}.` : "Please deliver this order as soon as possible."}
 Order number: ${orderNumber}
-Location: ${locationLabel}
-Order date: ${order.order_date}
+Location: ${loc.label}
+${loc.address ? `Delivery address: ${loc.address}\n` : ""}${isJava ? `Delivery date: ${formatLongDate(orderDeliveryDate(order))}\n` : ""}Order date: ${order.order_date}
 
 ${lines}
 ${order.notes ? `\nNote: ${order.notes}\n` : ""}
@@ -1567,8 +1619,9 @@ function escapeHtml(value: string): string {
 
 /** HTML version so mail clients show one order line per row. */
 function buildOrderEmailHtml(order: Order): string {
-  const locationLabel = order.location_name?.trim() || order.location_id;
+  const loc = locationForSupplier(order);
   const orderNumber = buildOrderNumber(order);
+  const isJava = isJavaBakeryName(order.supplier?.name);
   const rows = buildOrderEmailLines(order)
     .map((l) => `<p style="margin:0 0 8px 0">${escapeHtml(l)}</p>`)
     .join("\n");
@@ -1577,10 +1630,10 @@ function buildOrderEmailHtml(order: Order): string {
     : "";
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5">
 <p>Hello ${escapeHtml(order.supplier.name ?? "")},</p>
-<p>Please deliver this order as soon as possible.<br>
+<p>${isJava ? `<strong>Please deliver this order ${escapeHtml(javaDeliveryPhrase(order))}.</strong>` : "Please deliver this order as soon as possible."}<br>
 Order number: ${escapeHtml(orderNumber)}<br>
-Location: ${escapeHtml(locationLabel)}<br>
-Order date: ${escapeHtml(String(order.order_date))}</p>
+Location: <strong>${escapeHtml(loc.label)}</strong><br>
+${loc.address ? `Delivery address: ${escapeHtml(loc.address)}<br>\n` : ""}${isJava ? `Delivery date: <strong>${escapeHtml(formatLongDate(orderDeliveryDate(order)))}</strong><br>\n` : ""}Order date: ${escapeHtml(String(order.order_date))}</p>
 ${rows}
 ${note}
 <p style="margin-top:16px">Kind regards,<br>MIMA Kitchen</p>
@@ -1605,7 +1658,9 @@ async function dispatchEmail(
   const subject = subjectTemplate
     .replace("{ordernummer}", orderNumber)
     .replace("{datum}", new Date().toLocaleDateString("en-GB"))
-    .replace("{leverdatum}", orderDeliveryDate(order));
+    .replace("{leverdatum}", orderDeliveryDate(order))
+    .replace("{locatie}", locationForSupplier(order).label)
+    .replace("{leverdag}", formatLongDate(orderDeliveryDate(order)));
 
   const body = buildOrderEmailBody(order);
   const managerCc = managerEmailForLocation(order.location_name ?? null);
@@ -1676,20 +1731,17 @@ async function dispatchEmail(
 
 // ─── WhatsApp (Java Bakery) ───────────────────────────────────────────────────
 
-/** Prefilled WhatsApp for staff: "did you see our order e-mail?" (Java reads mail since 25-09-2026). */
-function buildJavaWhatsAppCheckUrl(order: Order, channel: ChannelConfig): string {
-  const phone = (channel.whatsapp_phone || order.supplier.contact_info || "+31620517867").replace(/[^0-9]/g, "");
-  const locationLabel = order.location_name?.trim() || order.location_id;
+/** Example WhatsApp for staff: "did you see our order e-mail?" (until e-mail ordering is proven). */
+function buildJavaWhatsAppCheckText(order: Order, channel: ChannelConfig): string {
+  const loc = locationForSupplier(order);
   const lines = buildOrderEmailLines(order).map((l) => `- ${l.replace(/^\d+\.\s*/, "")}`);
-  const text = [
-    `Hi Bilal, this is ${locationLabel}.`,
-    `We just sent our order by e-mail to ${channel.email_to ?? "java.bakkerij@gmail.com"}:`,
-    `Order number: ${buildOrderNumber(order)}`,
+  return [
+    `Hi Bilal, this is ${loc.label}${loc.address ? ` (${loc.address})` : ""}.`,
+    `We just e-mailed our order to ${channel.email_to ?? "java.bakkerij@gmail.com"} for delivery ${javaDeliveryPhrase(order)}:`,
     ...lines,
     "",
     "Could you please confirm you have seen it? Thank you!",
   ].join("\n");
-  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 }
 
 function buildWhatsAppMessage(order: Order): string {
@@ -2116,7 +2168,8 @@ Deno.serve(async (req: Request) => {
     }
 
     if (isJavaBakery && channel.channel === "email" && result.success) {
-      result.whatsapp_confirm_url = buildJavaWhatsAppCheckUrl(typedOrder, channel);
+      result.whatsapp_check_message = buildJavaWhatsAppCheckText(typedOrder, channel);
+      result.whatsapp_check_phone = channel.whatsapp_phone || typedOrder.supplier.contact_info || "+31620517867";
     }
 
     // Update dispatch log

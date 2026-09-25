@@ -58,7 +58,7 @@ export function buildSupplierOrderChannelUpsert(
       supplier_id: supplierId,
       channel: "email",
       email_to: email || "java.bakkerij@gmail.com",
-      email_subject_template: "Bestelling MIMA {datum} — levering {leverdatum}",
+      email_subject_template: "MIMA order {locatie} — delivery {leverdag}",
       auto_send: false,
     };
   }

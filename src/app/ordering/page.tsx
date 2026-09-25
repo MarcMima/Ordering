@@ -68,8 +68,9 @@ type DispatchStatus = {
   dryRun?: boolean;
   message?: string;
   error?: string;
-  /** Java Bakery: prefilled WhatsApp asking whether the order e-mail was seen. */
-  whatsappConfirmUrl?: string;
+  /** Java Bakery: example WhatsApp asking whether the order e-mail was seen. */
+  whatsappCheckMessage?: string;
+  whatsappCheckPhone?: string;
 };
 
 
@@ -1792,7 +1793,8 @@ export default function OrderingPage() {
         message?: string;
         error?: string;
         channel?: string;
-        whatsapp_confirm_url?: string;
+        whatsapp_check_message?: string;
+        whatsapp_check_phone?: string;
       } | null;
       if (payload?.ok === false) throw new Error(payload.error ?? "Dispatch failed");
 
@@ -1812,7 +1814,8 @@ export default function OrderingPage() {
           loadingAction: undefined,
           dryRun,
           message: successMessage,
-          whatsappConfirmUrl: payload?.whatsapp_confirm_url,
+          whatsappCheckMessage: payload?.whatsapp_check_message,
+          whatsappCheckPhone: payload?.whatsapp_check_phone,
         },
       }));
     } catch (e) {
@@ -2271,19 +2274,26 @@ export default function OrderingPage() {
             {dispatchStatusBySupplier[sup.id]?.message}
           </p>
         )}
-        {!isPlanning && dispatchStatusBySupplier[sup.id]?.whatsappConfirmUrl && (
-          <div className="mt-2 rounded-md border border-brand-green/40 bg-brand-green/5 p-2 text-xs text-ink">
-            <p>
-              Order e-mailed to Java. Now send them a WhatsApp to check they have seen it.
+        {!isPlanning && dispatchStatusBySupplier[sup.id]?.whatsappCheckMessage && (
+          <div className="mt-2 rounded-md border border-accent-terracotta/50 bg-accent-terracotta/5 p-3 text-xs text-ink">
+            <p className="font-medium">
+              To be safe: also send a WhatsApp to Java Bakery (
+              {dispatchStatusBySupplier[sup.id]?.whatsappCheckPhone}) to check they have seen the order e-mail.
             </p>
-            <a
-              href={dispatchStatusBySupplier[sup.id]?.whatsappConfirmUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-block rounded-md bg-brand-green px-3 py-1.5 font-medium text-white"
+            <p className="mt-2 text-ink/70">For example:</p>
+            <pre className="mt-1 whitespace-pre-wrap rounded bg-white/70 p-2 font-sans text-ink">
+              {dispatchStatusBySupplier[sup.id]?.whatsappCheckMessage}
+            </pre>
+            <button
+              type="button"
+              onClick={() => {
+                const text = dispatchStatusBySupplier[sup.id]?.whatsappCheckMessage ?? "";
+                void navigator.clipboard?.writeText(text).catch(() => undefined);
+              }}
+              className="mt-2 rounded-md border border-ink/20 px-3 py-1 font-medium"
             >
-              WhatsApp Java Bakery
-            </a>
+              Copy message
+            </button>
           </div>
         )}
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.error && (
