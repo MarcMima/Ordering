@@ -56,9 +56,9 @@ export function buildSupplierOrderChannelUpsert(
   if (n === "java bakery") {
     return {
       supplier_id: supplierId,
-      channel: "whatsapp",
-      whatsapp_phone: info || email || "+31620517867",
-      whatsapp_use_api: false,
+      channel: "email",
+      email_to: email || "java.bakkerij@gmail.com",
+      email_subject_template: "Bestelling MIMA {datum} — levering {leverdatum}",
       auto_send: false,
     };
   }

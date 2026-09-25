@@ -351,6 +351,7 @@ function defaultEmailForSupplierName(name: string): string | null {
   const n = name.toLowerCase().trim();
   if (n === "gédé" || n === "gedé") return "info@gede.nl";
   if (n === "tuana") return "info@tuana-kruiden.nl";
+  if (n === "java bakery") return "java.bakkerij@gmail.com";
   if (n === "today food group") return "sales@todaytradingcompany.nl";
   return null;
 }
@@ -474,7 +475,7 @@ function inferChannelFromSupplierName(
   if (n === "java bakery") {
     return enrichChannelFromSupplier(
       {
-        channel: "whatsapp",
+        channel: "email",
         api_base_url: null,
         api_customer_code: null,
         email_to: null,
@@ -1790,7 +1791,7 @@ Deno.serve(async (req: Request) => {
       const { data: pendingRows, error: pendingErr } = await supabase
         .from("order_dispatches")
         .select("id, order_id")
-        .eq("channel", "whatsapp")
+        .in("channel", ["whatsapp", "email"])
         .eq("status", "pending")
         .limit(200);
       if (pendingErr) {
@@ -1851,12 +1852,31 @@ Deno.serve(async (req: Request) => {
         const channelConfig =
           pickSupplierChannel(typedQueuedOrder.supplier?.supplier_order_channels) ??
           inferChannelFromSupplierName(typedQueuedOrder.supplier?.name, typedQueuedOrder.supplier);
-        if (!channelConfig || channelConfig.channel !== "whatsapp") continue;
-        const result = await dispatchWhatsApp(
-          typedQueuedOrder,
-          enrichChannelFromSupplier(channelConfig, typedQueuedOrder.supplier ?? { name: "" }),
-          false
-        );
+        if (!channelConfig || (channelConfig.channel !== "whatsapp" && channelConfig.channel !== "email")) continue;
+
+        const { data: queuedLocation } = await supabase
+          .from("locations")
+          .select("name")
+          .eq("id", typedQueuedOrder.location_id)
+          .single();
+        typedQueuedOrder.location_name = (queuedLocation as { name?: string } | null)?.name ?? null;
+        const { data: queuedSched } = await supabase
+          .from("supplier_delivery_schedules")
+          .select("day_of_week")
+          .eq("location_id", typedQueuedOrder.location_id)
+          .eq("supplier_id", typedQueuedOrder.supplier_id);
+        typedQueuedOrder.requested_delivery_date = resolveNextSupplierDeliveryDateIso({
+          orderDateIso: typedQueuedOrder.order_date,
+          deliveryDaysDb: ((queuedSched ?? []) as { day_of_week: number }[]).map((r) => r.day_of_week),
+        });
+
+        const enrichedChannel = enrichChannelFromSupplier(channelConfig, typedQueuedOrder.supplier ?? { name: "" });
+        // Java Bakery: e-mail (java.bakkerij@gmail.com) since 25-09-2026. A WhatsApp channel without
+        // API only builds a wa.me link nobody opens, so orders never arrived while showing "sent".
+        const result =
+          enrichedChannel.channel === "email"
+            ? await dispatchEmail(typedQueuedOrder, supabase, enrichedChannel, false)
+            : await dispatchWhatsApp(typedQueuedOrder, enrichedChannel, false);
         await supabase
           .from("order_dispatches")
           .update({
@@ -2037,7 +2057,7 @@ Deno.serve(async (req: Request) => {
     const isJavaBakery = (typedOrder.supplier?.name ?? "").toLowerCase().trim() === "java bakery";
     const nowHour = amsterdamHourNow();
     const shouldDeferJava =
-      channel.channel === "whatsapp" &&
+      (channel.channel === "whatsapp" || channel.channel === "email") &&
       isJavaBakery &&
       !dry_run &&
       action !== "force_send_java_now" &&
