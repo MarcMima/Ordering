@@ -585,7 +585,9 @@ function mergeSupplierIngredientForDispatch(row: SupplierIngredientDetails): Ord
   if (row.bf_is_active != null) out.bf_is_active = row.bf_is_active;
   if (row.bf_last_status?.trim()) out.bf_last_status = row.bf_last_status.trim();
 
-  if (!out.ean_code && !out.supplier_article_code) return null;
+  // Keep unit/name for suppliers without article codes (Java Bakery, Tuana); they
+  // used to disappear here, so e-mails read "Frozen flatbreads — 65" without a unit.
+  if (!out.ean_code && !out.supplier_article_code && !out.order_unit && !out.supplier_article_name) return null;
   return out;
 }
 
