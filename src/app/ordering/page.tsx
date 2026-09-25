@@ -68,6 +68,8 @@ type DispatchStatus = {
   dryRun?: boolean;
   message?: string;
   error?: string;
+  /** Java Bakery: prefilled WhatsApp asking whether the order e-mail was seen. */
+  whatsappConfirmUrl?: string;
 };
 
 
@@ -1790,6 +1792,7 @@ export default function OrderingPage() {
         message?: string;
         error?: string;
         channel?: string;
+        whatsapp_confirm_url?: string;
       } | null;
       if (payload?.ok === false) throw new Error(payload.error ?? "Dispatch failed");
 
@@ -1809,6 +1812,7 @@ export default function OrderingPage() {
           loadingAction: undefined,
           dryRun,
           message: successMessage,
+          whatsappConfirmUrl: payload?.whatsapp_confirm_url,
         },
       }));
     } catch (e) {
@@ -2266,6 +2270,21 @@ export default function OrderingPage() {
           >
             {dispatchStatusBySupplier[sup.id]?.message}
           </p>
+        )}
+        {!isPlanning && dispatchStatusBySupplier[sup.id]?.whatsappConfirmUrl && (
+          <div className="mt-2 rounded-md border border-brand-green/40 bg-brand-green/5 p-2 text-xs text-ink">
+            <p>
+              Order e-mailed to Java. Now send them a WhatsApp to check they have seen it.
+            </p>
+            <a
+              href={dispatchStatusBySupplier[sup.id]?.whatsappConfirmUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block rounded-md bg-brand-green px-3 py-1.5 font-medium text-white"
+            >
+              WhatsApp Java Bakery
+            </a>
+          </div>
         )}
         {!isPlanning && dispatchStatusBySupplier[sup.id]?.error && (
           <p className="mt-2 text-xs text-accent-terracotta">
