@@ -562,6 +562,8 @@ export default function OrderingPage() {
   const [revenueTargetCentsForDraft, setRevenueTargetCentsForDraft] = useState<number | null>(null);
   const [supplierRawIdsBySupplier, setSupplierRawIdsBySupplier] = useState<Record<string, string[]>>({});
   const [newRawBySupplier, setNewRawBySupplier] = useState<Record<string, string>>({});
+  /** Raw ids added by hand, in the order they were added; shown at the bottom of the list (Denys, 25-09). */
+  const [manuallyAddedRawIdsBySupplier, setManuallyAddedRawIdsBySupplier] = useState<Record<string, string[]>>({});
   /** Set when suggestion queries fail (RLS/network) so the page is not silently empty. */
   const [suggestionLoadError, setSuggestionLoadError] = useState<string | null>(null);
   const [suggestionRefreshing, setSuggestionRefreshing] = useState(false);
@@ -1570,6 +1572,10 @@ export default function OrderingPage() {
   const addLineForSupplierRaw = (supplierId: string, rawId: string) => {
     const ing = rawIngredients.find((r) => r.id === rawId);
     if (!ing) return;
+    setManuallyAddedRawIdsBySupplier((prev) => ({
+      ...prev,
+      [supplierId]: [...(prev[supplierId] ?? []).filter((id) => id !== rawId), rawId],
+    }));
     const allPacks = packSizesByIngredient[rawId] ?? [];
     const orderPacks = packsForOrder(allPacks);
     const kind = suggestionOrderKindByRaw[rawId] ?? "pack";
@@ -1894,11 +1900,21 @@ export default function OrderingPage() {
       ([rawId, qty]) => qty > 0 && suggestionSupplierByRaw[rawId] === sup.id
     );
     const hasOrderWork = lines.length > 0 || suggestedForSup.length > 0;
-    const linesToShow = [...lines].sort((a, b) =>
-      (a.raw_ingredient_name ?? "").localeCompare(b.raw_ingredient_name ?? "", "en", {
+    // Suggested lines A–Z; lines added by hand go to the bottom in the order they were added,
+    // so you can find and adjust what you just added.
+    const manualOrder = manuallyAddedRawIdsBySupplier[sup.id] ?? [];
+    const linesToShow = [...lines].sort((a, b) => {
+      const ma = manualOrder.indexOf(a.raw_ingredient_id);
+      const mb = manualOrder.indexOf(b.raw_ingredient_id);
+      if (ma !== -1 || mb !== -1) {
+        if (ma === -1) return -1;
+        if (mb === -1) return 1;
+        return ma - mb;
+      }
+      return (a.raw_ingredient_name ?? "").localeCompare(b.raw_ingredient_name ?? "", "en", {
         sensitivity: "base",
-      })
-    );
+      });
+    });
     const isPlanning = mode === "planning" && !allowOffScheduleOrdering;
     const planningExpanded = expandedPlanningSupplierIds.has(sup.id);
     const cardEmphasized =
