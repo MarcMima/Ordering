@@ -2145,7 +2145,10 @@ export default function OrderingPage() {
                     return (
                       <div className="mt-1 flex w-full basis-full flex-wrap items-center gap-1.5">
                         <span className="text-xs text-ink-soft/70">
-                          Why different? (optional)
+                          {/* Show the suggestion, otherwise it looks random why only some lines ask for a reason. */}
+                          {suggestedQty > 0
+                            ? `App suggested ${suggestedQty} — why different? (optional)`
+                            : "Not suggested by the app — why added? (optional)"}
                         </span>
                         {ADJUSTMENT_REASONS.map((opt) => {
                           const active = reason === opt.value;
