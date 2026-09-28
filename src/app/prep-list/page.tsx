@@ -31,6 +31,7 @@ import {
   ADJUSTMENT_REASONS,
   computeBaseSuggestions,
   reasonLabel,
+  type PrepCount,
   type AdjustmentReason,
   type SuggestionDecision,
 } from "@/lib/prepBaseSuggestions";
@@ -265,6 +266,8 @@ export default function PrepListPage() {
   const [completed, setCompleted] = useState<Record<string, boolean>>({});
   const [adjustments, setAdjustments] = useState<PrepListAdjustment[]>([]);
   const [history, setHistory] = useState<PrepListAdjustment[]>([]);
+  /** Daily prep counts over the learning window, to measure real usage. */
+  const [historyCounts, setHistoryCounts] = useState<PrepCount[]>([]);
   const [decisions, setDecisions] = useState<SuggestionDecision[]>([]);
   const [pendingReasonId, setPendingReasonId] = useState<string | null>(null);
   const [addReason, setAddReason] = useState<AdjustmentReason | null>(null);
@@ -290,6 +293,7 @@ export default function PrepListPage() {
       setCompleted({});
       setAdjustments([]);
       setHistory([]);
+      setHistoryCounts([]);
       setDecisions([]);
       return;
     }
@@ -299,7 +303,7 @@ export default function PrepListPage() {
 
     void (async () => {
       const revCents = await ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d);
-      const [lpiRes, countRes, rawStockRes, rawRes, locRes, adjRes, decRes] = await Promise.all([
+      const [lpiRes, countRes, rawStockRes, rawRes, locRes, adjRes, decRes, histCountRes] = await Promise.all([
         supabase
           .from("location_prep_items")
           .select("id, location_id, prep_item_id, base_quantity, display_order, prep_items(*)")
@@ -333,6 +337,12 @@ export default function PrepListPage() {
           .from("prep_base_suggestion_decisions")
           .select("prep_item_id, created_at")
           .eq("location_id", locationId),
+        supabase
+          .from("daily_prep_counts")
+          .select("prep_item_id, date, quantity")
+          .eq("location_id", locationId)
+          .gte("date", isoDaysAgo(d, SUGGESTION_WINDOW_DAYS))
+          .lte("date", d),
       ]);
       try {
         if (lpiRes.error) throw new Error(lpiRes.error.message);
@@ -342,6 +352,7 @@ export default function PrepListPage() {
         if (locRes.error) throw new Error(locRes.error.message);
         if (adjRes.error) throw new Error(adjRes.error.message);
         if (decRes.error) throw new Error(decRes.error.message);
+        if (histCountRes.error) throw new Error(histCountRes.error.message);
 
         const raw = (lpiRes.data as (Omit<LocationPrepItemRow, "prep_items"> & { prep_items: PrepItem | PrepItem[] | null })[]) ?? [];
         const items: LocationPrepItemRow[] = raw.map((row) => ({
@@ -367,6 +378,7 @@ export default function PrepListPage() {
         setAdjustments(allAdj.filter((a) => a.date === d));
         setHistory(allAdj);
         setDecisions((decRes.data as SuggestionDecision[]) ?? []);
+        setHistoryCounts((histCountRes.data as PrepCount[]) ?? []);
         setCompleted(getStoredDone(locationId, d));
         setError(null);
       } catch (e) {
@@ -647,8 +659,8 @@ export default function PrepListPage() {
     });
 
   const suggestions = useMemo(
-    () => computeBaseSuggestions({ adjustments: history, locationPrepItems, decisions }),
-    [history, locationPrepItems, decisions]
+    () => computeBaseSuggestions({ adjustments: history, locationPrepItems, decisions, counts: historyCounts }),
+    [history, locationPrepItems, decisions, historyCounts]
   );
 
   const decideSuggestion = (
