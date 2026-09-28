@@ -85,6 +85,12 @@ type OrderLine = {
   quantity: number;
   /** Wat het systeem adviseerde in base units, vastgelegd bij het opbouwen van de regel. */
   suggested_base_qty?: number | null;
+  /**
+   * What the app suggested for this line (packs) when it entered the list; 0 = added by hand.
+   * The "why different?" chips compare against this, not against the live suggestion, which
+   * is recalculated during the day and made the chips look random (Barbara, 27-09-2026).
+   */
+  suggested_quantity?: number;
   /** Optionele incidentele reden dat deze regel afwijkt van de suggestie. */
   adjustment_reason?: AdjustmentReason | null;
   adjustment_note?: string | null;
@@ -360,7 +366,10 @@ function buildOrderLinesFromSuggestion(
     next[supplierId].push(line);
   }
   for (const supplierId of Object.keys(next)) {
-    next[supplierId] = mergeOrderLines(next[supplierId]);
+    next[supplierId] = mergeOrderLines(next[supplierId]).map((l) => ({
+      ...l,
+      suggested_quantity: l.quantity,
+    }));
   }
   return next;
 }
@@ -1591,6 +1600,7 @@ export default function OrderingPage() {
         size_unit: pack.size_unit,
         price_cents: pack.price_cents ?? null,
         quantity,
+        suggested_quantity: 0,
       };
       setManualOrderOverrides((prev) => {
         const base = { ...(prev ?? autoOrderBySupplierRef.current) };
@@ -1627,6 +1637,7 @@ export default function OrderingPage() {
       size_unit: best?.size_unit ?? (kind === "stocktake" ? ing.unit ?? "" : ""),
       price_cents: best?.price_cents ?? null,
       quantity: 1,
+      suggested_quantity: 0,
     };
     setManualOrderOverrides((prev) => {
       const base = { ...(prev ?? autoOrderBySupplierRef.current) };
@@ -2139,7 +2150,8 @@ export default function OrderingPage() {
                   {!isPlanning && (() => {
                     // Chips verschijnen pas als het aantal afwijkt van de suggestie, en
                     // blokkeren niets: bestellen kan gewoon zonder een reden te kiezen.
-                    const suggestedQty = suggestedQuantityForLine(sup.id, lineKey);
+                    const suggestedQty =
+                      line.suggested_quantity ?? suggestedQuantityForLine(sup.id, lineKey);
                     if (line.quantity === suggestedQty) return null;
                     const reason = line.adjustment_reason ?? null;
                     return (
