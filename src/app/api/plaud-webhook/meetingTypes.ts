@@ -270,10 +270,11 @@ export function buildClassifierPrompt(): string {
 - "MMMM": the weekly Mima Monday Morning Meeting — operational, short horizon (this week / this month), domain updates per person, to-do's.
 - "MMM": the monthly Mima Monthly Meeting — tactical review of numbers per location, staffing, marketing, pricing; horizon 1-6 months.
 - "QMM": the quarterly Quarterly Mima Meeting — strategic, 6+ months, governance.
-Anything else (supplier calls, handovers with other staff, interviews, personal memos, customer conversations) is NOT a management meeting.
-A one-on-one or working session between two of them about a single topic (for example Marc and Hadi designing the managers' weekly check-in, or Marc and Michiel going through a supplier offer) is NOT a management meeting either, even when words like "weekly", "monthly" or "meeting" come up. The management meetings are announced by name at the start and go through domain updates per person.
+- "MGR": the Mima Manager Meeting — Hadi's weekly Monday meeting with the three restaurant managers (Sergey of West, Danny of De Pijp, Adrian of Zuidas). Hadi chairs and goes through the locations one by one: last week's commitments, the numbers, their people, the week ahead. It is not a management meeting: return management_meeting false and type "MGR".
+Anything else (supplier calls, handovers with other staff, interviews, personal memos, customer conversations) is NOT a management meeting and not "MGR".
+A one-on-one or working session between two of them about a single topic (for example Marc and Hadi designing the managers' weekly check-in, or Marc and Michiel going through a supplier offer) is NOT a management meeting and NOT "MGR" either, even when words like "weekly", "monthly" or "meeting" come up. The management meetings are announced by name at the start and go through domain updates per person.
 
 You get the recording TITLE, DURATION and the OPENING of the transcript. Respond with ONLY a JSON object:
-{"management_meeting": true|false, "type": "MMMM"|"MMM"|"QMM"|null, "confidence": "high"|"medium"|"low", "reason": "<one sentence>"}
+{"management_meeting": true|false, "type": "MMMM"|"MMM"|"QMM"|"MGR"|null, "confidence": "high"|"medium"|"low", "reason": "<one sentence>"}
 If it is a management meeting but you cannot tell which type, set management_meeting true and type null.`;
 }

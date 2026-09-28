@@ -15,9 +15,21 @@ import {
   buildTranscriptSystemPrompt,
   buildClassifierPrompt,
   TRANSCRIPT_WINDOW,
+  MEETING_TYPES,
 } from "./meetingTypes";
+import {
+  MANAGER_MEETING_NAME,
+  MANAGER_MEETING_LABEL,
+  buildManagerActionsPrompt,
+  checkinWeekFor,
+  detectManagerMeeting,
+  normalizeActionText,
+  normalizeActions,
+  type ManagerAction,
+} from "./managerMeeting";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { finalizeMeetingRecord } from "./meetingRecord";
-import { draftsReviewMail, sendBrandedMail } from "@/lib/meetingEmails";
+import { HADI, draftsReviewMail, renderEmail, sendBrandedMail } from "@/lib/meetingEmails";
 
 // Plaud-meeting -> Notion-taken webhook.
 //
@@ -91,7 +103,7 @@ type PlaudPayload = {
   duration_sec?: number;
   duration_ms?: number;
   source?: string;
-  meeting_type?: string; // expliciete override: MMMM | MMM | QMM
+  meeting_type?: string; // expliciete override: MMMM | MMM | QMM | MGR (Mima Manager Meeting)
   wait?: boolean; // true = synchroon verwerken (tests); default: after()
   recordings?: Array<{ file_id?: string; title?: string; create_time?: string; duration_sec?: number }>;
 };
@@ -119,6 +131,7 @@ type Recording = {
   durationSec: number | null;
   source: Source;
   typeOverride: MeetingType | null;
+  managerOverride: boolean; // meeting_type "MGR": Hadi's meeting with the restaurant managers
 };
 
 // ---- Helpers --------------------------------------------------------------
@@ -175,6 +188,7 @@ function parseRecording(body: PlaudPayload): Recording {
     durationSec,
     source: parseSource(body.source),
     typeOverride: meetingTypeByKey(body.meeting_type),
+    managerOverride: (body.meeting_type ?? "").trim().toUpperCase() === "MGR",
   };
 }
 
@@ -287,6 +301,7 @@ async function createSyncLog(
     meetingPageId: string | null;
     status: SyncStatus;
     type: MeetingType | null;
+    typeLabel?: string; // Sync Log "Meeting type" zonder MeetingType (bv. "Manager")
     extraction?: Extraction;
     note?: string;
     // Meeting-relatie alleen zetten voor MMMM (relatie wijst enkel naar de MMMM-db).
@@ -301,7 +316,8 @@ async function createSyncLog(
     Status: { select: { name: args.status } },
     Source: { select: { name: rec.source } },
   };
-  if (args.type) properties["Meeting type"] = { select: { name: args.type.label } };
+  const typeName = args.type?.label ?? args.typeLabel;
+  if (typeName) properties["Meeting type"] = { select: { name: typeName } };
   if (rec.fileId) properties["Plaud file ID"] = { rich_text: [{ text: { content: rec.fileId } }] };
   if (rec.durationSec) properties["Duur (min)"] = { number: Math.round(rec.durationSec / 60) };
   if (args.extraction) properties["Extraction"] = { select: { name: args.extraction } };
@@ -371,6 +387,7 @@ async function findMeetingInPeriod(
 // ---- Claude: classificatie-vangnet ----------------------------------------
 type Classification = {
   management_meeting: boolean;
+  manager_meeting: boolean; // Mima Manager Meeting (Hadi + restaurant managers)
   type: MeetingType | null;
   confidence: string;
   reason: string;
@@ -403,8 +420,10 @@ async function classifyRecording(anthropic: Anthropic, rec: Recording): Promise<
     confidence?: string;
     reason?: string;
   };
+  const rawType = String(parsed.type ?? "").trim().toUpperCase();
   return {
-    management_meeting: Boolean(parsed.management_meeting),
+    manager_meeting: rawType === "MGR",
+    management_meeting: rawType !== "MGR" && Boolean(parsed.management_meeting),
     type: meetingTypeByKey(parsed.type ?? null),
     confidence: parsed.confidence ?? "unknown",
     reason: parsed.reason ?? "",
@@ -598,6 +617,7 @@ async function handleCheck(notion: Client, body: PlaudPayload) {
       durationSec: typeof r.duration_sec === "number" ? r.duration_sec : null,
       source: "Watchdog",
       typeOverride: null,
+      managerOverride: false,
     };
     const key = sha256_32(`${rec.createTime}|${rec.title}`);
     try {
@@ -644,7 +664,7 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
     // opnieuw proberen; dezelfde bron zonder override blijft handmatig-review.
     if (existing && (existingStatus === "Failed" || existingStatus === "Ignored")) {
       const prevSource = existing.properties?.Source?.select?.name as string | undefined;
-      const retry = rec.typeOverride !== null || (prevSource && prevSource !== rec.source);
+      const retry = rec.typeOverride !== null || rec.managerOverride || (prevSource && prevSource !== rec.source);
       if (!retry) {
         return {
           ok: true,
@@ -655,6 +675,19 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
       }
     }
 
+    // 2b. MIMA MANAGER MEETING (Hadi + restaurantmanagers, sinds 28-09-2026). Gaat vóór de
+    //     management-detectie: in die meeting valt makkelijk "Monday morning meeting" of
+    //     "operational". Alleen de uitgesproken naam (of override) routeert direct; een titel
+    //     is een hint voor de classificatie hieronder.
+    const managerLayer = rec.typeOverride
+      ? null
+      : rec.managerOverride
+        ? "phrase"
+        : detectManagerMeeting(rec.title, rec.transcript, MEETING_TYPES.flatMap((m) => m.strongPhrases));
+    if (managerLayer === "phrase") {
+      return processManagerMeeting(notion, anthropic, rec, recordingKey, rec.managerOverride ? "override MGR" : "meeting name spoken");
+    }
+
     // 3. TYPE-DETECTIE: override -> regex (frase/opening/titel) -> Claude-classificatie.
     //    Alleen een override, de uitgesproken meeting-naam (laag "phrase") of de
     //    DOMAIN UPDATES-structuur routeert direct. Een los "weekly"/"monthly" in de
@@ -662,11 +695,15 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
     //    een management-meeting is (23-09-2026: 1-op-1 over de "weekly manager
     //    check-in" werd als MMMM verwerkt).
     const detected = rec.typeOverride ? null : detectMeetingTypeWithLayer(rec.title, rec.transcript);
-    const trusted = rec.typeOverride !== null || hasStructure || detected?.layer === "phrase";
+    const trusted =
+      rec.typeOverride !== null || hasStructure || (detected?.layer === "phrase" && managerLayer !== "title");
     let type: MeetingType | null = rec.typeOverride ?? (trusted ? detected?.type ?? null : null);
     let classification: Classification | null = null;
     if (!type) {
       classification = await classifyRecording(anthropic, rec);
+      if (classification.manager_meeting && !hasStructure) {
+        return processManagerMeeting(notion, anthropic, rec, recordingKey, `classifier (${classification.confidence}): ${classification.reason}`);
+      }
       if (!classification.management_meeting && !hasStructure) {
         // Geen management-meeting (leveranciersgesprek, overdracht, ...). Wel spoor
         // achterlaten: lange opname, bewust genegeerd — zichtbaar, geen mail.
@@ -859,6 +896,161 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
       "Herstel: stuur de opname opnieuw aan (watchdog of Zapier re-fire).",
     ]);
     return { ok: false, error: err?.message ?? "unexpected error" };
+  }
+}
+
+// ---- Mima Manager Meeting -------------------------------------------------
+// Hadi's Monday meeting with the restaurant managers. Commitments go to Supabase
+// (manager_meeting_actions), not to Notion Tasks: the managers don't use Notion, and
+// mima-meetings shows them on /ops/meeting, on each manager's page and in the Thursday mail.
+async function extractManagerActions(anthropic: Anthropic, rec: Recording, meetingDate: string): Promise<ManagerAction[]> {
+  const msg = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 12000,
+    temperature: 0,
+    system: buildManagerActionsPrompt(),
+    messages: [
+      {
+        role: "user",
+        content: [
+          `MEETING DATE: ${meetingDate}`,
+          "",
+          "=== SUMMARY (may be empty; checklist only) ===",
+          rec.summary || "(none)",
+          "",
+          "=== TRANSCRIPT (authoritative) ===",
+          rec.transcript || "(none)",
+        ].join("\n"),
+      },
+    ],
+  });
+  if (msg.stop_reason === "max_tokens") throw new Error("Claude extraction truncated (hit max_tokens)");
+  const text = msg.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+  return normalizeActions(JSON.parse(stripFences(text)));
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const MEETINGS_URL = process.env.MEETINGS_URL ?? "https://mima-meetings.vercel.app";
+
+function managerActionsMail(meetingDate: string, actions: ManagerAction[]) {
+  const people = [...new Set(actions.map((a) => a.person))];
+  const line = (a: ManagerAction) => `${a.action}${a.due ? ` (${a.due})` : ""}${a.location !== "All" && a.role !== "manager" ? ` [${a.location}]` : ""}`;
+  const text =
+    `Hi Hadi,\n\nThe ${MANAGER_MEETING_NAME} of ${meetingDate} has been processed. This is what everyone said they would do:\n\n` +
+    people.map((p) => `${p}\n${actions.filter((a) => a.person === p).map((a) => `- ${line(a)}`).join("\n")}`).join("\n\n") +
+    `\n\nCheck and tick them off in Mima Meetings: ${MEETINGS_URL}/ops/meeting`;
+  const html = renderEmail({
+    eyebrow: `${MANAGER_MEETING_NAME} &middot; ${escHtml(meetingDate)}`,
+    heading: "What everyone said they would do",
+    paragraphs: [
+      "The recording has been processed. Anything wrong or missing? Change it in Mima Meetings; the managers see their own list there and get it again on Thursday.",
+      ...people.map(
+        (p) =>
+          `<strong>${escHtml(p)}</strong><ol style="margin:6px 0 0 18px;padding:0;">${actions
+            .filter((a) => a.person === p)
+            .map((a) => `<li style="margin:4px 0;">${escHtml(line(a))}</li>`)
+            .join("")}</ol>`
+      ),
+    ],
+    buttonLabel: "Open the manager meeting",
+    buttonUrl: `${MEETINGS_URL}/ops/meeting`,
+    footer: "You're receiving this because you chair the Mima Manager Meeting. It's sent when the Plaud recording has been processed.",
+  });
+  return { to: [HADI], subject: `${MANAGER_MEETING_NAME} ${meetingDate}: ${actions.length} commitments`, text, html };
+}
+
+async function processManagerMeeting(
+  notion: Client,
+  anthropic: Anthropic,
+  rec: Recording,
+  recordingKey: string,
+  how: string
+): Promise<Outcome> {
+  let syncLogId: string | null = null;
+  const meetingDate = amsterdamDate(rec.createTime);
+  const weekStart = checkinWeekFor(meetingDate);
+  try {
+    syncLogId = await createSyncLog(notion, {
+      recordingKey,
+      rec,
+      meetingPageId: null,
+      status: "Processing",
+      type: null,
+      typeLabel: MANAGER_MEETING_LABEL,
+      extraction: "Transcript",
+      note: `${MANAGER_MEETING_NAME} (${how}). Commitments go to mima-meetings, not to Notion Tasks.`,
+      linkMeeting: false,
+    });
+
+    const actions = await extractManagerActions(anthropic, rec, meetingDate);
+    const source = rec.fileId ?? recordingKey;
+    const rows = actions.map((a) => ({
+      meeting_date: meetingDate,
+      week_start: weekStart,
+      location: a.location,
+      person: a.person,
+      role: a.role,
+      action: a.action,
+      due: a.due,
+      quote: a.quote,
+      speaker: a.speaker,
+      plaud_file_id: rec.fileId,
+      sync_key: sha256_32(`${source}|${a.person.toLowerCase()}|${normalizeActionText(a.action)}`),
+    }));
+    let created = 0;
+    if (rows.length) {
+      const db = createAdminClient();
+      const { data, error } = await db
+        .from("manager_meeting_actions")
+        .upsert(rows, { onConflict: "sync_key", ignoreDuplicates: true })
+        .select("id");
+      if (error) throw new Error(`Supabase manager_meeting_actions: ${error.message}`);
+      created = data?.length ?? 0;
+    }
+
+    await updateSyncLog(notion, syncLogId, { status: "Done", tasksCreated: created, processedAt: new Date().toISOString() });
+
+    const byPerson = [...new Set(actions.map((a) => a.person))].map(
+      (p) => `${p}: ${actions.filter((a) => a.person === p).length}`
+    );
+    await sendMail(`✅ Plaud: ${MANAGER_MEETING_NAME} verwerkt, ${created} toezeggingen`, [
+      `${MANAGER_MEETING_NAME} van ${meetingDate} is verwerkt (check-in-week ${weekStart}).`,
+      `Toezeggingen: ${created} nieuw (geëxtraheerd: ${actions.length}). Per persoon: ${byPerson.join(", ") || "geen"}.`,
+      `Herkend via: ${how}.`,
+      "Ze staan in mima-meetings (/ops/meeting en de pagina van elke manager), niet in Notion Tasks.",
+      "",
+      ...recordingLines(rec),
+      "",
+      `Sync Log: ${notionUrl(syncLogId)}`,
+    ]);
+    let hadiMail: { sent: boolean; error?: string } = { sent: false };
+    if (created > 0) {
+      const r = await sendBrandedMail(managerActionsMail(meetingDate, actions));
+      hadiMail = { sent: r.ok, error: r.error };
+    }
+    return { ok: true, type: "MGR", created, extracted: actions.length, week_start: weekStart, sync_log: notionUrl(syncLogId), hadiMail };
+  } catch (err: any) {
+    console.error(`[plaud-webhook] manager meeting failed: ${err?.message ?? err}`);
+    try {
+      if (syncLogId) await updateSyncLog(notion, syncLogId, { status: "Failed", note: `Manager meeting: ${err?.message ?? err}` });
+    } catch (e: any) {
+      console.error(`[plaud-webhook] failed to mark Sync Log as Failed: ${e?.message ?? e}`);
+    }
+    await sendMail(`❌ Plaud: ${MANAGER_MEETING_NAME} niet verwerkt`, [
+      `Fout: ${err?.message ?? err}`,
+      "",
+      ...recordingLines(rec),
+      "",
+      syncLogId ? `Sync Log: ${notionUrl(syncLogId)}` : "Sync Log-rij kon niet worden aangemaakt.",
+      'Herstel: stuur de opname opnieuw aan met meeting_type "MGR".',
+    ]);
+    return { ok: false, error: err?.message ?? "manager meeting failed" };
   }
 }
 

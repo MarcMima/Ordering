@@ -69,3 +69,25 @@ Nog beter: registreer in de Plaud-app je eigen stemprofiel (Speaker → naam), d
 - Vercel Hobby: runtime-logs 1 uur, max 2 crons. Daarom logt de webhook alles wat telt in de Sync Log en mail, niet alleen in Vercel-logs.
 - De transcript-route is minder strak dan de template-route: reken op een paar extra of te ruim geformuleerde drafts. Het reviewmoment ("Drafts for review") is de vangrail.
 - De watchdog draait als Claude-taak met jouw connectors; verloopt de Plaud-autorisatie, dan mailt hij dat (en faalt niet stil).
+
+## Mima Manager Meeting (sinds 28-09-2026)
+
+Hadi's maandagmeeting met de restaurantmanagers (Sergey West, Danny De Pijp, Adrian Zuidas).
+Geen management-meeting: er gaat niets naar Notion Tasks.
+
+- **Herkenning** (`managerMeeting.ts`, vóór de MMMM/MMM/QMM-detectie): de naam "Mima Manager
+  Meeting" (of "manager meeting / check-in", "meeting with the managers") in de eerste 1500
+  tekens, tenzij een management-meetingnaam daar al volledig vóór stond. Alleen de titel
+  ("Manager Meeting") is een hint; de Claude-classificatie (type `MGR`) beslist dan.
+  Override: `meeting_type: "MGR"`.
+- **Extractie**: Claude haalt uit het transcript alles wat iemand toezegt (managers, Hadi,
+  anderen), met persoon, vestiging (`All` = niet vestigingsgebonden), deadline, citaat, spreker.
+- **Opslag**: Supabase (Ordering-project) tabel `manager_meeting_actions`, `week_start` =
+  check-in-week (maandag van de week ervoor, zoals `manager_checkins`). Dedup op `sync_key`
+  = sha256(file ID | persoon | actie). RLS: `meeting_can_see(location)`.
+- **Sync Log**: Meeting type "Manager", Extraction Transcript, Tasks created = aantal toezeggingen.
+- **Mails**: Marc krijgt de gewone bevestiging; Hadi krijgt de lijst per persoon met een link
+  naar /ops/meeting. De donderdagmail aan de managers (`managerHomework.ts`) voegt de
+  opgenomen toezeggingen toe aan die uit hun check-in.
+- **Tonen**: mima-meetings, /ops/meeting (stap per vestiging en afsluiting) en de pagina van
+  elke manager.
