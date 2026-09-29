@@ -128,6 +128,7 @@ const SUPPLIER_CARD_PRIORITY = [
   "gedé",
   "today food group",
   "tuana",
+  "quatra",
 ] as const;
 
 function sortSuppliersForOrdering(list: Supplier[]): Supplier[] {
@@ -217,7 +218,7 @@ function isSupplierOrderDayToday(
   const isWeeklyKitchenDay =
     weeklyDow != null && weeklyDow >= 0 && weeklyDow <= 6 && todayDow === weeklyDow;
 
-  // Tuana / Today Food Group (no fixed delivery schedule): weekly stocktake day only.
+  // Tuana / Quatra / Today Food Group (no fixed delivery schedule): weekly stocktake day only.
   if (isOnDemandSupplierName(supplierName) || deliveryDaysJs.length === 0) {
     return isWeeklyKitchenDay;
   }
