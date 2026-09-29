@@ -26,7 +26,10 @@ const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string }[] = [
   { key: "handenwas", label: "Hand-wash station" },
   { key: "spoelbakken", label: "Sinks" },
   { key: "snijgereedschap", label: "Cutting tools" },
+  { key: "messenmagneet", label: "Magnetic knife holder" },
   { key: "snijplanken", label: "Cutting boards" },
+  { key: "blikopener", label: "Can opener" },
+  { key: "keukengereihouder", label: "Utensil holder" },
   { key: "keukenmachines", label: "Kitchen machines" },
   { key: "kleine_materialen", label: "Small production items" },
 ];

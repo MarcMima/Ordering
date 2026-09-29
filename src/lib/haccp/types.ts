@@ -169,7 +169,10 @@ export type HaccpSchoonmaakRow = {
   | "snijgereedschap"
   | "snijplanken"
   | "keukenmachines"
-  | "kleine_materialen",
+  | "kleine_materialen"
+  | "blikopener"
+  | "messenmagneet"
+  | "keukengereihouder",
   (boolean | null)[]
 >;
 
