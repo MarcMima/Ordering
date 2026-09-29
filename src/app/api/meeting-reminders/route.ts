@@ -16,9 +16,10 @@ import { NextResponse } from "next/server";
 //   4. manager-homework — elke DONDERDAG (ochtend): de restaurantmanagers krijgen de drie
 //                   toezeggingen uit hun maandag-check-in ("the week ahead") als huiswerk
 //                   (src/lib/managerHomework.ts, sinds 23-09-2026).
-//   3. pre-MMM    — TWEE momenten vóór de MMM (eerste DINSDAG v/d maand): een week
-//                   ervoor (de vorige dinsdag) én een dag ervoor (de maandag). Team
-//                   updatet data en bereidt zaken voor.
+//   3. pre-MMM    — TWEE momenten vóór de maandmeeting: een week ervoor én de laatste
+//                   werkdag ervoor. De datum komt uit de Notion MMM/QMM-records (zelfde
+//                   planning als de meetings-app); de eerste dinsdag v/d maand is alleen
+//                   de vulling voor maanden zonder record.
 //
 // Verzending gaat via Resend (zelfde conventie als plaud-webhook: RESEND_API_KEY +
 // FROM_EMAIL). Alle team-mail is Engelstalig — Hadi (Operations) leest mee.
@@ -90,18 +91,116 @@ function diffDays(fromMs: number, toMs: number): number {
   return Math.round((toMs - fromMs) / 86_400_000);
 }
 
-// Valt vandaag exact `daysBefore` dagen vóór een eerste-dinsdag-MMM?
-// We kijken naar de eerste dinsdag van deze én de volgende maand (jaar-overgang mee).
-// Gebruikt voor twee momenten: een week ervoor (7) en een dag ervoor (1).
-function mmmDaysAway(p: AmsParts, daysBefore: number): { y: number; m: number; d: number } | null {
+// ---- Planning van de maandmeeting (MMM/QMM) ---------------------------------
+// Sinds 29-09-2026 volgt deze route dezelfde planning als de meetings-app
+// (mima-meetings, src/lib/notion.ts resolveNext): de Notion meeting-records zijn de
+// planning, de vaste regel (eerste dinsdag) vult alleen maanden zonder record.
+// Een MMM/QMM-record binnen 15 dagen van de regeldatum vervangt die regeldatum
+// (MMM en QMM delen het maandslot). Aanleiding: MMM oktober werd naar ma 28-09
+// gehaald, maar op 29-09 ging toch "MMM in a week (6 October)" uit.
+// Wordt een meeting in de agenda verplaatst: verplaats ook de Date van het record.
+type Ymd = { y: number; m: number; d: number };
+const MONTHLY_DB_IDS: Record<"MMM" | "QMM", string> = {
+  MMM: process.env.MMM_DB_ID ?? "39c21d9d7c6a80ae8178f531269a51a7",
+  QMM: process.env.QMM_DB_ID ?? "39c21d9d7c6a80e38707f6bb6f9dc5b1",
+};
+type MonthlySchedule = { dates: Ymd[]; source: "notion" | "rule"; records: string[]; error?: string };
+
+function ymdFromMs(ms: number): Ymd {
+  const d = new Date(ms);
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() };
+}
+function ymdIso(x: Ymd): string {
+  return `${x.y}-${String(x.m).padStart(2, "0")}-${String(x.d).padStart(2, "0")}`;
+}
+function addMonths(y: number, m1: number, n: number): { y: number; m: number } {
+  const idx = y * 12 + (m1 - 1) + n;
+  return { y: Math.floor(idx / 12), m: (idx % 12) + 1 };
+}
+
+async function fetchMonthlyRecords(fromIso: string, toIso: string): Promise<{ dates: string[]; error?: string }> {
+  const token = process.env.NOTION_TOKEN;
+  if (!token) return { dates: [], error: "NOTION_TOKEN missing" };
+  const out: string[] = [];
+  try {
+    for (const [type, id] of Object.entries(MONTHLY_DB_IDS)) {
+      const res = await fetch(`https://api.notion.com/v1/databases/${id}/query`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Notion-Version": NOTION_VERSION,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filter: {
+            and: [
+              { property: "Date", date: { on_or_after: fromIso } },
+              { property: "Date", date: { on_or_before: toIso } },
+            ],
+          },
+          page_size: 50,
+        }),
+      });
+      if (!res.ok) return { dates: [], error: `${type}: ${res.status} ${await res.text()}` };
+      const data = (await res.json()) as { results: Array<{ properties: { Date?: { date?: { start?: string } | null } } }> };
+      for (const r of data.results) {
+        const start = r.properties?.Date?.date?.start?.slice(0, 10);
+        if (start) out.push(start);
+      }
+    }
+    return { dates: out };
+  } catch (e: unknown) {
+    return { dates: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Alle maandmeeting-datums rond vandaag (vorige t/m over twee maanden).
+async function monthlySchedule(p: AmsParts): Promise<MonthlySchedule> {
   const today = dateOnly(p.year, p.month, p.day);
-  const nextMonth = p.month === 12 ? 1 : p.month + 1;
-  const nextYear = p.month === 12 ? p.year + 1 : p.year;
-  const candidates = [firstTuesday(p.year, p.month), firstTuesday(nextYear, nextMonth)];
-  for (const c of candidates) {
-    if (diffDays(today, dateOnly(c.y, c.m, c.d)) === daysBefore) return c;
+  const rules: Ymd[] = [-1, 0, 1, 2].map((n) => {
+    const a = addMonths(p.year, p.month, n);
+    return firstTuesday(a.y, a.m);
+  });
+  const from = ymdIso(ymdFromMs(today - 45 * 86_400_000));
+  const to = ymdIso(ymdFromMs(today + 75 * 86_400_000));
+  const rec = await fetchMonthlyRecords(from, to);
+  if (rec.error) return { dates: rules, source: "rule", records: [], error: rec.error };
+  const recMs = rec.dates.map((iso) => Date.parse(`${iso}T12:00:00Z`));
+  const free = rules.filter((r) => !recMs.some((ms) => Math.abs(diffDays(ms, dateOnly(r.y, r.m, r.d))) < 15));
+  const all = new Map<string, Ymd>();
+  for (const ms of recMs) { const x = ymdFromMs(ms); all.set(ymdIso(x), x); }
+  for (const r of free) all.set(ymdIso(r), r);
+  const dates = [...all.values()].sort((a, b) => dateOnly(a.y, a.m, a.d) - dateOnly(b.y, b.m, b.d));
+  return { dates, source: "notion", records: rec.dates };
+}
+
+// De "dag ervoor"-mail gaat op de laatste werkdag vóór de meeting (MMM op maandag → vrijdag).
+function workdayBefore(ms: number): number {
+  let t = ms - 86_400_000;
+  while ([0, 6].includes(new Date(t).getUTCDay())) t -= 86_400_000;
+  return t;
+}
+
+// Valt vandaag op het gevraagde moment t.o.v. een maandmeeting?
+//   "week"  = precies 7 dagen ervoor, "day" = laatste werkdag ervoor, "after" = de dag erna.
+function mmmMoment(s: MonthlySchedule, p: AmsParts, moment: "week" | "day" | "after"): Ymd | null {
+  const today = dateOnly(p.year, p.month, p.day);
+  for (const c of s.dates) {
+    const ms = dateOnly(c.y, c.m, c.d);
+    if (moment === "week" && diffDays(today, ms) === 7) return c;
+    if (moment === "day" && workdayBefore(ms) === today) return c;
+    if (moment === "after" && diffDays(today, ms) === -1) return c;
   }
   return null;
+}
+
+// Eerstvolgende maandmeeting vanaf vandaag (voor de test-override).
+function nextMonthly(s: MonthlySchedule, p: AmsParts): Ymd {
+  const today = dateOnly(p.year, p.month, p.day);
+  const n = s.dates.find((c) => dateOnly(c.y, c.m, c.d) >= today);
+  if (n) return n;
+  const a = addMonths(p.year, p.month, 1);
+  return firstTuesday(a.y, a.m);
 }
 
 function fmtDate(y: number, m: number, d: number): string {
@@ -170,12 +269,18 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }, agenda: { html
   return { to: TEAM, subject, text, html };
 }
 
-function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }): Mail {
+function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }, today?: AmsParts): Mail {
   const when = fmtDate(mmm.y, mmm.m, mmm.d);
-  const subject = "Monthly Mima Meeting tomorrow — final data check";
+  // Normaal "tomorrow"; valt de meeting op maandag, dan gaat deze mail vrijdag uit.
+  const gap = today ? diffDays(dateOnly(today.year, today.month, today.day), dateOnly(mmm.y, mmm.m, mmm.d)) : 1;
+  const tomorrow = gap <= 1;
+  const whenWord = tomorrow ? "tomorrow" : "on " + when.split(" ")[0];
+  const subject = tomorrow
+    ? "Monthly Mima Meeting tomorrow — final data check"
+    : `Monthly Mima Meeting ${whenWord} — final data check`;
   const text =
     "Hi team,\n\n" +
-    `Reminder: the monthly tactical meeting (MMM) is tomorrow, ${when} at 09:00. ` +
+    `Reminder: the monthly tactical meeting (MMM) is ${whenWord}, ${when} at 09:00. ` +
     "Please make sure your numbers and data are up to date and your domain updates are " +
     "ready, so we can dive straight in." +
     agenda.text +
@@ -183,9 +288,9 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html:
     "\n\nThanks!";
   const html = renderEmail({
     eyebrow: "Monthly meeting &middot; MMM",
-    heading: "Monthly meeting tomorrow",
+    heading: tomorrow ? "Monthly meeting tomorrow" : `Monthly meeting ${whenWord}`,
     paragraphs: [
-      `Reminder: the monthly tactical meeting (<strong>MMM</strong>) is <strong>tomorrow</strong>, ` +
+      `Reminder: the monthly tactical meeting (<strong>MMM</strong>) is <strong>${whenWord}</strong>, ` +
         `${when} at 09:00.`,
       "Please make sure your numbers and data are up to date and your domain updates are " +
         "ready, so we can dive straight in.",
@@ -399,17 +504,11 @@ export async function GET(req: Request) {
     if (test === "preMMMM") mail = preMMMMMail(agendaBlock("MMMM", await fetchAgenda("MMMM")));
     else if (test === "postMMMM") mail = draftsReviewMail("MMMM", 0);
     else if (test === "preMMMweek") {
-      const c = mmmDaysAway(p, 7) ?? firstTuesday(
-        p.month === 12 ? p.year + 1 : p.year,
-        p.month === 12 ? 1 : p.month + 1,
-      );
+      const c = nextMonthly(await monthlySchedule(p), p);
       mail = preMMMWeekMail(c, agendaBlock("MMM", await fetchAgenda("MMM")));
     } else if (test === "preMMMday") {
-      const c = mmmDaysAway(p, 1) ?? firstTuesday(
-        p.month === 12 ? p.year + 1 : p.year,
-        p.month === 12 ? 1 : p.month + 1,
-      );
-      mail = preMMMDayMail(c, agendaBlock("MMM", await fetchAgenda("MMM")));
+      const c = nextMonthly(await monthlySchedule(p), p);
+      mail = preMMMDayMail(c, agendaBlock("MMM", await fetchAgenda("MMM")), p);
     }
     else if (test === "managerHomework") {
       // Test: alle manager-mails naar Marc, niet naar de managers.
@@ -453,23 +552,27 @@ export async function GET(req: Request) {
       due.push({ name: "post-MMMM-NOT-PROCESSED", mail: notProcessedMail("MMMM", check) });
     }
   }
-  // 2b. post-MMM — de dag na de eerste-dinsdag-MMM (woensdag), ochtend-slot: alleen
-  //     een controle; bij ontbreken alarm naar Marc.
-  if (mmmDaysAway(p, -1) && slotAllows("morning")) {
+  // Maandplanning uit de Notion meeting-records (vaste regel alleen als vulling).
+  const monthly = await monthlySchedule(p);
+  if (monthly.error) agendaErrors["monthlySchedule"] = `fell back to first-Tuesday rule: ${monthly.error}`;
+
+  // 2b. post-MMM — de dag na de maandmeeting, ochtend-slot: alleen een controle;
+  //     bij ontbreken alarm naar Marc.
+  if (mmmMoment(monthly, p, "after") && slotAllows("morning")) {
     const check = await processedSince("Monthly", isoDaysAgo(6));
     if (!(check.checked && check.count > 0)) {
       due.push({ name: "post-MMM-NOT-PROCESSED", mail: notProcessedMail("MMM", check) });
     }
   }
-  // 3a. pre-MMM (week) — 7 dagen vóór de eerste-dinsdag-MMM, ochtend-slot
-  const mmmWeek = mmmDaysAway(p, 7);
+  // 3a. pre-MMM (week) — 7 dagen vóór de maandmeeting, ochtend-slot
+  const mmmWeek = mmmMoment(monthly, p, "week");
   if (mmmWeek && slotAllows("morning")) {
     due.push({ name: "pre-MMM-week", mail: preMMMWeekMail(mmmWeek, await agendaFor("MMM")) });
   }
-  // 3b. pre-MMM (dag) — 1 dag vóór de eerste-dinsdag-MMM, ochtend-slot
-  const mmmDay = mmmDaysAway(p, 1);
+  // 3b. pre-MMM (dag) — laatste werkdag vóór de maandmeeting, ochtend-slot
+  const mmmDay = mmmMoment(monthly, p, "day");
   if (mmmDay && slotAllows("morning")) {
-    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay, await agendaFor("MMM")) });
+    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay, await agendaFor("MMM"), p) });
   }
 
   // 4. manager-homework — donderdag (4), ochtend-slot: huiswerk uit de maandag-check-in.
@@ -491,6 +594,7 @@ export async function GET(req: Request) {
     weekday: p.weekday,
     slot: slot ?? "all",
     sent: results,
+    monthly: { source: monthly.source, dates: monthly.dates.map(ymdIso) },
     agenda: { errors: agendaErrors },
   });
 }

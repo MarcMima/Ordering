@@ -9,14 +9,14 @@ Endpoint `GET /api/meeting-reminders` stuurt de voorbereidings-mails die aan de 
 | 1 | **Elke vrijdag, 16:00** (14:00 UTC) | Team (Marc, Michiel, Hadi) | "Update/klik je MMMM to-do's weg vóór de weekly maandag." |
 | 2 | **Zodra de taken in Notion staan** (event, vanuit `/api/plaud-webhook`) | Team* | "MMMM/MMM/QMM processed — loop je *Drafts for review* na en pas aan waar nodig." |
 | 2v | **Elke dinsdag, ~09:00** (07:00 UTC) — vangnet | Marc | Alleen als er géén verwerkte MMMM in de Plaud Sync Log staat: pijplijn-alarm. Geen team-mail. |
-| 3a | **Een week vóór de MMM** (de vorige dinsdag) | Team | "MMM komt over een week — update je data en bereid voor." |
-| 3b | **Een dag vóór de MMM** (de maandag ervoor) | Team | "MMM is morgen — laatste datacheck." |
+| 3a | **Een week vóór de maandmeeting** (7 dagen ervoor) | Team | "MMM komt over een week — update je data en bereid voor." |
+| 3b | **Laatste werkdag vóór de maandmeeting** (MMM op maandag → vrijdag) | Team | "MMM is morgen — laatste datacheck." |
 
 \* Reminder 2 gaat standaard naar het hele team (iedere owner loopt zijn eigen drafts na). Alleen Marc laten cureren? Zet `DRAFTS_REVIEW_RECIPIENTS = [MARC]` in `src/lib/meetingEmails.ts`.
 
 **Sinds 09-2026 is reminder 2 event-gedreven.** De cron mailde op een vast klokmoment ("MMMM is verwerkt"), ook als de opname pas later (of nooit) verwerkt was. Nu verstuurt de Plaud-webhook de mail zelf in stap 10, direct nadat de taken als "Drafts for review" zijn aangemaakt — alleen bij ≥1 nieuwe taak, en nooit dubbel (een re-fire van een al verwerkte opname wordt op de Sync Log gededupt). De dinsdag-cron controleert alleen nog of er überhaupt een MMMM is verwerkt en alarmeert Marc als dat niet zo is. Mail-opmaak, ontvangers en Resend-verzending staan in `src/lib/meetingEmails.ts` (gedeeld door beide routes).
 
-De MMM is in de agenda de **eerste dinsdag van de maand** (1 sep, 6 okt, 3 nov, 1 dec …). "Een week en een dag ervoor" = **twee** momenten: 7 dagen ervoor (de vorige dinsdag) en 1 dag ervoor (de maandag). De endpoint rekent dat zelf uit met `mmmDaysAway(p, 7)` en `mmmDaysAway(p, 1)`; verschuif je de meeting, dan blijft het kloppen zolang het de eerste dinsdag is. Wijkt de MMM structureel af, pas dan `firstTuesday`/`mmmDaysAway` aan.
+**Sinds 29-09-2026 komt de MMM-datum uit Notion**, net als in de meetings-app (mima-meetings): de records in de MMM- en QMM-database zijn de planning. De eerste dinsdag van de maand is alleen de vulling voor maanden zonder record; een MMM/QMM-record binnen 15 dagen van die regeldatum vervangt hem. Aanleiding: MMM oktober werd naar ma 28-09 gehaald, maar op 29-09 ging toch "MMM in a week (6 October)" uit. **Verplaats je een maandmeeting in de agenda, zet dan ook de Date van het Notion-record goed** (of maak het record alvast aan). Lukt de Notion-query niet, dan valt de route terug op de eerste-dinsdag-regel en staat de fout in `agenda.errors.monthlySchedule`; de response toont onder `monthly` welke datums gebruikt zijn.
 
 Alle mail is **Engelstalig** — Hadi (Operations) leest mee.
 
