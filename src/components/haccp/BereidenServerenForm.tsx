@@ -22,7 +22,7 @@ const COOKED_OPTIONS = [
   "Soup",
 ] as const;
 
-const REHEATED_OPTIONS = ["Grilled chicken", "Mujadara", "Turmeric rice", "Soup"] as const;
+const REHEATED_OPTIONS = ["Grilled chicken", "Mudardara", "Turmeric rice", "Soup"] as const;
 
 const WARM_SERVE_OPTIONS = [
   "Grilled chicken",

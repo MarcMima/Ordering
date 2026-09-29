@@ -5,31 +5,30 @@ import { createClient } from "@/lib/supabase";
 import type { HaccpSchoonmaakRow } from "@/lib/haccp/types";
 import { useLocation } from "@/contexts/LocationContext";
 import { getHaccpStoreId } from "@/lib/haccp/types";
-import { WEEKDAY_LABELS_EN_SHORT } from "@/lib/haccp/week";
 
-/** KHN cleaning schedule keys: D=daily W=weekly M=monthly N=after use */
+/** Cleaning list is checked once a week (Hadi, 29-09-2026); frequency says how often the job itself is due. */
 const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string; frequency: string }[] = [
-  { key: "vriezers", label: "Freezers", frequency: "D · M" },
-  { key: "verdampers", label: "Evaporators", frequency: "D · M" },
-  { key: "schappen", label: "Shelves / racks", frequency: "D · M" },
-  { key: "koelingen", label: "Refrigeration units", frequency: "D" },
-  { key: "frituren", label: "Fryers", frequency: "D · W" },
-  { key: "afzuiging", label: "Exhaust (incl. filters)", frequency: "D · W" },
-  { key: "wanden", label: "Walls", frequency: "D · W" },
-  { key: "bain_marie", label: "Bain-marie", frequency: "D · W" },
-  { key: "grill", label: "Grill", frequency: "D" },
-  { key: "werkbanken", label: "Work tables", frequency: "D" },
-  { key: "vloer", label: "Floor", frequency: "D" },
-  { key: "vaatwasser", label: "Dishwasher", frequency: "D" },
-  { key: "afvalbakken", label: "Waste bins", frequency: "D" },
-  { key: "schoonmaakmateriaal", label: "Cleaning supplies", frequency: "D" },
-  { key: "handcontactpunten", label: "High-touch surfaces", frequency: "D" },
-  { key: "handenwas", label: "Hand-wash station", frequency: "D" },
-  { key: "spoelbakken", label: "Sinks", frequency: "D" },
-  { key: "snijgereedschap", label: "Cutting tools", frequency: "D · N" },
-  { key: "snijplanken", label: "Cutting boards", frequency: "D · N" },
-  { key: "keukenmachines", label: "Kitchen machines", frequency: "D · N" },
-  { key: "kleine_materialen", label: "Small production items", frequency: "D · N" },
+  { key: "vriezers", label: "Freezers", frequency: "Monthly" },
+  { key: "verdampers", label: "Evaporators", frequency: "Monthly" },
+  { key: "schappen", label: "Shelves / racks", frequency: "Monthly" },
+  { key: "koelingen", label: "Refrigeration units", frequency: "Weekly" },
+  { key: "frituren", label: "Fryers", frequency: "Weekly" },
+  { key: "afzuiging", label: "Exhaust (incl. filters)", frequency: "Weekly" },
+  { key: "wanden", label: "Walls", frequency: "Weekly" },
+  { key: "bain_marie", label: "Bain-marie", frequency: "Weekly" },
+  { key: "grill", label: "Grill", frequency: "Weekly" },
+  { key: "werkbanken", label: "Work tables", frequency: "Weekly" },
+  { key: "vloer", label: "Floor", frequency: "Weekly" },
+  { key: "vaatwasser", label: "Dishwasher", frequency: "Weekly" },
+  { key: "afvalbakken", label: "Waste bins", frequency: "Weekly" },
+  { key: "schoonmaakmateriaal", label: "Cleaning supplies", frequency: "Weekly" },
+  { key: "handcontactpunten", label: "High-touch surfaces", frequency: "Weekly" },
+  { key: "handenwas", label: "Hand-wash station", frequency: "Weekly" },
+  { key: "spoelbakken", label: "Sinks", frequency: "Weekly" },
+  { key: "snijgereedschap", label: "Cutting tools", frequency: "After use" },
+  { key: "snijplanken", label: "Cutting boards", frequency: "After use" },
+  { key: "keukenmachines", label: "Kitchen machines", frequency: "After use" },
+  { key: "kleine_materialen", label: "Small production items", frequency: "After use" },
 ];
 
 function bool7(v: unknown): (boolean | null)[] {
@@ -53,6 +52,14 @@ function triLabel(v: boolean | null): string {
   return "·";
 }
 
+/** One tick per week: any ✗ wins, else any ✓ (older records were ticked per day). */
+function weekValue(v: unknown): boolean | null {
+  const a = bool7(v);
+  if (a.some((x) => x === false)) return false;
+  if (a.some((x) => x === true)) return true;
+  return null;
+}
+
 function emptyWeek(): (boolean | null)[] {
   return Array.from({ length: 7 }, () => null);
 }
@@ -65,7 +72,7 @@ function rowFromInitial(
     uitgevoerd_door: initial?.uitgevoerd_door ?? "",
   };
   for (const o of OBJECTS) {
-    base[o.key] = initial?.[o.key] ? bool7(initial[o.key]) : emptyFn();
+    base[o.key] = initial?.[o.key] ? [weekValue(initial[o.key]), ...emptyFn().slice(1)] : emptyFn();
   }
   return base;
 }
@@ -130,11 +137,11 @@ export function SchoonmaakForm({
   return (
     <div className="space-y-6">
       <p className="help-text">
-        Tap each cell: · → ✓ → ✗ → · (n/a / clean / not clean). Frequentie volgens schoonmaakschema (D=dagelijks,
-        W=wekelijks, M=maandelijks, N=na gebruik).
+        Once a week: tap a cell · → ✓ → ✗ → · (n/a / clean / not clean). The frequency column says how often the job
+        itself is due.
       </p>
       <div className="overflow-x-auto rounded-xl border border-hairline">
-        <table className="w-full min-w-[980px] border-collapse text-xs sm:text-sm">
+        <table className="w-full min-w-[420px] border-collapse text-xs sm:text-sm">
           <thead>
             <tr className="border-b border-hairline bg-background">
               <th className="sticky left-0 z-10 bg-background px-2 py-2 text-left font-medium">
@@ -143,11 +150,7 @@ export function SchoonmaakForm({
               <th className="whitespace-nowrap px-1 py-2 text-left text-[11px] font-medium text-ink-soft">
                 Freq.
               </th>
-              {WEEKDAY_LABELS_EN_SHORT.map((d) => (
-                <th key={d} className="min-w-[2.5rem] px-0.5 py-2 text-center font-medium text-ink-soft">
-                  {d}
-                </th>
-              ))}
+              <th className="min-w-[5rem] px-0.5 py-2 text-center font-medium text-ink-soft">This week</th>
             </tr>
           </thead>
           <tbody>
@@ -159,7 +162,7 @@ export function SchoonmaakForm({
                 <td className="whitespace-nowrap px-1 py-1 text-[10px] leading-tight text-ink-soft/80">
                   {o.frequency}
                 </td>
-                {WEEKDAY_LABELS_EN_SHORT.map((_, day) => {
+                {[0].map((day) => {
                   const arr = (row[o.key] as (boolean | null)[]) ?? emptyWeek();
                   const v = arr[day];
                   return (
