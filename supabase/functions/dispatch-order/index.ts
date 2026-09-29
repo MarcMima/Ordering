@@ -404,6 +404,7 @@ function defaultEmailForSupplierName(name: string): string | null {
   const n = name.toLowerCase().trim();
   if (n === "gédé" || n === "gedé") return "info@gede.nl";
   if (n === "tuana") return "info@tuana-kruiden.nl";
+  if (n === "quatra") return "info.nl@quatra.com";
   if (n === "java bakery") return "java.bakkerij@gmail.com";
   if (n === "today food group") return "sales@todaytradingcompany.nl";
   return null;
@@ -509,7 +510,7 @@ function inferChannelFromSupplierName(
       { name: name ?? "", contact_email: supplier?.contact_email, contact_info: supplier?.contact_info }
     );
   }
-  if (n === "tuana" || n === "today food group") {
+  if (n === "tuana" || n === "quatra" || n === "today food group") {
     return enrichChannelFromSupplier(
       {
         channel: "email",
@@ -1588,6 +1589,14 @@ function buildOrderEmailLines(order: Order): string[] {
   });
 }
 
+/** Quatra (frying oil): ask the supplier to confirm; the location manager is in CC (Marc, 29-09-2026). */
+function asksOrderConfirmation(order: Order): boolean {
+  return (order.supplier?.name ?? "").toLowerCase().trim() === "quatra";
+}
+
+const CONFIRMATION_REQUEST =
+  "Could you please confirm this order (and the delivery date) by replying to all on this e-mail? Thank you!";
+
 function buildOrderEmailBody(order: Order): string {
   const loc = locationForSupplier(order);
   const orderNumber = buildOrderNumber(order);
@@ -1604,7 +1613,7 @@ Location: ${loc.label}
 ${loc.address ? `Delivery address: ${loc.address}\n` : ""}${isJava ? `Delivery date: ${formatLongDate(orderDeliveryDate(order))}\n` : ""}Order date: ${order.order_date}
 
 ${lines}
-${order.notes ? `\nNote: ${order.notes}\n` : ""}
+${order.notes ? `\nNote: ${order.notes}\n` : ""}${asksOrderConfirmation(order) ? `\n${CONFIRMATION_REQUEST}\n` : ""}
 Kind regards,
 MIMA Kitchen`;
 }
@@ -1636,6 +1645,7 @@ Location: <strong>${escapeHtml(loc.label)}</strong><br>
 ${loc.address ? `Delivery address: ${escapeHtml(loc.address)}<br>\n` : ""}${isJava ? `Delivery date: <strong>${escapeHtml(formatLongDate(orderDeliveryDate(order)))}</strong><br>\n` : ""}Order date: ${escapeHtml(String(order.order_date))}</p>
 ${rows}
 ${note}
+${asksOrderConfirmation(order) ? `<p style="margin-top:16px"><strong>${escapeHtml(CONFIRMATION_REQUEST)}</strong></p>` : ""}
 <p style="margin-top:16px">Kind regards,<br>MIMA Kitchen</p>
 </div>`;
 }

@@ -44,6 +44,15 @@ export function buildSupplierOrderChannelUpsert(
       auto_send: false,
     };
   }
+  if (n === "quatra") {
+    return {
+      supplier_id: supplierId,
+      channel: "email",
+      email_to: email || "info.nl@quatra.com",
+      email_subject_template: "Bestelling MIMA {datum} — levering {leverdatum}",
+      auto_send: false,
+    };
+  }
   if (n === "today food group") {
     return {
       supplier_id: supplierId,
@@ -67,7 +76,7 @@ export function buildSupplierOrderChannelUpsert(
 
 export function isOnDemandSupplierName(name: string): boolean {
   const n = norm(name);
-  return n === "tuana" || n === "today food group";
+  return n === "tuana" || n === "quatra" || n === "today food group";
 }
 
 /** Suppliers that deliver most days — only cover ~1 day of need when suggesting orders. */
