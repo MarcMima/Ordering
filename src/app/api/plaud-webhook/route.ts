@@ -348,6 +348,19 @@ async function updateSyncLog(
 }
 
 // ---- Notion: meeting matching (per periode) -------------------------------
+// Sinds 29-09-2026 staat de Date van het meeting-record op de agenda-datum (src/lib/meetingRecordSync.ts,
+// gevoed door Google Calendar). Een record op precies de opnamedag wint daarom van de periode-logica:
+// een naar voren gehaalde meeting (MMM oktober op 28-09) valt dan niet meer in het verkeerde record.
+async function findMeetingOnDate(notion: Client, meetingDbId: string, createTimeIso: string): Promise<string | null> {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam" }).format(new Date(createTimeIso));
+  const res = await notion.databases.query({
+    database_id: meetingDbId,
+    filter: { property: "Date", date: { equals: day } },
+    page_size: 5,
+  });
+  return res.results[0]?.id ?? null;
+}
+
 async function findMeetingInPeriod(
   notion: Client,
   meetingDbId: string,
@@ -747,7 +760,9 @@ async function processRecording(notion: Client, anthropic: Anthropic, rec: Recor
     }
 
     // 4. MEETING-MATCHING binnen de juiste periode + meeting-DB.
-    const meetingPageId = await findMeetingInPeriod(notion, type.meetingDbId, type.period, rec.createTime);
+    const meetingPageId =
+      (await findMeetingOnDate(notion, type.meetingDbId, rec.createTime)) ??
+      (await findMeetingInPeriod(notion, type.meetingDbId, type.period, rec.createTime));
     if (!meetingPageId) {
       syncLogId = await createSyncLog(notion, {
         recordingKey,

@@ -39,6 +39,7 @@ import {
   sendBrandedMail as sendMail,
 } from "@/lib/meetingEmails";
 import { managerHomeworkMails } from "@/lib/managerHomework";
+import { readCalendar, type CalendarRead } from "@/lib/meetingCalendar";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,7 +105,13 @@ const MONTHLY_DB_IDS: Record<"MMM" | "QMM", string> = {
   MMM: process.env.MMM_DB_ID ?? "39c21d9d7c6a80ae8178f531269a51a7",
   QMM: process.env.QMM_DB_ID ?? "39c21d9d7c6a80e38707f6bb6f9dc5b1",
 };
-type MonthlySchedule = { dates: Ymd[]; source: "notion" | "rule"; records: string[]; error?: string };
+type MonthlySchedule = {
+  dates: Ymd[];
+  source: "calendar" | "notion" | "rule";
+  records: string[];
+  times?: Record<string, string>; // YYYY-MM-DD -> HH:MM (from the calendar)
+  error?: string;
+};
 
 function ymdFromMs(ms: number): Ymd {
   const d = new Date(ms);
@@ -155,8 +162,20 @@ async function fetchMonthlyRecords(fromIso: string, toIso: string): Promise<{ da
 }
 
 // Alle maandmeeting-datums rond vandaag (vorige t/m over twee maanden).
-async function monthlySchedule(p: AmsParts): Promise<MonthlySchedule> {
+async function monthlySchedule(p: AmsParts, cal?: CalendarRead): Promise<MonthlySchedule> {
   const today = dateOnly(p.year, p.month, p.day);
+  // Since 29-09-2026 the Google Calendar is the schedule (src/lib/meetingCalendar.ts). Only when it
+  // has not synced recently do we fall back to the Notion records + first-Tuesday rule below.
+  if (cal?.fresh) {
+    const mmm = cal.meetings.filter((m) => m.type === "MMM");
+    const times: Record<string, string> = {};
+    for (const m of mmm) times[m.date] = m.time;
+    const dates = mmm.map((m) => {
+      const [y, mo, d] = m.date.split("-").map(Number);
+      return { y, m: mo, d };
+    });
+    return { dates, source: "calendar", records: [], times };
+  }
   const rules: Ymd[] = [-1, 0, 1, 2].map((n) => {
     const a = addMonths(p.year, p.month, n);
     return firstTuesday(a.y, a.m);
@@ -242,12 +261,12 @@ function preMMMMMail(agenda: { html: string; text: string }): Mail {
   return { to: TEAM, subject, text, html };
 }
 
-function preMMMWeekMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }): Mail {
+function preMMMWeekMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }, time = "09:00"): Mail {
   const when = fmtDate(mmm.y, mmm.m, mmm.d);
   const subject = "Monthly Mima Meeting in a week — update your data & prepare";
   const text =
     "Hi team,\n\n" +
-    `The monthly tactical meeting (MMM) is one week from today, on ${when} at 09:00. ` +
+    `The monthly tactical meeting (MMM) is one week from today, on ${when} at ${time}. ` +
     "Time to start preparing: please update your numbers and data and get your domain " +
     "updates ready so we can make good tactical decisions." +
     agenda.text +
@@ -258,7 +277,7 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }, agenda: { html
     heading: "Monthly meeting in a week",
     paragraphs: [
       `The monthly tactical meeting (<strong>MMM</strong>) is one week from today, on ` +
-        `<strong>${when}</strong> at 09:00.`,
+        `<strong>${when}</strong> at ${time}.`,
       "Time to start preparing: please update your numbers and data and get your domain " +
         "updates ready so we can make good tactical decisions.",
       agenda.html,
@@ -269,7 +288,7 @@ function preMMMWeekMail(mmm: { y: number; m: number; d: number }, agenda: { html
   return { to: TEAM, subject, text, html };
 }
 
-function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }, today?: AmsParts): Mail {
+function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html: string; text: string }, today?: AmsParts, time = "09:00"): Mail {
   const when = fmtDate(mmm.y, mmm.m, mmm.d);
   // Normaal "tomorrow"; valt de meeting op maandag, dan gaat deze mail vrijdag uit.
   const gap = today ? diffDays(dateOnly(today.year, today.month, today.day), dateOnly(mmm.y, mmm.m, mmm.d)) : 1;
@@ -280,7 +299,7 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html:
     : `Monthly Mima Meeting ${whenWord} — final data check`;
   const text =
     "Hi team,\n\n" +
-    `Reminder: the monthly tactical meeting (MMM) is ${whenWord}, ${when} at 09:00. ` +
+    `Reminder: the monthly tactical meeting (MMM) is ${whenWord}, ${when} at ${time}. ` +
     "Please make sure your numbers and data are up to date and your domain updates are " +
     "ready, so we can dive straight in." +
     agenda.text +
@@ -291,7 +310,7 @@ function preMMMDayMail(mmm: { y: number; m: number; d: number }, agenda: { html:
     heading: tomorrow ? "Monthly meeting tomorrow" : `Monthly meeting ${whenWord}`,
     paragraphs: [
       `Reminder: the monthly tactical meeting (<strong>MMM</strong>) is <strong>${whenWord}</strong>, ` +
-        `${when} at 09:00.`,
+        `${when} at ${time}.`,
       "Please make sure your numbers and data are up to date and your domain updates are " +
         "ready, so we can dive straight in.",
       agenda.html,
@@ -494,6 +513,19 @@ export async function GET(req: Request) {
   }
 
   const p = amsterdamParts(new Date());
+  const todayIso = ymdIso({ y: p.year, m: p.month, d: p.day });
+  const cal = await readCalendar(
+    ymdIso(ymdFromMs(dateOnly(p.year, p.month, p.day) - 45 * 86_400_000)),
+    ymdIso(ymdFromMs(dateOnly(p.year, p.month, p.day) + 75 * 86_400_000)),
+  );
+  const timeOf = (s: MonthlySchedule, c: Ymd) => s.times?.[ymdIso(c)] ?? "09:00";
+  // MMMM within the next/previous n days according to the calendar (only meaningful when cal.fresh).
+  const mmmmWithin = (fromDays: number, toDays: number) =>
+    cal.meetings.some((m) => {
+      if (m.type !== "MMMM") return false;
+      const diff = diffDays(dateOnly(p.year, p.month, p.day), Date.parse(`${m.date}T12:00:00Z`));
+      return diff >= fromDays && diff <= toDays;
+    });
 
   // test-override: forceert één specifieke mail, ongeacht de datum. Handig om de
   // verzending / deliverability te verifiëren zonder op de juiste dag te wachten.
@@ -504,11 +536,13 @@ export async function GET(req: Request) {
     if (test === "preMMMM") mail = preMMMMMail(agendaBlock("MMMM", await fetchAgenda("MMMM")));
     else if (test === "postMMMM") mail = draftsReviewMail("MMMM", 0);
     else if (test === "preMMMweek") {
-      const c = nextMonthly(await monthlySchedule(p), p);
-      mail = preMMMWeekMail(c, agendaBlock("MMM", await fetchAgenda("MMM")));
+      const s = await monthlySchedule(p, cal);
+      const c = nextMonthly(s, p);
+      mail = preMMMWeekMail(c, agendaBlock("MMM", await fetchAgenda("MMM")), timeOf(s, c));
     } else if (test === "preMMMday") {
-      const c = nextMonthly(await monthlySchedule(p), p);
-      mail = preMMMDayMail(c, agendaBlock("MMM", await fetchAgenda("MMM")), p);
+      const s = await monthlySchedule(p, cal);
+      const c = nextMonthly(s, p);
+      mail = preMMMDayMail(c, agendaBlock("MMM", await fetchAgenda("MMM")), p, timeOf(s, c));
     }
     else if (test === "managerHomework") {
       // Test: alle manager-mails naar Marc, niet naar de managers.
@@ -539,21 +573,28 @@ export async function GET(req: Request) {
     return agendaBlock(t, a);
   };
 
-  // 1. pre-MMMM — vrijdag (5), middag-slot
-  if (p.weekday === 5 && slotAllows("afternoon")) {
+  const skippedByCalendar: string[] = [];
+  // 1. pre-MMMM — vrijdag (5), middag-slot. Met een verse agenda alleen als er de komende 4 dagen
+  //    echt een MMMM staat (vakantie of geschrapte meeting → geen mail).
+  const mmmmAhead = !cal.fresh || mmmmWithin(1, 4);
+  if (p.weekday === 5 && slotAllows("afternoon") && !mmmmAhead) skippedByCalendar.push("pre-MMMM: no MMMM in the calendar in the next 4 days");
+  if (p.weekday === 5 && slotAllows("afternoon") && mmmmAhead) {
     due.push({ name: "pre-MMMM", mail: preMMMMMail(await agendaFor("MMMM")) });
   }
   // 2. post-MMMM — dinsdag (2), ochtend-slot: ALLEEN VANGNET. De team-mail zelf
   //    ("review your Drafts for review") stuurt de Plaud-webhook zodra de taken er
   //    staan. Staat er na het weekend geen verwerkte MMMM in de Sync Log → alarm Marc.
-  if (p.weekday === 2 && slotAllows("morning")) {
+  const mmmmBehind = !cal.fresh || mmmmWithin(-3, -1);
+  if (p.weekday === 2 && slotAllows("morning") && !mmmmBehind) skippedByCalendar.push("post-MMMM check: no MMMM in the calendar in the last 3 days");
+  if (p.weekday === 2 && slotAllows("morning") && mmmmBehind) {
     const check = await processedSince("Weekly", isoDaysAgo(6));
     if (!(check.checked && check.count > 0)) {
       due.push({ name: "post-MMMM-NOT-PROCESSED", mail: notProcessedMail("MMMM", check) });
     }
   }
   // Maandplanning uit de Notion meeting-records (vaste regel alleen als vulling).
-  const monthly = await monthlySchedule(p);
+  const monthly = await monthlySchedule(p, cal);
+  if (!cal.fresh) agendaErrors["calendar"] = `calendar not synced recently (${cal.syncedAt ?? "never"}${cal.error ? `, ${cal.error}` : ""}); using fallback`;
   if (monthly.error) agendaErrors["monthlySchedule"] = `fell back to first-Tuesday rule: ${monthly.error}`;
 
   // 2b. post-MMM — de dag na de maandmeeting, ochtend-slot: alleen een controle;
@@ -567,12 +608,12 @@ export async function GET(req: Request) {
   // 3a. pre-MMM (week) — 7 dagen vóór de maandmeeting, ochtend-slot
   const mmmWeek = mmmMoment(monthly, p, "week");
   if (mmmWeek && slotAllows("morning")) {
-    due.push({ name: "pre-MMM-week", mail: preMMMWeekMail(mmmWeek, await agendaFor("MMM")) });
+    due.push({ name: "pre-MMM-week", mail: preMMMWeekMail(mmmWeek, await agendaFor("MMM"), timeOf(monthly, mmmWeek)) });
   }
   // 3b. pre-MMM (dag) — laatste werkdag vóór de maandmeeting, ochtend-slot
   const mmmDay = mmmMoment(monthly, p, "day");
   if (mmmDay && slotAllows("morning")) {
-    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay, await agendaFor("MMM"), p) });
+    due.push({ name: "pre-MMM-day", mail: preMMMDayMail(mmmDay, await agendaFor("MMM"), p, timeOf(monthly, mmmDay)) });
   }
 
   // 4. manager-homework — donderdag (4), ochtend-slot: huiswerk uit de maandag-check-in.
@@ -594,6 +635,8 @@ export async function GET(req: Request) {
     weekday: p.weekday,
     slot: slot ?? "all",
     sent: results,
+    today: todayIso,
+    calendar: { fresh: cal.fresh, syncedAt: cal.syncedAt, meetings: cal.meetings.length, skipped: skippedByCalendar },
     monthly: { source: monthly.source, dates: monthly.dates.map(ymdIso) },
     agenda: { errors: agendaErrors },
   });
