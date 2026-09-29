@@ -6,29 +6,29 @@ import type { HaccpSchoonmaakRow } from "@/lib/haccp/types";
 import { useLocation } from "@/contexts/LocationContext";
 import { getHaccpStoreId } from "@/lib/haccp/types";
 
-/** Cleaning list is checked once a week (Hadi, 29-09-2026); frequency says how often the job itself is due. */
-const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string; frequency: string }[] = [
-  { key: "vriezers", label: "Freezers", frequency: "Monthly" },
-  { key: "verdampers", label: "Evaporators", frequency: "Monthly" },
-  { key: "schappen", label: "Shelves / racks", frequency: "Monthly" },
-  { key: "koelingen", label: "Refrigeration units", frequency: "Weekly" },
-  { key: "frituren", label: "Fryers", frequency: "Weekly" },
-  { key: "afzuiging", label: "Exhaust (incl. filters)", frequency: "Weekly" },
-  { key: "wanden", label: "Walls", frequency: "Weekly" },
-  { key: "bain_marie", label: "Bain-marie", frequency: "Weekly" },
-  { key: "grill", label: "Grill", frequency: "Weekly" },
-  { key: "werkbanken", label: "Work tables", frequency: "Weekly" },
-  { key: "vloer", label: "Floor", frequency: "Weekly" },
-  { key: "vaatwasser", label: "Dishwasher", frequency: "Weekly" },
-  { key: "afvalbakken", label: "Waste bins", frequency: "Weekly" },
-  { key: "schoonmaakmateriaal", label: "Cleaning supplies", frequency: "Weekly" },
-  { key: "handcontactpunten", label: "High-touch surfaces", frequency: "Weekly" },
-  { key: "handenwas", label: "Hand-wash station", frequency: "Weekly" },
-  { key: "spoelbakken", label: "Sinks", frequency: "Weekly" },
-  { key: "snijgereedschap", label: "Cutting tools", frequency: "After use" },
-  { key: "snijplanken", label: "Cutting boards", frequency: "After use" },
-  { key: "keukenmachines", label: "Kitchen machines", frequency: "After use" },
-  { key: "kleine_materialen", label: "Small production items", frequency: "After use" },
+/** Cleaning list is checked once a week (Hadi, 29-09-2026). */
+const OBJECTS: { key: keyof HaccpSchoonmaakRow; label: string }[] = [
+  { key: "vriezers", label: "Freezers" },
+  { key: "verdampers", label: "Evaporators" },
+  { key: "schappen", label: "Shelves / racks" },
+  { key: "koelingen", label: "Refrigeration units" },
+  { key: "frituren", label: "Fryers" },
+  { key: "afzuiging", label: "Exhaust (incl. filters)" },
+  { key: "wanden", label: "Walls" },
+  { key: "bain_marie", label: "Bain-marie" },
+  { key: "grill", label: "Grill" },
+  { key: "werkbanken", label: "Work tables" },
+  { key: "vloer", label: "Floor" },
+  { key: "vaatwasser", label: "Dishwasher" },
+  { key: "afvalbakken", label: "Waste bins" },
+  { key: "schoonmaakmateriaal", label: "Cleaning supplies" },
+  { key: "handcontactpunten", label: "High-touch surfaces" },
+  { key: "handenwas", label: "Hand-wash station" },
+  { key: "spoelbakken", label: "Sinks" },
+  { key: "snijgereedschap", label: "Cutting tools" },
+  { key: "snijplanken", label: "Cutting boards" },
+  { key: "keukenmachines", label: "Kitchen machines" },
+  { key: "kleine_materialen", label: "Small production items" },
 ];
 
 function bool7(v: unknown): (boolean | null)[] {
@@ -137,18 +137,14 @@ export function SchoonmaakForm({
   return (
     <div className="space-y-6">
       <p className="help-text">
-        Once a week: tap a cell · → ✓ → ✗ → · (n/a / clean / not clean). The frequency column says how often the job
-        itself is due.
+        Once a week: tap a cell · → ✓ → ✗ → · (n/a / clean / not clean).
       </p>
       <div className="overflow-x-auto rounded-xl border border-hairline">
-        <table className="w-full min-w-[420px] border-collapse text-xs sm:text-sm">
+        <table className="w-full min-w-[300px] border-collapse text-xs sm:text-sm">
           <thead>
             <tr className="border-b border-hairline bg-background">
               <th className="sticky left-0 z-10 bg-background px-2 py-2 text-left font-medium">
                 Object
-              </th>
-              <th className="whitespace-nowrap px-1 py-2 text-left text-[11px] font-medium text-ink-soft">
-                Freq.
               </th>
               <th className="min-w-[5rem] px-0.5 py-2 text-center font-medium text-ink-soft">This week</th>
             </tr>
@@ -158,9 +154,6 @@ export function SchoonmaakForm({
               <tr key={o.key} className="border-b border-hairline">
                 <td className="sticky left-0 z-10 bg-surface px-2 py-1 font-medium text-ink">
                   {o.label}
-                </td>
-                <td className="whitespace-nowrap px-1 py-1 text-[10px] leading-tight text-ink-soft/80">
-                  {o.frequency}
                 </td>
                 {[0].map((day) => {
                   const arr = (row[o.key] as (boolean | null)[]) ?? emptyWeek();
