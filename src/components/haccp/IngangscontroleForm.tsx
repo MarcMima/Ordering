@@ -6,7 +6,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import { createClient } from "@/lib/supabase";
 import type { HaccpIngangscontroleRow } from "@/lib/haccp/types";
 import { getHaccpStoreId } from "@/lib/haccp/types";
-import { lteMaxStatus, temperatureInputClass } from "@/lib/haccp/temperatureFieldStyle";
+import { lteAtMostStatus, lteMaxStatus, temperatureInputClass } from "@/lib/haccp/temperatureFieldStyle";
 import { localCalendarDateString } from "@/lib/date";
 
 const SUPPLIERS = ["Bidfood", "Van Gelder"] as const;
@@ -110,6 +110,9 @@ function mergeInitial(
   return base;
 }
 
+/** Fresh chicken must be below 4 °C on arrival (Denys/Hadi, 29-09-2026), other fresh below 7 °C. */
+const CHICKEN_RE = /chicken|kip|poultry|gevogelte/i;
+
 const TYPE_OPTIONS: { value: Soort; label: string }[] = [
   { value: "V", label: "Fresh" },
   { value: "D", label: "Frozen" },
@@ -211,10 +214,15 @@ export function IngangscontroleForm({
               {Array.from({ length: ROWS_PER_SUPPLIER }, (_, j) => {
                 const i = offset + j;
                 const r = rows[i];
-                const chillStatus =
-                  r.soort === "V" && r.temperatuur != null && Number.isFinite(r.temperatuur)
-                    ? lteMaxStatus(r.temperatuur, 7)
-                    : "empty";
+                const isChicken = CHICKEN_RE.test(r.product);
+                const tempStatus =
+                  r.temperatuur == null || !Number.isFinite(r.temperatuur)
+                    ? "empty"
+                    : r.soort === "V"
+                      ? lteMaxStatus(r.temperatuur, isChicken ? 4 : 7)
+                      : r.soort === "D"
+                        ? lteAtMostStatus(r.temperatuur, -18)
+                        : "empty";
                 return (
                   <tr key={`${supplier}-${j}`} className="border-b border-hairline">
                     <td className="px-2 py-1.5 tabular-nums text-ink-soft/80">{j + 1}</td>
@@ -242,12 +250,12 @@ export function IngangscontroleForm({
                     <td className="p-1">
                       <DecimalInput
                         className={temperatureInputClass(
-                          r.soort === "V" ? chillStatus : "empty",
+                          tempStatus,
                           "min-w-[4rem] py-1 text-sm"
                         )}
                         value={r.temperatuur}
                         onValueChange={(n) => updateFlat(i, { temperatuur: n })}
-                        placeholder={r.soort === "V" ? "≤7" : "—"}
+                        placeholder={r.soort === "V" ? (isChicken ? "<4" : "≤7") : r.soort === "D" ? "≤-18" : "—"}
                       />
                     </td>
                     <td className="p-1">
@@ -310,7 +318,7 @@ export function IngangscontroleForm({
     <div className="space-y-8">
       <p className="help-text">
         Five products per supplier: Bidfood and Van Gelder. One check date applies to all lines. Fresh (V): temperature
-        colours follow max 7 °C (green below, amber on 7 °C, red above 7,1 °C).
+        colours follow max 7 °C (green below, amber on 7 °C, red above 7,1 °C); chicken max 4 °C. Frozen (D) is green at -18 °C or colder.
       </p>
 
       <label className="block max-w-xs text-sm">

@@ -33,6 +33,15 @@ export function lteMaxStatus(temp: number | null | undefined, max: number): Temp
   return "bad";
 }
 
+/** Maximaal X °C, grens zelf is goed (norm "≤"): ≤ norm goed; (norm, norm+0,1) waarschuwing; erboven fout. */
+export function lteAtMostStatus(temp: number | null | undefined, max: number): TempFieldStatus {
+  if (temp == null || !Number.isFinite(temp)) return "empty";
+  const t = Number(temp);
+  if (t <= max) return "good";
+  if (t < max + 0.1) return "warn";
+  return "bad";
+}
+
 /** Minimaal X °C (warm): ≥ norm goed; [norm-0,1, norm) waarschuwing; < norm-0,1 fout. */
 export function gteMinStatus(temp: number | null | undefined, min: number): TempFieldStatus {
   if (temp == null || !Number.isFinite(temp)) return "empty";
