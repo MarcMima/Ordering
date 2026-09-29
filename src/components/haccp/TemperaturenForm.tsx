@@ -13,6 +13,7 @@ import {
 } from "@/lib/haccp/types";
 import {
   gteMinStatus,
+  lteAtMostStatus,
   lteMaxStatus,
   temperatureInputClass,
   type TempFieldStatus,
@@ -53,12 +54,15 @@ function mergeReadings(
   });
 }
 
+/** Norms shown as "≤ x" (freezer -18, fryer 175) include the limit itself; "Max 7°C" stays strict. */
 function normStatus(
   kind: "lte" | "gte",
   norm: number,
-  temp: number | null | undefined
+  temp: number | null | undefined,
+  normDisplay?: string
 ): TempFieldStatus {
-  return kind === "lte" ? lteMaxStatus(temp, norm) : gteMinStatus(temp, norm);
+  if (kind === "gte") return gteMinStatus(temp, norm);
+  return normDisplay?.trim().startsWith("≤") ? lteAtMostStatus(temp, norm) : lteMaxStatus(temp, norm);
 }
 
 export function TemperaturenForm({
@@ -115,7 +119,7 @@ export function TemperaturenForm({
     for (const r of readings) {
       const eq = equipment.find((e) => e.id === r.equipment_id);
       if (!eq || r.temperature == null || !Number.isFinite(r.temperature)) continue;
-      if (normStatus(eq.norm_kind, eq.norm_value, r.temperature) === "bad") n++;
+      if (normStatus(eq.norm_kind, eq.norm_value, r.temperature, eq.norm_display) === "bad") n++;
     }
     return n;
   }, [readings, equipment]);
@@ -211,11 +215,11 @@ export function TemperaturenForm({
                 if (!row) return null;
                 const t = row.temperature;
                 const hasTemp = t != null && Number.isFinite(t);
-                const st = hasTemp ? normStatus(eq.norm_kind, eq.norm_value, t as number) : "empty";
+                const st = hasTemp ? normStatus(eq.norm_kind, eq.norm_value, t as number, eq.norm_display) : "empty";
                 const bad = st === "bad";
                 const exactSt =
                   eq.show_exact_temp && row.exact_temperature != null && Number.isFinite(row.exact_temperature)
-                    ? normStatus(eq.norm_kind, eq.norm_value, row.exact_temperature as number)
+                    ? normStatus(eq.norm_kind, eq.norm_value, row.exact_temperature as number, eq.norm_display)
                     : "empty";
                 return (
                   <tr key={eq.id} className="border-b border-hairline">
