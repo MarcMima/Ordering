@@ -1158,6 +1158,70 @@ function describeBidfoodProductIssues(responseData: unknown): string | null {
   return parts.length ? parts.join(" | ") : null;
 }
 
+type BidfoodOrderProduct = {
+  orderLineReference: string;
+  quantityOrdered: number;
+  [key: string]: unknown;
+};
+
+/**
+ * Bidfood rejects the whole order (422) when a single line cannot be delivered. Build a second
+ * payload without those lines (or with the available quantity), so the rest still goes out.
+ * Pijp got stuck on 30-09-2026 on 2 of 25 lines (order deadline passed, out of stock).
+ */
+function bidfoodPayloadWithoutIssues(
+  products: BidfoodOrderProduct[],
+  responseData: unknown,
+  lineNameByRef: Record<string, string>
+): { products: BidfoodOrderProduct[]; reasons: string[] } | null {
+  const answered = (responseData as { products?: unknown } | null)?.products;
+  if (!Array.isArray(answered)) return null;
+  const issueByRef = new Map<
+    string,
+    { available: number | null; reason: string; firstDate: string | null }
+  >();
+  for (const p of answered) {
+    const r = p as {
+      orderLineReference?: string;
+      productIssue?: boolean;
+      quantityAvailable?: number;
+      firstPossibleDeliveryDate?: string;
+      productIssueInformation?: { reason?: unknown };
+    };
+    if (!r?.productIssue || !r.orderLineReference) continue;
+    issueByRef.set(r.orderLineReference, {
+      available: typeof r.quantityAvailable === "number" ? r.quantityAvailable : null,
+      reason: Array.isArray(r.productIssueInformation?.reason)
+        ? (r.productIssueInformation!.reason as unknown[]).map(String).join("; ")
+        : "",
+      firstDate: r.firstPossibleDeliveryDate ?? null,
+    });
+  }
+  if (issueByRef.size === 0) return null;
+
+  const kept: BidfoodOrderProduct[] = [];
+  const reasons: string[] = [];
+  for (const p of products) {
+    const issue = issueByRef.get(p.orderLineReference);
+    if (!issue) {
+      kept.push(p);
+      continue;
+    }
+    const name = lineNameByRef[p.orderLineReference] ?? `regel ${p.orderLineReference}`;
+    const when = issue.firstDate ? `, eerst leverbaar ${issue.firstDate}` : "";
+    const why = issue.reason ? ` — ${issue.reason}` : "";
+    const available = issue.available ?? 0;
+    if (available > 0 && available < p.quantityOrdered) {
+      kept.push({ ...p, quantityOrdered: available });
+      reasons.push(`${name}: ${available} van ${p.quantityOrdered} besteld (Bidfood heeft er ${available})${why}`);
+    } else {
+      reasons.push(`${name}: niet besteld, Bidfood kan niet leveren${why}${when}`);
+    }
+  }
+  if (kept.length === 0) return null;
+  return { products: kept, reasons };
+}
+
 function formatBidfoodApiError(
   status: number,
   baseUrl: string,
@@ -1377,17 +1441,37 @@ async function dispatchBidfood(
 
   // POST naar Bidfood Order Create endpoint
   const credentials = bidfoodBasicAuthValue(creds.username, creds.password);
-  const response = await fetch(
-    `${baseUrl}/a0022/v1/customers/${customerNumber}/orders`,
-    {
+  const postOrder = async (payload: typeof orderPayload) => {
+    const res = await fetch(`${baseUrl}/a0022/v1/customers/${customerNumber}/orders`, {
       method: "POST",
       headers: bidfoodJsonHeaders(credentials, systemName, baseUrl),
-      body: JSON.stringify(orderPayload),
-    }
-  );
+      body: JSON.stringify(payload),
+    });
+    // Prod: vaak 201 + { orders: [...] }; sandbox-doc: 200/201 met orderNumber op root
+    return { res, data: await res.json().catch(() => ({})) };
+  };
 
-  // Prod: vaak 201 + { orders: [...] }; sandbox-doc: 200/201 met orderNumber op root
-  const responseData = await response.json().catch(() => ({}));
+  let sentPayload = orderPayload;
+  let { res: response, data: responseData } = await postOrder(orderPayload);
+
+  // 422 on a few lines: send again without them instead of blocking the whole order.
+  if (response.status === 422) {
+    const lineNameByRef: Record<string, string> = {};
+    orderableLines.forEach((line, idx) => {
+      lineNameByRef[String(idx + 1).padStart(2, "0")] =
+        `${line.raw_ingredient.name} (${line.supplier_ingredient?.supplier_article_code ?? "?"})`;
+    });
+    const retry = bidfoodPayloadWithoutIssues(
+      orderPayload.products as BidfoodOrderProduct[],
+      responseData,
+      lineNameByRef
+    );
+    if (retry) {
+      sentPayload = { ...orderPayload, products: retry.products as typeof orderPayload.products };
+      skippedReasons.push(...retry.reasons);
+      ({ res: response, data: responseData } = await postOrder(sentPayload));
+    }
+  }
 
   if (response.status !== 201 && response.status !== 200) {
     return {
@@ -1416,9 +1500,9 @@ async function dispatchBidfood(
     supplier_order_number: bidfoodOrderNumbers,
     message:
       skippedReasons.length > 0
-        ? `Bestelling verstuurd met ${orderableLines.length} regel(s). Overgeslagen: ${skippedReasons.join(" | ")}`
+        ? `Bestelling verstuurd met ${sentPayload.products.length} regel(s). Overgeslagen: ${skippedReasons.join(" | ")}`
         : undefined,
-    message_body: JSON.stringify(orderPayload),
+    message_body: JSON.stringify(sentPayload),
   };
 }
 
