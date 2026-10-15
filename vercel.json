@@ -1,6 +1,16 @@
 {
   "crons": [
-    { "path": "/api/meeting-reminders?slot=morning", "schedule": "0 7 * * *" },
-    { "path": "/api/meeting-reminders?slot=afternoon", "schedule": "0 14 * * 5" }
+    {
+      "path": "/api/meeting-reminders?slot=morning",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/meeting-reminders?slot=afternoon",
+      "schedule": "0 14 * * 5"
+    },
+    {
+      "path": "/api/finance/loan-statement-cron",
+      "schedule": "15 6 2 1,4,7,10 *"
+    }
   ]
 }

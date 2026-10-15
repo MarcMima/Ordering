@@ -12,6 +12,7 @@ import {
 import { createClient } from "@/lib/supabase";
 import { buildSupplierOrderChannelUpsert } from "@/lib/supplierOrderChannel";
 import { isAuthDisabled } from "@/lib/authMode";
+import { isFinanceOwnerEmail } from "@/lib/financeOwners";
 import { useCan, PERMISSIONS } from "@/hooks/useCan";
 import { useAuthz } from "@/hooks/useAuthz";
 import { formatDecimal2 } from "@/lib/format";
@@ -220,6 +221,14 @@ export default function AdminPage() {
             >
               Ordering overrides
             </Link>
+            {!isAuthDisabled() && isFinanceOwnerEmail(authz.email) && (
+              <Link
+                href="/admin/finance/loans"
+                className="block label hover:text-ink"
+              >
+                Loans (private)
+              </Link>
+            )}
             {canManageUsers && !isAuthDisabled() && (
               <Link
                 href="/admin/users"
