@@ -22,6 +22,7 @@ type PromoRow = {
   ends_on: string;
   label: string | null;
   created_by: string | null;
+  source: "manual" | "sheet_jet" | "sheet_uber";
 };
 
 const CHANNEL_LABEL: Record<PromoRow["channel"], string> = {
@@ -48,7 +49,7 @@ export default function AdminPromotionsPage() {
     const supabase = createClient();
     const { data, error: e } = await supabase
       .from("planned_promotions")
-      .select("id, location_id, channel, starts_on, ends_on, label, created_by")
+      .select("id, location_id, channel, starts_on, ends_on, label, created_by, source")
       .order("starts_on", { ascending: false })
       .limit(100);
     if (e) setError(e.message);
@@ -109,8 +110,9 @@ export default function AdminPromotionsPage() {
         <h1 className="mt-2 text-xl font-medium">Delivery promotions</h1>
         <p className="help-text mt-1">
           Uber Eats and Thuisbezorgd promotions, used only by the sales forecast behind the
-          shadow order suggestion. Running promotions are also picked up from the sales
-          automatically; adding one here covers the first days and planned ones.
+          shadow order suggestion. The platforms&apos; marketing calendars are loaded every
+          night, and running promotions are also picked up from the sales. Add one here only
+          when it is in neither calendar.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-2 rounded-lg border border-hairline p-3 sm:grid-cols-2">
@@ -201,11 +203,20 @@ export default function AdminPromotionsPage() {
                   <td className="py-1.5 pr-2 tabular-nums">
                     {r.starts_on} → {r.ends_on}
                   </td>
-                  <td className="py-1.5 pr-2 text-ink-soft">{r.label ?? "—"}</td>
+                  <td className="py-1.5 pr-2 text-ink-soft">
+                    {r.label ?? "—"}
+                    {r.source !== "manual" && (
+                      <span className="ml-1 rounded-full bg-surface-muted px-1.5 py-0.5 text-xs">
+                        from {r.source === "sheet_jet" ? "Thuisbezorgd" : "Uber"} calendar
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 text-right">
-                    <button className="btn-ghost text-xs" onClick={() => void remove(r.id)}>
-                      Remove
-                    </button>
+                    {r.source === "manual" && (
+                      <button className="btn-ghost text-xs" onClick={() => void remove(r.id)}>
+                        Remove
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
