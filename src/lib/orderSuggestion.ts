@@ -295,6 +295,12 @@ export async function computeOrderSuggestion(params: {
   packSizes: IngredientPackSize[];
   suppliers: Supplier[];
   locationOrderingByRawId: Record<string, RawIngredientLocationOrdering>;
+  /**
+   * Shadow mode: use these revenue figures (cents, per calendar date) instead of the
+   * daily revenue targets. Nothing is read from or written to daily_revenue_targets in
+   * that case, so a shadow run can never change what the manager sees.
+   */
+  revenueOverrideCentsByDate?: Record<string, number>;
 }): Promise<OrderSuggestionOutcome> {
   const {
     supabase,
@@ -305,6 +311,7 @@ export async function computeOrderSuggestion(params: {
     packSizes,
     suppliers,
     locationOrderingByRawId,
+    revenueOverrideCentsByDate,
   } = params;
 const d = date;
 const rawsForRequest = rawIngredients.filter((r) =>
@@ -351,7 +358,9 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
   ];
 
   const [revCents, locRes, recipeRes, stockRes, supRes, siRes, prepCountRes, prepQtyRes] = await Promise.all([
-    ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d),
+    revenueOverrideCentsByDate
+      ? Promise.resolve(revenueOverrideCentsByDate[d] ?? null)
+      : ensureEffectiveDailyRevenueTargetCents(supabase, locationId, d),
     supabase
       .from("locations")
       .select("name, full_capacity_revenue, ordering_evening_day_fraction, weekly_stocktake_day_of_week")
@@ -492,8 +501,14 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     .eq("location_id", locationId)
     .in("date", revenueDatesToLoad);
   const revenueCentsByDate: Record<string, number | null> = { [d]: revCents };
-  for (const row of (revRowsRes.data as { date: string; target_amount_cents: number | null }[]) ?? []) {
-    revenueCentsByDate[row.date] = row.target_amount_cents;
+  if (revenueOverrideCentsByDate) {
+    for (const date of revenueDatesToLoad) {
+      revenueCentsByDate[date] = revenueOverrideCentsByDate[date] ?? null;
+    }
+  } else {
+    for (const row of (revRowsRes.data as { date: string; target_amount_cents: number | null }[]) ?? []) {
+      revenueCentsByDate[row.date] = row.target_amount_cents;
+    }
   }
   // Build UNSCALED (full-capacity) prep need so revenue scaling happens
   // only once inside calcScaledNeedOverOrderWindow. A separate scaled map

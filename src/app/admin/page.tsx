@@ -209,6 +209,12 @@ export default function AdminPage() {
               Order colli
             </Link>
             <Link
+              href="/admin/promotions"
+              className="block label hover:text-ink"
+            >
+              Delivery promotions
+            </Link>
+            <Link
               href="/admin/ordering-overrides"
               className="block label hover:text-ink"
             >
