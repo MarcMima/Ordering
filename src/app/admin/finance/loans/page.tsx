@@ -1,12 +1,13 @@
 "use client";
 
-// Loans (Marc only). Gate: middleware + /api/finance/* check the signed-in email
+// Loans (Marc and Michiel only). Gate: middleware + /api/finance/* check the signed-in email
 // (src/lib/financeOwners.ts). Tables have RLS without policies; only the service role reads them.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { TopNav } from "@/components/TopNav";
 import {
+  ARREARS_TOLERANCE,
   addMonths,
   compareScenario,
   contractSchedule,
@@ -174,7 +175,7 @@ export default function LoansPage() {
       interestPaid: states.reduce((s, x) => s + x.interestPaid, 0),
       remainingInterest: states.reduce((s, x) => s + x.remainingInterest, 0),
       monthly: states.reduce((s, x) => s + (x.balance > 0 ? x.instalment : 0), 0),
-      arrears: states.reduce((s, x) => s + Math.max(0, x.arrears), 0),
+      arrears: states.reduce((s, x) => s + (x.arrears > ARREARS_TOLERANCE ? x.arrears : 0), 0),
       weightedRate: outstanding ? states.reduce((s, x) => s + x.outstanding * x.loan.annual_rate, 0) / outstanding : 0,
     };
   }, [states]);
@@ -340,9 +341,9 @@ export default function LoansPage() {
         <Link href="/admin" className="help-text hover:text-ink">← Admin</Link>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="eyebrow">Finance · private</div>
+            <div className="eyebrow">Finance</div>
             <h1 className="page-title mt-1">Loans</h1>
-            <p className="help-text mt-2">Only visible to you. Figures as of the date on the right; instalments are collected by direct debit around the 12th.</p>
+            <p className="help-text mt-2">Only visible to Marc and Michiel. Figures as of the date on the right; instalments are collected by direct debit around the 12th.</p>
           </div>
           <label className="text-sm">
             <span className="label">As of</span>
@@ -362,10 +363,10 @@ export default function LoansPage() {
               <Stat label="Repaid" value={fmt0(totals.repaid)} sub={pct(totals.repaid / Math.max(1, totals.principal))} />
               <Stat label="Interest paid" value={fmt0(totals.interestPaid)} sub={`${fmt0(totals.remainingInterest)} still to come`} />
               <Stat
-                label={totals.arrears > 0.05 ? "Behind schedule" : "Monthly debt service"}
-                value={totals.arrears > 0.05 ? fmt2(totals.arrears) : fmt0(totals.monthly)}
-                sub={totals.arrears > 0.05 ? "see the loan below" : `blended rate ${pct(totals.weightedRate, 2)}`}
-                tone={totals.arrears > 0.05 ? "warn" : undefined}
+                label={totals.arrears > ARREARS_TOLERANCE ? "Behind schedule" : "Monthly debt service"}
+                value={totals.arrears > ARREARS_TOLERANCE ? fmt2(totals.arrears) : fmt0(totals.monthly)}
+                sub={totals.arrears > ARREARS_TOLERANCE ? "see the loan below" : `blended rate ${pct(totals.weightedRate, 2)}`}
+                tone={totals.arrears > ARREARS_TOLERANCE ? "warn" : undefined}
               />
             </section>
 
@@ -401,9 +402,9 @@ export default function LoansPage() {
                     <div><span className="text-ink-muted">Next </span>{s.nextDue ? `${fmt2(s.nextDue.payment)} · ${monthLabel(s.nextDue.dueDate)}` : "none"}</div>
                   </div>
 
-                  {(s.arrears > 0.05 || s.assumed.length > 0 || s.aheadOfPlan > 1) && (
+                  {(s.arrears > ARREARS_TOLERANCE || s.assumed.length > 0 || s.aheadOfPlan > 1) && (
                     <div className="mt-4 space-y-2">
-                      {s.arrears > 0.05 && (
+                      {s.arrears > ARREARS_TOLERANCE && (
                         <div className="border-l-2 border-accent-terracotta pl-3 text-sm text-ink">
                           Received {fmt2(s.regularReceived)} against {fmt2(s.regularDue)} due, so <strong className="font-medium">{fmt2(s.arrears)} behind schedule</strong>. Record a catch-up payment (kind “correction”) once it is paid.
                         </div>

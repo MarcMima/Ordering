@@ -63,6 +63,9 @@ export type ScheduleRow = {
 /** Days after the due date before an instalment counts as "should have been paid". */
 export const GRACE_DAYS = 20;
 
+/** Differences below this (rounding of instalments) are not shown as arrears. */
+export const ARREARS_TOLERANCE = 1;
+
 export function round2(x: number): number {
   return Math.round((x + Number.EPSILON) * 100) / 100;
 }
@@ -238,7 +241,7 @@ export function loanState(
   const future = rows.slice(dueCount).filter((r) => r.payment > 0);
   const interestPaid = dueRows.reduce((s, r) => s + r.interest, 0);
   const remainingInterest = future.reduce((s, r) => s + r.interest, 0);
-  const outstanding = round2(balance + Math.max(0, arrears));
+  const outstanding = round2(balance + (arrears > ARREARS_TOLERANCE ? arrears : 0));
 
   return {
     loan,

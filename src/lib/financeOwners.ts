@@ -1,6 +1,6 @@
 // Who may see the finance section. Edge-safe (used by the middleware too).
-// Not role-based on purpose: other admins must not see it. Override with FINANCE_OWNER_EMAILS.
-export const FINANCE_OWNER_EMAILS_DEFAULT = ["marc@mimafood.nl"];
+// Not role-based on purpose: only the two owners, not other admins. Override with FINANCE_OWNER_EMAILS.
+export const FINANCE_OWNER_EMAILS_DEFAULT = ["marc@mimafood.nl", "michiel@mimafood.nl"];
 
 export function financeOwnerEmails(): string[] {
   const raw = process.env.FINANCE_OWNER_EMAILS;

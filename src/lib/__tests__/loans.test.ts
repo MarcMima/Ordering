@@ -46,10 +46,11 @@ const pay = (loan_id: string, paid_on: string, amount: number, kind: LoanPayment
   id: `${loan_id}-${paid_on}-${amount}`, loan_id, paid_on, amount, kind, source: "ledger", ledger_ref: null, note: null,
 });
 
-test("Pijp: ledger cash vs schedule shows the 1,348 shortfall", () => {
+test("Pijp: bank payments incl. the April catch-up match the schedule", () => {
   const ps = [
     ...["2025-05-12", "2025-06-12", "2025-07-12", "2025-08-12", "2025-09-12", "2025-10-12", "2025-11-12", "2025-12-12", "2026-01-14", "2026-02-12", "2026-03-12"].map((d) => pay("p", d, 5584.54)),
     pay("p", "2026-04-10", 1041.51, "correction"),
+    pay("p", "2026-04-10", 1348.32, "correction"),
     pay("p", "2026-04-12", 5801.8), pay("p", "2026-05-12", 5801.8), pay("p", "2026-06-12", 5119.72),
     pay("p", "2026-07-12", 5753.08), pay("p", "2026-08-12", 5753.08), pay("p", "2026-09-12", 5753.09),
   ];
@@ -57,8 +58,8 @@ test("Pijp: ledger cash vs schedule shows the 1,348 shortfall", () => {
   assert.equal(s.dueCount, 17);
   assert.equal(s.assumed.length, 0);
   near(s.balance, 500443.7);
-  near(s.arrears, 1348.41, 0.05);
-  near(s.outstanding, 501792.11, 0.05);
+  near(s.arrears, 0, 0.1);
+  near(s.outstanding, 500443.7, 0.05);
 });
 
 test("Zuidas on schedule; October assumed by direct debit once past grace", () => {

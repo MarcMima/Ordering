@@ -11,7 +11,7 @@
 --   loans    from the signed loan agreements + Excel schedules on the NAS
 --            (06_Financials/05_Financing & accountant/Financing, read 15-10-2026)
 --   payments the bank (BNK) lines in Twinfield, mima-data silver_twinfield_gl_lines,
---            accounts 0531/6725 (Pijp) and 0501/6725 (Zuidas), through 12-09-2026.
+--            accounts 0531/6725/1802 (Pijp) and 0501/6725 (Zuidas), through 12-09-2026.
 -- Idempotent; one transaction; control select at the end.
 
 begin;
@@ -104,7 +104,8 @@ from (values
   ('pijp', date '2026-01-14', 5584.54, 'instalment', 'pijp/202600007', 'Collected at the 3.39% amount instead of 5,753.08'),
   ('pijp', date '2026-02-12', 5584.54, 'instalment', 'pijp/202600030', 'Collected at the 3.39% amount instead of 5,753.08'),
   ('pijp', date '2026-03-12', 5584.54, 'instalment', 'pijp/202600049', 'Collected at the 3.39% amount instead of 5,753.08'),
-  ('pijp', date '2026-04-10', 1041.51, 'correction', 'pijp/202600070', 'Catch-up "Correctie aflossingen door wijziging van rentevoet"'),
+  ('pijp', date '2026-04-10', 1041.51, 'correction', 'pijp/202600070', 'Catch-up "Correctie aflossingen door wijziging van rentevoet" (part booked on 0531)'),
+  ('pijp', date '2026-04-10', 1348.32, 'correction', 'pijp/202600070/1802', 'Same bank payment, part booked on 1802 Te betalen kosten (168.54 x 8 periods 2025). Catch-up total 2,389.83 = 11 x 217.26 (4.2% basis)'),
   ('pijp', date '2026-04-12', 5801.80, 'instalment', 'pijp/202600071', 'Collected at the 4.2% amount'),
   ('pijp', date '2026-05-12', 5801.80, 'instalment', 'pijp/202600093', 'Collected at the 4.2% amount'),
   ('pijp', date '2026-06-12', 5119.72, 'instalment', 'pijp/202600118', '"Aflossing 14 aangepast voor rentevoet 4.02"'),
@@ -127,7 +128,7 @@ where not exists (
 
 commit;
 
--- Control: Pijp 18 payments / 96,454.02; Zuidas 8 payments / 35,413.73
+-- Control: Pijp 19 payments / 97,802.34 (schedule 17 x 5,753.08 = 97,802.43); Zuidas 8 payments / 35,413.73
 select l.code, count(p.id) as payments, sum(p.amount) as received
 from public.finance_loans l left join public.finance_loan_payments p on p.loan_id = l.id
 group by l.code order by l.code;

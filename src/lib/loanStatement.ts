@@ -2,7 +2,7 @@
 // House rules for emails: no dashes as punctuation, warm and calm, sentence case.
 // Design: Mima "Editorial Calm" (paper, serif headings, hairlines, square corners).
 
-import { loanState, quarterOf, round2, type Loan, type LoanPayment, type LoanState } from "./loans";
+import { ARREARS_TOLERANCE, loanState, quarterOf, round2, type Loan, type LoanPayment, type LoanState } from "./loans";
 
 type Lang = "nl" | "en";
 
@@ -171,7 +171,7 @@ export function buildStatement(input: StatementInput): Statement {
   const totPrincipal = states.reduce((s, x) => s + x.loan.principal, 0);
   const totOutstanding = states.reduce((s, x) => s + x.outstanding, 0);
   const totRepaid = totPrincipal - totOutstanding;
-  const allOnTime = states.every((s) => s.arrears <= 0.05 && s.assumed.length === 0);
+  const allOnTime = states.every((s) => s.arrears <= ARREARS_TOLERANCE && s.assumed.length === 0);
   const greeting = input.loans[0]?.lender_greeting?.trim() || t.defaultGreeting;
   const sender = input.senderName ?? "Marc Wesseling";
 
@@ -190,7 +190,7 @@ export function buildStatement(input: StatementInput): Statement {
       const extrasQ = receivedQ.filter((p) => p.kind === "extra");
       const nq = quarterOf(addQuarter(q.end));
       nextQuarterTotal += s.rows.filter((r) => r.dueDate >= nq.start && r.dueDate <= nq.end).reduce((a, r) => a + r.payment, 0);
-      if (s.arrears > 0.05) warnings.push(`${l.name}: ${eur(s.arrears, "en")} behind schedule. The statement says so; settle it before sending if you can.`);
+      if (s.arrears > ARREARS_TOLERANCE) warnings.push(`${l.name}: ${eur(s.arrears, "en")} behind schedule. The statement says so; settle it before sending if you can.`);
       if (s.assumed.length) warnings.push(`${l.name}: ${s.assumed.length} instalment(s) assumed paid by direct debit, not yet recorded.`);
 
       const rowsHtml = inQ
@@ -211,7 +211,7 @@ export function buildStatement(input: StatementInput): Statement {
       if (receivedQ.length || assumedQ.length) notes.push(t.received(eur(receivedAmount, lang), receivedQ.length + assumedQ.length));
       for (const e of extrasQ) notes.push(t.extra(eur(Number(e.amount), lang), dateLong(e.paid_on, lang)));
       if (s.assumed.length) notes.push(t.assumed(s.assumed.length));
-      if (s.arrears > 0.05) notes.push(t.arrears(eur(s.arrears, lang)));
+      if (s.arrears > ARREARS_TOLERANCE) notes.push(t.arrears(eur(s.arrears, lang)));
 
       textLines.push(
         "",

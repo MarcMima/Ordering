@@ -1,5 +1,5 @@
-// Access gate for the Marc-only finance section (/admin/finance, /api/finance).
-// Not role-based on purpose: admins (Michiel, Hadi) must not see it either.
+// Access gate for the owners-only finance section (/admin/finance, /api/finance).
+// Not role-based on purpose: other admins (e.g. Hadi) must not see it.
 // Allow-list lives in financeOwners.ts (FINANCE_OWNER_EMAILS env override).
 
 import { isAuthDisabled } from "@/lib/authMode";

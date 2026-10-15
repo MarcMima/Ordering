@@ -226,7 +226,7 @@ export default function AdminPage() {
                 href="/admin/finance/loans"
                 className="block label hover:text-ink"
               >
-                Loans (private)
+                Loans
               </Link>
             )}
             {canManageUsers && !isAuthDisabled() && (
