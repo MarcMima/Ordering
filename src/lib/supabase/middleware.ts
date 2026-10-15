@@ -1,4 +1,5 @@
 import { isAuthDisabled } from "@/lib/authMode";
+import { isFinanceOwnerEmail } from "@/lib/financeOwners";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -22,7 +23,7 @@ export async function updateSession(request: NextRequest) {
   const isLogin = pathname === "/login";
 
   if (isAuthDisabled()) {
-    if (isLogin) {
+    if (isLogin || pathname.startsWith("/admin/finance")) {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       url.search = "";
@@ -106,7 +107,10 @@ export async function updateSession(request: NextRequest) {
         (!needsSettingsManage || has("settings.manage")) &&
         (!needsHaccpManage || has("haccp.manage"));
 
-      if (!allowed) {
+      // Finance (loans) is visible to the finance owner only, not to other admins.
+      const financeBlocked = pathname.startsWith("/admin/finance") && !isFinanceOwnerEmail(user.email);
+
+      if (!allowed || financeBlocked) {
         const url = request.nextUrl.clone();
         url.pathname = "/dashboard";
         url.search = "";
