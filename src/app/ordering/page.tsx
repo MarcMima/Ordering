@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { computeForecastShadow, type ForecastShadow } from "@/lib/salesForecastShadow";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/TopNav";
@@ -534,6 +535,11 @@ export default function OrderingPage() {
   const [suggestionSnapshotLines, setSuggestionSnapshotLines] = useState<
     OrderSuggestionSnapshotLine[] | null
   >(null);
+  /**
+   * Shadow run (admin analysis only, never shown here): same engine with the Butlaroo
+   * sales forecast incl. Uber Eats / Thuisbezorgd promos instead of the revenue target.
+   */
+  const [forecastShadow, setForecastShadow] = useState<ForecastShadow | null>(null);
   const [snapshotSaveError, setSnapshotSaveError] = useState<string | null>(null);
   /** True once an order exists for this location + date: the snapshot is frozen. */
   const [snapshotFrozen, setSnapshotFrozen] = useState(false);
@@ -744,6 +750,7 @@ export default function OrderingPage() {
     const loc = locationId;
     const date = todayDateStr;
     const lines = suggestionSnapshotLines;
+    const shadow = forecastShadow;
     if (snapshotSaveTimerRef.current) clearTimeout(snapshotSaveTimerRef.current);
     let cancelled = false;
     snapshotSaveTimerRef.current = setTimeout(() => {
@@ -774,7 +781,18 @@ export default function OrderingPage() {
         // the first capture for this location + date.
         const { error } = await supabase
           .from("order_suggestion_snapshots")
-          .upsert({ location_id: loc, date, lines }, { onConflict: "location_id,date" });
+          .upsert(
+            shadow
+              ? {
+                  location_id: loc,
+                  date,
+                  lines,
+                  shadow_lines: shadow.lines,
+                  shadow_revenue: shadow.revenue,
+                }
+              : { location_id: loc, date, lines },
+            { onConflict: "location_id,date" }
+          );
         if (cancelled) return;
         if (error) {
           // Surface failures instead of failing silently (e.g. RLS denial).
@@ -794,7 +812,7 @@ export default function OrderingPage() {
         snapshotSaveTimerRef.current = null;
       }
     };
-  }, [locationId, todayDateStr, suggestionSnapshotLines, snapshotFrozen]);
+  }, [locationId, todayDateStr, suggestionSnapshotLines, forecastShadow, snapshotFrozen]);
 
   useEffect(() => {
     if (!locationId) {
@@ -933,6 +951,7 @@ export default function OrderingPage() {
       setSuggestionInsight(null);
       setSupplementalPackSizes([]);
       setSuggestionSnapshotLines(null);
+      setForecastShadow(null);
       return;
     }
     const d = todayDateStr;
@@ -965,6 +984,7 @@ export default function OrderingPage() {
           setSuggestedUnassignedRawIds([]);
           setSupplementalPackSizes([]);
           setSuggestionSnapshotLines(null);
+          setForecastShadow(null);
           setSuggestionLoadError(result.message);
           setSuggestionInsight(null);
           if (recalculateRequestedRef.current) {
@@ -990,6 +1010,22 @@ export default function OrderingPage() {
         setSuggestionSupplierByRaw(result.suggestionSupplierByRaw);
         setSuggestedUnassignedRawIds(result.suggestedUnassignedRawIds);
         setSuggestionInsight(result.insight);
+
+        // Shadow run in the background: never awaited by the UI, failures are ignored.
+        setForecastShadow(null);
+        void computeForecastShadow({
+          supabase,
+          locationId,
+          date: d,
+          rawIngredients,
+          schedules,
+          packSizes,
+          suppliers,
+          locationOrderingByRawId,
+          targetCents: result.revenueTargetCents,
+        }).then((shadow) => {
+          if (alive && requestLocationId === locationId) setForecastShadow(shadow);
+        });
 
         if (recalculateRequestedRef.current) {
           recalculateRequestedRef.current = false;

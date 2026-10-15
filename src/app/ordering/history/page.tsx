@@ -56,8 +56,16 @@ type OrderRow = {
 type StockCountRow = { raw_ingredient_id: string; quantity: number };
 type PrepCountRow = { prep_item_id: string; quantity: number; prep_items: { name: string } | null };
 
+type ShadowRevenue = Record<
+  string,
+  { forecast_cents: number; baseline_cents: number; promo_channels: string[] } | number | null
+>;
+
 type HistoryData = {
   snapshotLines: SnapshotLine[] | null;
+  /** Shadow run with the Butlaroo sales forecast (admin analysis only). */
+  shadowLines: SnapshotLine[] | null;
+  shadowRevenue: ShadowRevenue | null;
   snapshotCreatedAt: string | null;
   orders: OrderRow[];
   stockCounts: StockCountRow[];
@@ -66,6 +74,15 @@ type HistoryData = {
   rawUnitById: Record<string, string>;
   supplierNameById: Record<string, string>;
 };
+
+function euro(cents: number): string {
+  return `\u20ac${Math.round(cents / 100).toLocaleString("nl-NL")}`;
+}
+
+function weekdayShort(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short" });
+}
 
 function OrderingHistory() {
   const router = useRouter();
@@ -88,6 +105,8 @@ function OrderingHistory() {
    */
   const { allowed: canManageSettings } = useCan(PERMISSIONS.settingsManage);
   const showRecomputed = canManageSettings && !isAuthDisabled();
+  /** Shadow suggestion from the sales forecast: admin analysis, hidden from managers. */
+  const showForecast = canManageSettings;
   const [recomputed, setRecomputed] = useState<Record<string, number> | null>(null);
   const [recomputeError, setRecomputeError] = useState<string | null>(null);
   const [recomputing, setRecomputing] = useState(false);
@@ -116,7 +135,7 @@ function OrderingHistory() {
       const [snapRes, ordersRes, stockRes, prepRes, rawRes, supRes] = await Promise.all([
         supabase
           .from("order_suggestion_snapshots")
-          .select("lines, created_at")
+          .select("lines, created_at, shadow_lines, shadow_revenue")
           .eq("location_id", locationId)
           .eq("date", date)
           .maybeSingle(),
@@ -157,11 +176,18 @@ function OrderingHistory() {
 
       const rawRows = (rawRes.data as { id: string; name: string; unit: string | null }[]) ?? [];
       const supRows = (supRes.data as { id: string; name: string }[]) ?? [];
-      const snapRow = snapRes.data as { lines: SnapshotLine[] | null; created_at: string } | null;
+      const snapRow = snapRes.data as {
+        lines: SnapshotLine[] | null;
+        created_at: string;
+        shadow_lines: SnapshotLine[] | null;
+        shadow_revenue: ShadowRevenue | null;
+      } | null;
 
       setData({
         snapshotLines: snapRow?.lines ?? null,
         snapshotCreatedAt: snapRow?.created_at ?? null,
+        shadowLines: snapRow?.shadow_lines ?? null,
+        shadowRevenue: snapRow?.shadow_revenue ?? null,
         orders: (ordersRes.data as OrderRow[]) ?? [],
         stockCounts: (stockRes.data as StockCountRow[]) ?? [],
         prepCounts: (prepRes.data as unknown as PrepCountRow[]) ?? [],
@@ -264,18 +290,20 @@ function OrderingHistory() {
       ...Object.keys(orderedByRaw),
       // Ook regels die de huidige parameters wél adviseren maar die er toen niet waren.
       ...Object.keys(recomputed ?? {}),
+      ...(showForecast ? (data.shadowLines ?? []) : []).map((l) => l.raw_ingredient_id),
     ]);
 
     return Array.from(rawIds)
       .map((rawId) => {
         const snap = (data.snapshotLines ?? []).find((l) => l.raw_ingredient_id === rawId);
+        const shadow = (data.shadowLines ?? []).find((l) => l.raw_ingredient_id === rawId);
         const ordered = orderedByRaw[rawId];
         const supplierIds = snap?.supplier_id
           ? [snap.supplier_id]
           : Array.from(ordered?.supplierIds ?? []);
         return {
           rawId,
-          name: snap?.name || data.rawNameById[rawId] || "(unknown)",
+          name: snap?.name || shadow?.name || data.rawNameById[rawId] || "(unknown)",
           supplierNames: supplierIds
             .map((id) => data.supplierNameById[id])
             .filter(Boolean)
@@ -287,12 +315,26 @@ function OrderingHistory() {
           dailyNeed: snap?.daily_need ?? null,
           orderedQuantity: ordered?.quantity ?? null,
           recomputedQuantity: recomputed ? (recomputed[rawId] ?? 0) : null,
+          forecastPacks: data.shadowLines ? (shadow?.suggested_packs ?? 0) : null,
           reason: adjustmentReasonLabel(ordered?.reason),
           note: ordered?.note ?? null,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
-  }, [data, recomputed]);
+  }, [data, recomputed, showForecast]);
+
+  /** Forecast vs revenue target for the days the snapshot covered (admin only). */
+  const forecastSummary = useMemo(() => {
+    const rev = data?.shadowRevenue;
+    if (!rev) return null;
+    const target = typeof rev._target_cents === "number" ? rev._target_cents : null;
+    const days = Object.entries(rev)
+      .filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v != null && typeof v === "object")
+      .map(([k, v]) => ({ date: k, ...(v as { forecast_cents: number; baseline_cents: number; promo_channels: string[] }) }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 4);
+    return { target, days };
+  }, [data]);
 
   const prepCountRows = useMemo(() => {
     if (!data) return [];
@@ -385,6 +427,27 @@ function OrderingHistory() {
                       : "\u201cWith current settings\u201d re-runs that day\u2019s counts through today\u2019s parameters. Admin only."}
                 </p>
               )}
+              {showForecast && forecastSummary && (
+                <p className="help-text mt-1">
+                  &ldquo;Forecast&rdquo; is the same calculation with expected revenue from
+                  Butlaroo sales (last 6 same weekdays, delivery promotions included) instead
+                  of the revenue target. Admin only, not shown to managers.{" "}
+                  {forecastSummary.target != null &&
+                    `Target ${euro(forecastSummary.target)}/day · `}
+                  {forecastSummary.days
+                    .map(
+                      (d) =>
+                        `${weekdayShort(d.date)} ${euro(d.forecast_cents)}${
+                          d.promo_channels.length
+                            ? ` (promo ${d.promo_channels
+                                .map((c) => (c === "uber_eats" ? "Uber" : "Thuisbezorgd"))
+                                .join(", ")})`
+                            : ""
+                        }`
+                    )
+                    .join(" · ")}
+                </p>
+              )}
               {comparison.length === 0 ? (
                 <p className="help-text mt-2">Nothing suggested and nothing ordered on this day.</p>
               ) : (
@@ -400,6 +463,9 @@ function OrderingHistory() {
                           <th className="py-1.5 pr-2 text-right font-medium">
                             With current settings
                           </th>
+                        )}
+                        {showForecast && data.shadowLines && (
+                          <th className="py-1.5 pr-2 text-right font-medium">Forecast</th>
                         )}
                         <th className="py-1.5 pr-2 font-medium">Reason</th>
                         <th className="py-1.5 pr-2 text-right font-medium">Stock</th>
@@ -441,6 +507,19 @@ function OrderingHistory() {
                                   : row.recomputedQuantity == null
                                     ? "—"
                                     : row.recomputedQuantity}
+                              </td>
+                            )}
+                            {showForecast && data.shadowLines && (
+                              <td
+                                className={
+                                  row.forecastPacks != null &&
+                                  row.suggestedPacks != null &&
+                                  row.forecastPacks !== row.suggestedPacks
+                                    ? "py-1.5 pr-2 text-right font-medium tabular-nums text-ink"
+                                    : "py-1.5 pr-2 text-right tabular-nums text-ink-soft"
+                                }
+                              >
+                                {row.forecastPacks ?? "—"}
                               </td>
                             )}
                             <td className="py-1.5 pr-2 text-xs text-ink-soft">
