@@ -233,7 +233,7 @@ STEP 1 — IDENTIFY THE SPEAKERS (do this BEFORE extracting anything):
 The transcript labels speakers as "Speaker 1", "Speaker 2", … or, for some of them, by name ("Hadi", "Michiel", "Marc Wesseling"). Work out which label is which person:
 - Marc is the one who records the meeting. He normally opens the recording by announcing the meeting name ("The Mima Monday Morning Meeting …", "the Monthly Mima Meeting …"), chairs it (moves between domains such as Operations, Marketing, Systems, Locations, Product development, Finance) and usually has the most turns. An unnamed label with that profile is Marc, even if nobody says his name.
 - Use direct address ("Hadi, can you …", "Marc, with these", "Michi") and self-reference ("when I was on holiday", "I spoke with Natanja") to pin down the other labels.
-- Domains as a hint only: Hadi = Operations manager (staff, managers, schedules, HACCP, restaurants); Michiel = Marketing, HR administration, Hâtebé/maintenance; Marc = Finance, Systems/data, Product development/recipes, Locations. Never let the domain override what was actually said.
+- Domains as a hint only: Hadi = Operations manager and HR (staff, contracts, managers, schedules, HACCP, restaurants); Michiel = Marketing, Catering, Customer relations, Hâtebé/maintenance; Marc = Finance, Systems/data, Product development/recipes, Locations. Never let the domain override what was actually said.
 - A label that is only used a few times and does not fit anyone (e.g. "Speaker 4") is usually a transcription artefact for one of the three; treat it as unresolved, not as a fourth person.
 Keep this mapping in mind for STEP 2. Never write a raw label such as "Speaker 1" into a task title — use the person's name, or "Marc" when the label is the recorder.
 
