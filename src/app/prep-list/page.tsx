@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
+import { deductLossesAfterCount, loadStockLossesSince } from "@/lib/stockLosses";
 import { TopNav } from "@/components/TopNav";
 import { ChickpeaSoakCallout } from "@/components/ChickpeaSoakCallout";
 import { DailyWorkflowStepper } from "@/components/DailyWorkflowStepper";
@@ -312,7 +313,7 @@ export default function PrepListPage() {
           .order("prep_item_id"),
         supabase
           .from("daily_prep_counts")
-          .select("prep_item_id, quantity")
+          .select("prep_item_id, quantity, updated_at")
           .eq("location_id", locationId)
           .eq("date", d),
         supabase
@@ -360,14 +361,26 @@ export default function PrepListPage() {
           prep_items: Array.isArray(row.prep_items) ? row.prep_items[0] ?? null : row.prep_items,
         }));
 
-        const counts = (countRes.data as { prep_item_id: string; quantity: number }[]) ?? [];
+        const counts =
+          (countRes.data as { prep_item_id: string; quantity: number; updated_at?: string | null }[]) ?? [];
+        // Waste logged after today's count comes off the stock (migration 260).
+        const losses = await loadStockLossesSince(supabase, locationId, d);
         const rawStockList =
           (rawStockRes.data as { raw_ingredient_id: string; quantity: number }[]) ?? [];
         const rawList = (rawRes.data as RawIngredient[]) ?? [];
         const loc = locRes.data as Location | null;
 
         setLocationPrepItems(items);
-        setTodayCounts(Object.fromEntries(counts.map((c) => [c.prep_item_id, Number(c.quantity)])));
+        setTodayCounts(
+          deductLossesAfterCount({
+            stockById: Object.fromEntries(counts.map((c) => [c.prep_item_id, Number(c.quantity)])),
+            countById: Object.fromEntries(
+              counts.map((c) => [c.prep_item_id, { date: d, savedAt: c.updated_at ?? null }])
+            ),
+            losses,
+            kind: "prep",
+          })
+        );
         setRawStockCounts(
           Object.fromEntries(rawStockList.map((c) => [c.raw_ingredient_id, Number(c.quantity)]))
         );

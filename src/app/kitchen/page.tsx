@@ -7,6 +7,7 @@ const tiles = [
   { href: "/stocktake", title: "Stocktake", description: "Count raw ingredients and daily prep." },
   { href: "/prep-list", title: "Prep list", description: "What to prep today." },
   { href: "/ordering", title: "Orders", description: "Supplier orders for the location." },
+  { href: "/waste", title: "Waste", description: "Record food or stock you had to throw away." },
   {
     href: "/kitchen/menu",
     title: "Menu (data)",
