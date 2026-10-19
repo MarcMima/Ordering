@@ -54,7 +54,11 @@ import {
   applyDrinkTrayStandingPacks,
 } from "@/lib/drinkTrayPar";
 import { isPicklingRawName, PICKLING_LEAD_TIME_DAYS } from "@/lib/picklingLeadTime";
-import { computeRawCoveredByFinishedPrep, computePickledPrepRawCredit } from "@/lib/prepStockRawCredit";
+import {
+  computeGeneralPrepCreditParts,
+  computeRawCoveredByFinishedPrep,
+  computePickledPrepRawCredit,
+} from "@/lib/prepStockRawCredit";
 import { computeDefrostedFlatbreadRawCredit } from "@/lib/flatbreadPrepStock";
 import {
   applyCombinedPitaStockCredit,
@@ -582,6 +586,15 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
     prepNameByPrepItemId,
     prepYieldByPrepItemId,
   });
+  // Finished prep covers its own ingredients for every raw, capped per prep item (carrots in soup).
+  const prepCreditPartsByRawId = computeGeneralPrepCreditParts({
+    recipeFiltered,
+    prepStockByPrepItemId,
+    neededByPrepItemId,
+    dailyRawNeedBase,
+    rawNameByRawId,
+    prepYieldByPrepItemId,
+  });
   const flatbreadPrepCredit = computeDefrostedFlatbreadRawCredit({
     prepItemsById: Object.fromEntries(
       lpiAll.map((row) => [row.prep_item_id, row.prep_items])
@@ -796,6 +809,7 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
               dailyRawNeedAtFullCapacity: dailyRawNeed,
               currentRawStock: currentStock,
               prepStockCreditByRawId,
+              prepCreditPartsByRawId,
               preferredSupplierByRawId,
               schedulesBySupplierJs,
               orderIntervalDaysByRawId,

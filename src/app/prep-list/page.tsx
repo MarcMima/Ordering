@@ -15,6 +15,7 @@ import {
   getRevenueMultiplier,
   calcNeededQuantity,
   calcToMake,
+  DEFAULT_ORDERING_EVENING_DAY_FRACTION,
   type PrepPriority,
 } from "@/lib/calculations";
 import { formatDecimal2, formatEuroFromCents, formatPrepQuantity } from "@/lib/format";
@@ -256,7 +257,15 @@ function MakeInput({
 }
 
 export default function PrepListPage() {
-  const { locationId, locationOptions } = useLocation();
+  const { locationId, locationOptions, locations } = useLocation();
+  // Stock is counted before the evening shift; that shift still uses part of today's need
+  // (same share as ordering, default 2/3). Pijp feedback 06-10, Marc 19-10-2026.
+  const eveningFraction = (() => {
+    const f = locations.find((l) => l.id === locationId)?.ordering_evening_day_fraction;
+    return f != null && Number.isFinite(Number(f)) && Number(f) >= 0
+      ? Number(f)
+      : DEFAULT_ORDERING_EVENING_DAY_FRACTION;
+  })();
   const [date] = useState(() => localCalendarDateString());
   const [locationPrepItems, setLocationPrepItems] = useState<LocationPrepItemRow[]>([]);
   const [todayCounts, setTodayCounts] = useState<Record<string, number>>({});
@@ -421,6 +430,8 @@ export default function PrepListPage() {
     toMake: number;
     priority: PrepPriority;
     currentStock: number;
+    /** Counted stock minus what tonight's shift will still use; drives "make". */
+    stockAfterTonight: number;
     /** Kitchen override of the calculated quantity (edit mode). */
     override: PrepListAdjustment | null;
     /** What the model said before any override. */
@@ -489,9 +500,12 @@ export default function PrepListPage() {
       const coverDays = 1 + Math.max(0, Number(item.lead_days ?? 0));
       let needed = calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier }) * coverDays;
       const currentStock = todayCounts[row.prep_item_id] ?? 0;
+      const eveningUse =
+        calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier }) * eveningFraction;
+      const stockAfterTonight = Math.max(0, currentStock - eveningUse);
       let toMake = calcToMake({
         needed,
-        currentStock,
+        currentStock: stockAfterTonight,
         batchSize: item.batch_size ?? null,
       });
       if (isRegularPitaPrepName(item.name)) {
@@ -515,7 +529,7 @@ export default function PrepListPage() {
       }
       let priority = resolvePrepListPriority({
         prepName: item.name,
-        currentStock,
+        currentStock: stockAfterTonight,
         needed,
         toMake,
         prepTimeHours: item.prep_time_hours ?? null,
@@ -523,7 +537,7 @@ export default function PrepListPage() {
       const adj = adjustmentByPrepId[row.prep_item_id] ?? null;
       const modelToMake = toMake;
       if (adj?.removed) {
-        hidden.push({ row, needed, toMake, priority, currentStock, override: adj, modelToMake });
+        hidden.push({ row, needed, toMake, priority, currentStock, stockAfterTonight, override: adj, modelToMake });
         continue;
       }
       if (adj && adj.make_override != null) {
@@ -531,10 +545,10 @@ export default function PrepListPage() {
         if (priority === "hidden") priority = 3;
       }
       if (priority === "hidden") {
-        hidden.push({ row, needed, toMake, priority, currentStock, override: adj, modelToMake });
+        hidden.push({ row, needed, toMake, priority, currentStock, stockAfterTonight, override: adj, modelToMake });
         continue;
       }
-      list.push({ row, needed, toMake, priority, currentStock, override: adj, modelToMake });
+      list.push({ row, needed, toMake, priority, currentStock, stockAfterTonight, override: adj, modelToMake });
     }
     list.sort((a, b) => {
       const order: PrepPriority[] = [1, 2, 3, "hidden"];
@@ -555,7 +569,7 @@ export default function PrepListPage() {
       })
     );
     return { todayRows, tomorrowRows, hiddenRows: hidden };
-  }, [locationPrepItems, todayCounts, rawStockCounts, rawIngredients, revenueMultiplier, adjustmentByPrepId]);
+  }, [locationPrepItems, todayCounts, rawStockCounts, rawIngredients, revenueMultiplier, adjustmentByPrepId, eveningFraction]);
 
   const soakDryChickpeasKg = useMemo(() => {
     return soakDryChickpeasKgFromPrepState({
@@ -780,7 +794,7 @@ export default function PrepListPage() {
 
   const locationName = locationOptions.find((l) => l.id === locationId)?.name ?? "";
 
-  const renderPrepRow = ({ row, needed, toMake, priority, currentStock, override, modelToMake }: PrepRow) => {
+  const renderPrepRow = ({ row, needed, toMake, priority, currentStock, stockAfterTonight, override, modelToMake }: PrepRow) => {
     const item = row.prep_items!;
     const priorityClass =
       priority === 1
@@ -816,7 +830,11 @@ export default function PrepListPage() {
               {item.unit && <span className="help-text"> · {item.unit}</span>}
             </p>
             <p className="prep-line mt-1 help-text">
-              Stock: {formatPrepQuantity(currentStock)} · Needed: {formatPrepQuantity(needed)}
+              Stock: {formatPrepQuantity(currentStock)}
+              {stockAfterTonight < currentStock && (
+                <span> (≈{formatPrepQuantity(stockAfterTonight)} after tonight)</span>
+              )}{" "}
+              · Needed: {formatPrepQuantity(needed)}
               {(item.lead_days ?? 0) > 0 && <span> (for {1 + (item.lead_days ?? 0)} days)</span>} · Make:{" "}
               <strong>{formatPrepQuantity(toMake)}</strong>
               {item.batch_size != null && item.batch_size > 0 && <span> (batch {item.batch_size})</span>}
