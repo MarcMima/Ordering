@@ -134,6 +134,8 @@ export interface PrepItem {
   batch_size?: number | null;
   prep_time_hours?: number | null;
   requires_overnight?: boolean | null;
+  /** Extra days the prep list covers (needs starting the day before), migration 259. */
+  lead_days?: number | null;
   overnight_alert?: string | null;
   special_alert?: string | null;
   /** false = hidden from stocktake finished-products list (and ordering add-item). */

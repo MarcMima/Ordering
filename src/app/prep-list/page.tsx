@@ -471,7 +471,10 @@ export default function PrepListPage() {
       const item = row.prep_items;
       if (!item) continue;
       const baseQty = row.base_quantity ?? 1;
-      let needed = calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier });
+      // Items that must be started the day before (hummus: soaked chickpeas; rose lemonade:
+      // mix first) cover 1 + lead_days days, so "3 hummus left" already triggers a batch.
+      const coverDays = 1 + Math.max(0, Number(item.lead_days ?? 0));
+      let needed = calcNeededQuantity({ baseQuantity: baseQty, revenueMultiplier }) * coverDays;
       const currentStock = todayCounts[row.prep_item_id] ?? 0;
       let toMake = calcToMake({
         needed,
@@ -800,7 +803,8 @@ export default function PrepListPage() {
               {item.unit && <span className="help-text"> · {item.unit}</span>}
             </p>
             <p className="prep-line mt-1 help-text">
-              Stock: {formatPrepQuantity(currentStock)} · Needed: {formatPrepQuantity(needed)} · Make:{" "}
+              Stock: {formatPrepQuantity(currentStock)} · Needed: {formatPrepQuantity(needed)}
+              {(item.lead_days ?? 0) > 0 && <span> (for {1 + (item.lead_days ?? 0)} days)</span>} · Make:{" "}
               <strong>{formatPrepQuantity(toMake)}</strong>
               {item.batch_size != null && item.batch_size > 0 && <span> (batch {item.batch_size})</span>}
               {override?.make_override != null && (
