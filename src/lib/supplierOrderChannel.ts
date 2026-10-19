@@ -74,6 +74,13 @@ export function buildSupplierOrderChannelUpsert(
   return null;
 }
 
+/** Free delivery from this order value (cents); shown on the order card. Tuana: €40 (Barbara, 09-10-2026). */
+export function freeDeliveryMinimumCents(name: string): number | null {
+  const n = norm(name);
+  if (n === "tuana") return 4000;
+  return null;
+}
+
 export function isOnDemandSupplierName(name: string): boolean {
   const n = norm(name);
   return n === "tuana" || n === "quatra" || n === "today food group";
