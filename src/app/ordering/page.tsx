@@ -45,7 +45,8 @@ import {
 import {
 } from "@/lib/pitaPrepStock";
 import { soakDryChickpeasKgFromPrepState } from "@/lib/chickpeaSoakPrepNeed";
-import { isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
+import { freeDeliveryMinimumCents, isOnDemandSupplierName } from "@/lib/supplierOrderChannel";
+import { formatEuroFromCents } from "@/lib/format";
 import { JS_WEEKDAY_LABELS } from "@/lib/stocktakeWeek";
 import {
   formatCountDateLabel,
@@ -580,6 +581,31 @@ export default function OrderingPage() {
   const [newRawBySupplier, setNewRawBySupplier] = useState<Record<string, string>>({});
   /** Raw ids added by hand, in the order they were added; shown at the bottom of the list (Denys, 25-09). */
   const [manuallyAddedRawIdsBySupplier, setManuallyAddedRawIdsBySupplier] = useState<Record<string, string[]>>({});
+  /** Latest price per gram (cents) per raw ingredient, for the free-delivery minimum (Tuana €40). */
+  const [pricePerGramByRaw, setPricePerGramByRaw] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!locationId || rawIngredients.length === 0) return;
+    let alive = true;
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("ingredient_current_prices")
+        .select("raw_ingredient_id, price_cents_per_gram, effective_date")
+        .in("raw_ingredient_id", rawIngredients.map((r) => r.id))
+        .not("price_cents_per_gram", "is", null)
+        .order("effective_date", { ascending: true });
+      if (!alive) return;
+      const out: Record<string, number> = {};
+      for (const r of (data ?? []) as { raw_ingredient_id: string; price_cents_per_gram: number }[]) {
+        out[r.raw_ingredient_id] = Number(r.price_cents_per_gram);
+      }
+      setPricePerGramByRaw(out);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [locationId, rawIngredients]);
   /** Set when suggestion queries fail (RLS/network) so the page is not silently empty. */
   const [suggestionLoadError, setSuggestionLoadError] = useState<string | null>(null);
   const [suggestionRefreshing, setSuggestionRefreshing] = useState(false);
@@ -2257,11 +2283,38 @@ export default function OrderingPage() {
           const sendLoading =
             Boolean(dispatchStatus?.loading) && dispatchStatus?.loadingAction === "send";
           const anyLoading = dryRunLoading || sendLoading;
+          const minCents = freeDeliveryMinimumCents(sup.name);
+          let valueCents = 0;
+          let missingPrice = false;
+          if (minCents != null) {
+            for (const line of linesToShow) {
+              const unit = (line.size_unit ?? "").toLowerCase();
+              const grams =
+                unit === "kg" || unit === "l"
+                  ? line.size * 1000
+                  : unit === "g" || unit === "ml"
+                    ? line.size
+                    : null;
+              const cpg = pricePerGramByRaw[line.raw_ingredient_id];
+              if (grams == null || cpg == null) missingPrice = true;
+              else valueCents += Math.ceil(line.quantity) * grams * cpg;
+            }
+          }
           return (
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <span className="rounded-md bg-surface-muted px-2 py-1 text-[11px] text-ink-soft">
               Delivery: as soon as possible
             </span>
+            {minCents != null && (
+              <span
+                className={`rounded-md px-2 py-1 text-[11px] ${
+                  valueCents < minCents ? "bg-accent-terracotta/10 text-accent-terracotta" : "bg-brand-green/10 text-brand-green"
+                }`}
+              >
+                Free delivery from {formatEuroFromCents(minCents)} · this order ≈ {formatEuroFromCents(Math.round(valueCents))}
+                {missingPrice ? " (some prices unknown)" : ""}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => void dispatchOneSupplier(sup.id, true)}
