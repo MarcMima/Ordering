@@ -43,18 +43,29 @@ export function FeedbackButton() {
     setSaving(true);
     setError(null);
     const supabase = createClient();
-    const { error: insertError } = await supabase.from("app_feedback").insert({
-      location_id: locationId ?? null,
-      page: pathname ?? null,
-      type,
-      message: text,
-    });
+    const { data: inserted, error: insertError } = await supabase
+      .from("app_feedback")
+      .insert({
+        location_id: locationId ?? null,
+        page: pathname ?? null,
+        type,
+        message: text,
+      })
+      .select("id")
+      .single();
     setSaving(false);
     if (insertError) {
       // Zichtbaar maken, niet inslikken: anders denkt de manager dat het verstuurd is.
       console.error("app_feedback insert failed:", insertError.message);
       setError("Not sent — check your connection and try again.");
       return;
+    }
+    // Mail Marc; feedback used to sit unread in the table. A failed mail is not the
+    // manager's problem: the row is saved and shows on /admin/feedback either way.
+    if (inserted?.id) {
+      void supabase.functions
+        .invoke("notify-feedback", { body: { id: inserted.id } })
+        .catch(() => undefined);
     }
     setMessage("");
     setSaved(true);
