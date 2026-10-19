@@ -1873,17 +1873,25 @@ export default function OrderingPage() {
         },
       }));
     } catch (e) {
+      // Supabase errors are plain objects, not Error instances; showing only "Dispatch failed"
+      // left West's tahini order (19-10-2026) undiagnosable. Show the real message.
+      const detail =
+        e instanceof Error
+          ? e.message
+          : e && typeof e === "object" && "message" in e
+            ? String((e as { message: unknown }).message)
+            : null;
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      const reason = offline
+        ? "no internet connection — check the wifi and try again"
+        : (detail ?? "unknown error");
       setDispatchStatusBySupplier((prev) => ({
         ...prev,
         [supplierId]: {
           loading: false,
           loadingAction: undefined,
           dryRun,
-          error: dryRun
-            ? `Dry run failed — ${e instanceof Error ? e.message : "Unknown error"}`
-            : e instanceof Error
-              ? e.message
-              : "Dispatch failed",
+          error: dryRun ? `Dry run failed — ${reason}` : `Dispatch failed — ${reason}`,
         },
       }));
     }
