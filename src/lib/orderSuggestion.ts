@@ -1,3 +1,4 @@
+import { deductLossesAfterCount, loadStockLossesSince, type CountMoment } from "@/lib/stockLosses";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Supplier, RawIngredient, IngredientPackSize, PrepItem, RawIngredientLocationOrdering } from "@/lib/types";
 import { buildYieldMetaForPrepItem, type PrepItemYieldMeta } from "@/lib/prepRecipeYield";
@@ -375,7 +376,7 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
           .limit(10000),
     supabase
       .from("daily_stock_counts")
-      .select("raw_ingredient_id, quantity, date")
+      .select("raw_ingredient_id, quantity, date, updated_at")
       .eq("location_id", locationId)
       .gte("date", stockWindowStart)
       .lte("date", d),
@@ -392,10 +393,12 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
       .eq("date", d),
     supabase
       .from("daily_prep_counts")
-      .select("prep_item_id, quantity")
+      .select("prep_item_id, quantity, updated_at")
       .eq("location_id", locationId)
       .eq("date", d),
   ]);
+  // Waste logged after a count is subtracted from it (migration 260, Marc 19-10-2026).
+  const stockLosses = await loadStockLossesSince(supabase, locationId, stockWindowStart);
 
   const countedPrepForDate =
     prepCountRes.error != null ? 0 : (prepCountRes.count ?? 0);
@@ -463,19 +466,35 @@ const stockWindowStart = localCalendarDateString(stockWindowStartDate);
   }
   recipesMappedToLocation = dedupePrepItemIngredientRows(recipesMappedToLocation);
   const stockRows =
-    (stockRes.data as { raw_ingredient_id: string; quantity: number; date: string }[]) ?? [];
+    (stockRes.data as { raw_ingredient_id: string; quantity: number; date: string; updated_at?: string | null }[]) ?? [];
   const prepStockRows =
-    (prepQtyRes.data as { prep_item_id: string; quantity: number }[]) ?? [];
-  const prepStockByPrepItemId = Object.fromEntries(
-    prepStockRows.map((r) => [r.prep_item_id, Number(r.quantity)])
-  );
-  const currentStock = buildOrderingStockByRawId({
-    rows: stockRows,
-    todayDateStr: d,
-    rawIngredients,
+    (prepQtyRes.data as { prep_item_id: string; quantity: number; updated_at?: string | null }[]) ?? [];
+  const prepStockByPrepItemId = deductLossesAfterCount({
+    stockById: Object.fromEntries(prepStockRows.map((r) => [r.prep_item_id, Number(r.quantity)])),
+    countById: Object.fromEntries(
+      prepStockRows.map((r) => [r.prep_item_id, { date: d, savedAt: r.updated_at ?? null }])
+    ),
+    losses: stockLosses,
+    kind: "prep",
+  });
+  const countDateByRaw = latestCountDateByRawId(stockRows, d);
+  const rawCountById: Record<string, CountMoment> = {};
+  for (const r of stockRows) {
+    if (countDateByRaw[r.raw_ingredient_id] === r.date) {
+      rawCountById[r.raw_ingredient_id] = { date: r.date, savedAt: r.updated_at ?? null };
+    }
+  }
+  const currentStock = deductLossesAfterCount({
+    stockById: buildOrderingStockByRawId({
+      rows: stockRows,
+      todayDateStr: d,
+      rawIngredients,
+    }),
+    countById: rawCountById,
+    losses: stockLosses,
+    kind: "raw",
   });
   const stockListToday = stockRows.filter((s) => s.date === d);
-  const countDateByRaw = latestCountDateByRawId(stockRows, d);
 
   const schedulesBySupplierJsEarly: Record<string, number[]> = {};
   for (const s of schedules) {
