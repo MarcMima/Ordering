@@ -48,7 +48,7 @@ export function buildSupplierOrderChannelUpsert(
     return {
       supplier_id: supplierId,
       channel: "email",
-      email_to: email || "info.nl@quatra.com",
+      email_to: email || "planning.nl@quatra.com",
       email_subject_template: "Bestelling MIMA {datum} — levering {leverdatum}",
       auto_send: false,
     };
