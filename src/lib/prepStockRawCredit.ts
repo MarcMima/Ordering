@@ -40,7 +40,7 @@ const PREP_STOCK_CREDIT_SAME_NAME_ONLY = new Set(["parsley", "mint", "green chil
 const PICKLED_PREP_RAW_CREDIT_RULES: { prepName: string; rawName: string; gramsPerPrepUnit: number }[] =
   [
     { prepName: "pickled onion", rawName: "red onion sliced fine", gramsPerPrepUnit: 3000 },
-    { prepName: "pickled cabbage", rawName: "red cabbage shredded", gramsPerPrepUnit: 3000 },
+    { prepName: "pickled cabbage", rawName: "red cabbage shredded", gramsPerPrepUnit: 2500 },
   ];
 
 /**
