@@ -185,6 +185,12 @@ export default function AdminPage() {
           </nav>
           <div className="space-y-2 border-t border-hairline p-3">
             <Link
+              href="/admin/feedback"
+              className="block label hover:text-ink"
+            >
+              Feedback from locations
+            </Link>
+            <Link
               href="/admin/haccp-equipment"
               className="block label hover:text-ink"
             >
