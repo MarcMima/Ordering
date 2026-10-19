@@ -515,6 +515,11 @@ export function suggestOrderBaseQuantities(params: {
   currentRawStock: Record<string, number>;
   /** Finished prep on hand (g/ml/pcs), subtracted after cover-window scaling — not from daily rate. */
   prepStockCreditByRawId?: Record<string, number>;
+  /**
+   * Finished prep on hand for non-whitelisted raws, per prep item: each credit is capped at that
+   * prep item's share of the cover-window need (computeGeneralPrepCreditParts).
+   */
+  prepCreditPartsByRawId?: Record<string, { shareOfDailyNeed: number; credit: number }[]>;
   preferredSupplierByRawId: Record<string, string | null | undefined>;
   schedulesBySupplierJs: Record<string, number[]>;
   orderIntervalDaysByRawId: Record<string, number | null | undefined>;
@@ -532,6 +537,7 @@ export function suggestOrderBaseQuantities(params: {
     dailyRawNeedAtFullCapacity,
     currentRawStock,
     prepStockCreditByRawId,
+    prepCreditPartsByRawId,
     preferredSupplierByRawId,
     schedulesBySupplierJs,
     orderIntervalDaysByRawId,
@@ -566,7 +572,10 @@ export function suggestOrderBaseQuantities(params: {
       fullCapacityRevenue,
       extraFullDays: picklingLead,
     });
-    const prepCredit = prepStockCreditByRawId?.[rawId] ?? 0;
+    let prepCredit = prepStockCreditByRawId?.[rawId] ?? 0;
+    for (const part of prepCreditPartsByRawId?.[rawId] ?? []) {
+      prepCredit += Math.min(part.credit, scaledNeed * part.shareOfDailyNeed);
+    }
     const base = Math.max(0, Math.ceil(scaledNeed - stock - prepCredit));
     if (base > 0) suggested[rawId] = base;
   }

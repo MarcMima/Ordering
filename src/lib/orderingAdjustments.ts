@@ -295,7 +295,9 @@ export function applyPrepBatchIngredientShortfall(params: {
       ?.prep_items?.name;
     if (PREP_BATCH_SHORTFALL_EXCLUDED_PREP_NAMES.has(normName(prepName))) continue;
     const rawName = normName(rawNameByRawId?.[row.raw_ingredient_id]);
-    if (PRODUCTION_GATED_RAW_NAMES.has(rawName)) continue;
+    // Production-gated raws (coriander, green chili, rice) are included on purpose: the gate
+    // treats raw stock as "can still be prepped", so 1,200 g coriander zeroed the need while the
+    // planned falafel + srug batches took 1,380 g (Pijp 07-09; Marc 19-10-2026).
     if (normName(prepName) === "falafel" && rawName === "chickpeas") continue;
     if (normName(prepName) === "hummus" && rawName === "chickpeas") continue;
     // Parsley: cover-window already includes Falafel/Medi/Turmeric daily rate.
@@ -387,7 +389,9 @@ export function applyProductionGatedRawDailyNeed(params: {
     revenueMultiplier,
     prepYieldByPrepItemId,
     rawNameByRawId: Object.fromEntries(rawIngredients.map((r) => [r.id, r.name ?? ""])),
-    finishedPrepOnly: false,
+    // Gate on what the prep list will make (finished prep only). Counting raw coriander as
+    // "can still be prepped" closed the gate while falafel and srug were planned (Pijp 07-09).
+    finishedPrepOnly: true,
   });
 
   const out = { ...dailyRawNeed };

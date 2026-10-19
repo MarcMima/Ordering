@@ -152,3 +152,52 @@ export function computePickledPrepRawCredit(params: {
 
   return covered;
 }
+
+/** One finished prep item's claim on a raw ingredient (see {@link computeGeneralPrepCreditParts}). */
+export type PrepCreditPart = {
+  /** Share of the raw's daily need that comes from this prep item (0–1). */
+  shareOfDailyNeed: number;
+  /** Raw base units already inside the finished prep on hand. */
+  credit: number;
+};
+
+/**
+ * Finished prep on hand reduces the raw order for every ingredient, not only the whitelist
+ * (Marc, 19-10-2026: 3 containers of soup at Pijp, yet carrots were suggested). Returned per prep
+ * item, so the order can cap each credit at that prep item's own share of the need: soup stock
+ * covers the soup carrots but cannot wipe out carrots needed for other dishes (the reason the
+ * whitelist had same-name-only rules). Whitelisted and pickled raws keep their own credit.
+ */
+export function computeGeneralPrepCreditParts(params: {
+  recipeFiltered: PrepItemIngredientRow[];
+  prepStockByPrepItemId: Record<string, number>;
+  neededByPrepItemId: Record<string, number>;
+  dailyRawNeedBase: Record<string, number>;
+  rawNameByRawId: Record<string, string>;
+  prepYieldByPrepItemId?: Record<string, PrepItemYieldMeta>;
+}): Record<string, PrepCreditPart[]> {
+  // Raws with their own finished-prep credit elsewhere; crediting them here would count twice.
+  const ownCreditRaws = new Set([
+    ...PICKLED_PREP_RAW_CREDIT_RULES.map((r) => r.rawName),
+    ...CROSS_PREP_RAW_CREDIT.map((r) => r.rawName),
+    "pita bread 15 cm", // applyCombinedPitaStockCredit
+    "whole wheat pita bread 15 cm",
+    "frozen flatbreads", // computeDefrostedFlatbreadRawCredit
+  ]);
+  const out: Record<string, PrepCreditPart[]> = {};
+  for (const row of params.recipeFiltered) {
+    const rawName = normName(params.rawNameByRawId[row.raw_ingredient_id]);
+    if (isRawOnPrepStockCreditWhitelist(rawName) || ownCreditRaws.has(rawName)) continue;
+    const prepCount = params.prepStockByPrepItemId[row.prep_item_id] ?? 0;
+    const totalDaily = params.dailyRawNeedBase[row.raw_ingredient_id] ?? 0;
+    if (prepCount <= 0 || totalDaily <= 0) continue;
+    const perContainer = row.quantity_per_unit * yieldFactorForPrep(row.prep_item_id, params.prepYieldByPrepItemId);
+    const dailyFromPrep = (params.neededByPrepItemId[row.prep_item_id] ?? 0) * perContainer;
+    if (perContainer <= 0 || dailyFromPrep <= 0) continue;
+    (out[row.raw_ingredient_id] ??= []).push({
+      shareOfDailyNeed: Math.min(1, dailyFromPrep / totalDaily),
+      credit: prepCount * perContainer,
+    });
+  }
+  return out;
+}
