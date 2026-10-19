@@ -404,7 +404,7 @@ function defaultEmailForSupplierName(name: string): string | null {
   const n = name.toLowerCase().trim();
   if (n === "gédé" || n === "gedé") return "info@gede.nl";
   if (n === "tuana") return "info@tuana-kruiden.nl";
-  if (n === "quatra") return "info.nl@quatra.com";
+  if (n === "quatra") return "planning.nl@quatra.com";
   if (n === "java bakery") return "java.bakkerij@gmail.com";
   if (n === "today food group") return "sales@todaytradingcompany.nl";
   return null;
@@ -1678,8 +1678,15 @@ function asksOrderConfirmation(order: Order): boolean {
   return (order.supplier?.name ?? "").toLowerCase().trim() === "quatra";
 }
 
-const CONFIRMATION_REQUEST =
-  "Could you please confirm this order (and the delivery date) by replying to all on this e-mail? Thank you!";
+/** Quatra matches orders on postcode + address and mails its confirmation to the location (Marc, 19-10-2026). */
+function confirmationRequest(order: Order): string {
+  const to = managerEmailForLocation(order.location_name ?? null);
+  return `Could you please confirm this order and the delivery date${to ? ` to ${to}` : ""}? Thank you!`;
+}
+
+function postcodeOf(address: string | null): string | null {
+  return address?.match(/\b\d{4}\s?[A-Z]{2}\b/)?.[0] ?? null;
+}
 
 function buildOrderEmailBody(order: Order): string {
   const loc = locationForSupplier(order);
@@ -1694,10 +1701,10 @@ function buildOrderEmailBody(order: Order): string {
 ${isJava ? `Please deliver this order ${javaDeliveryPhrase(order)}.` : "Please deliver this order as soon as possible."}
 Order number: ${orderNumber}
 Location: ${loc.label}
-${loc.address ? `Delivery address: ${loc.address}\n` : ""}${isJava ? `Delivery date: ${formatLongDate(orderDeliveryDate(order))}\n` : ""}Order date: ${order.order_date}
+${loc.address ? `Delivery address: ${loc.address}\n` : ""}${asksOrderConfirmation(order) && postcodeOf(loc.address) ? `Postcode: ${postcodeOf(loc.address)}\n` : ""}${isJava ? `Delivery date: ${formatLongDate(orderDeliveryDate(order))}\n` : ""}Order date: ${order.order_date}
 
 ${lines}
-${order.notes ? `\nNote: ${order.notes}\n` : ""}${asksOrderConfirmation(order) ? `\n${CONFIRMATION_REQUEST}\n` : ""}
+${order.notes ? `\nNote: ${order.notes}\n` : ""}${asksOrderConfirmation(order) ? `\n${confirmationRequest(order)}\n` : ""}
 Kind regards,
 MIMA Kitchen`;
 }
@@ -1726,10 +1733,10 @@ function buildOrderEmailHtml(order: Order): string {
 <p>${isJava ? `<strong>Please deliver this order ${escapeHtml(javaDeliveryPhrase(order))}.</strong>` : "Please deliver this order as soon as possible."}<br>
 Order number: ${escapeHtml(orderNumber)}<br>
 Location: <strong>${escapeHtml(loc.label)}</strong><br>
-${loc.address ? `Delivery address: ${escapeHtml(loc.address)}<br>\n` : ""}${isJava ? `Delivery date: <strong>${escapeHtml(formatLongDate(orderDeliveryDate(order)))}</strong><br>\n` : ""}Order date: ${escapeHtml(String(order.order_date))}</p>
+${loc.address ? `Delivery address: ${escapeHtml(loc.address)}<br>\n` : ""}${asksOrderConfirmation(order) && postcodeOf(loc.address) ? `Postcode: <strong>${escapeHtml(postcodeOf(loc.address)!)}</strong><br>\n` : ""}${isJava ? `Delivery date: <strong>${escapeHtml(formatLongDate(orderDeliveryDate(order)))}</strong><br>\n` : ""}Order date: ${escapeHtml(String(order.order_date))}</p>
 ${rows}
 ${note}
-${asksOrderConfirmation(order) ? `<p style="margin-top:16px"><strong>${escapeHtml(CONFIRMATION_REQUEST)}</strong></p>` : ""}
+${asksOrderConfirmation(order) ? `<p style="margin-top:16px"><strong>${escapeHtml(confirmationRequest(order))}</strong></p>` : ""}
 <p style="margin-top:16px">Kind regards,<br>MIMA Kitchen</p>
 </div>`;
 }
