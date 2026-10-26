@@ -124,6 +124,16 @@ export function TemperaturenForm({
     return n;
   }, [readings, equipment]);
 
+  /** Appliances without a temperature: the week stays "Open" on the overview until they are filled. */
+  const missingLabels = useMemo(() => {
+    const filled = new Set(
+      readings
+        .filter((r) => r.temperature != null && Number.isFinite(r.temperature))
+        .map((r) => r.equipment_id)
+    );
+    return equipment.filter((e) => !filled.has(e.id)).map((e) => e.label);
+  }, [readings, equipment]);
+
   function patchReading(equipmentId: string, patch: Partial<HaccpWeeklyReading>) {
     setReadings((prev) =>
       prev.map((row) => (row.equipment_id === equipmentId ? { ...row, ...patch } : row))
@@ -149,9 +159,13 @@ export function TemperaturenForm({
       .from("haccp_temperaturen")
       .upsert(payload, { onConflict: "store_id,week_number,year" });
     setSaving(false);
-    if (error) setMessage(error.message);
+    if (error) setMessage(`Not saved: ${error.message}`);
     else {
-      setMessage("Saved.");
+      const open = [
+        missingLabels.length > 0 ? `no temperature for ${missingLabels.join(", ")}` : null,
+        paraaf.trim() ? null : "initials missing",
+      ].filter(Boolean);
+      setMessage(open.length > 0 ? `Saved, but the week stays open: ${open.join("; ")}.` : "Saved. This week is done.");
       onSaved?.();
     }
   }
