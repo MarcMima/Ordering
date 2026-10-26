@@ -68,8 +68,9 @@ function HaccpOverviewContent() {
             .maybeSingle(),
           supabase
             .from("haccp_store_equipment")
-            .select("id", { count: "exact", head: true })
-            .eq("store_id", storeId),
+            .select("id, label", { count: "exact" })
+            .eq("store_id", storeId)
+            .order("sort_order", { ascending: true }),
           supabase
             .from("haccp_ingangscontrole")
             .select("id", { count: "exact", head: true })
@@ -113,8 +114,28 @@ function HaccpOverviewContent() {
           equipCount > 0 &&
           wr.length >= equipCount &&
           wr.every((r) => r.temperature != null && Number.isFinite(Number(r.temperature)));
-        const tempDone =
-          !!(tempRes.data?.paraaf && String(tempRes.data.paraaf).trim().length > 0) && readingsComplete;
+        const tempSigned = !!(tempRes.data?.paraaf && String(tempRes.data.paraaf).trim().length > 0);
+        const tempDone = tempSigned && readingsComplete;
+        // Say what keeps the week open: West saw "Open" after saving and thought it had not
+        // saved, while one fryer had no temperature (week 43, 2026).
+        const filledIds = new Set(
+          wr
+            .filter((r) => r.temperature != null && Number.isFinite(Number(r.temperature)))
+            .map((r) => r.equipment_id)
+        );
+        const missingTemps = ((equipRes.data ?? []) as { id: string; label: string }[])
+          .filter((e) => !filledIds.has(e.id))
+          .map((e) => e.label);
+        const tempOpenReason = tempDone || !tempRes.data
+          ? null
+          : [
+              missingTemps.length > 0
+                ? `No temperature yet: ${missingTemps.slice(0, 3).join(", ")}${missingTemps.length > 3 ? ` +${missingTemps.length - 3}` : ""}`
+                : null,
+              tempSigned ? null : "Initials (sign-off) missing",
+            ]
+              .filter(Boolean)
+              .join(" · ");
         const ingDone = (ingRes.count ?? 0) > 0;
         const schoonDone = !!(schoonRes.data?.uitgevoerd_door && String(schoonRes.data.uitgevoerd_door).trim().length > 0);
         const bereidenDone = isBereidenWeekComplete(bereidenRes.data as HaccpBereidenRow | null);
@@ -145,7 +166,7 @@ function HaccpOverviewContent() {
             formKey: APP_FORM_KEYS.haccp_temperatures,
             href: `/dashboard/haccp/temperaturen?week=${wy}`,
             title: "Temperatures",
-            description: "Weekly equipment checks (limits per appliance).",
+            description: tempOpenReason || "Weekly equipment checks (limits per appliance).",
             done: tempDone,
           },
           {
