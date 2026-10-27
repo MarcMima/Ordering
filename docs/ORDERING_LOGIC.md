@@ -3,7 +3,7 @@
 > **Doel van dit document:** dé plek om te begrijpen hoe het besteladvies werkt,
 > zodat je niet de hele pijplijn hoeft te reverse-engineeren. **Bij elke wijziging
 > aan de bestel-logica: werk dit document bij in dezelfde commit.**
-> Laatst herzien: 14 aug 2026 (branch `fix/ordering-advice-consistency`).
+> Laatst herzien: 27 okt 2026 (branch `fix/floor-par-and-snapshot-gaps`).
 
 ## Kerninvariant (sinds aug 2026)
 
@@ -88,6 +88,15 @@
 ## Valkuilen
 
 - Een raw die nooit geteld is = voorraad 0 → vol advies.
+- **Floor-par (`stock_par_mode = 'floor'`) kijkt alleen naar rauwe voorraad.**
+  Afgewerkte prep (pickled onion, Sabich, tzatziki, slamix) telt niet mee voor de
+  floor; de receptregel trekt prep al af. Tot 27-10-2026 telde prep wél mee,
+  waardoor floors stil bleven (Pijp rode ui 21–25-10: rauw 0, 15 kg pickled-credit
+  tegen een floor van 12 kg; Zuidas aubergine gaf 1 i.p.v. 2).
+- Prep-tellingen tellen alleen op de dag zelf mee. Een te hoge prep-telling
+  (bijv. Amsterdam medi salad 15–20 bakken bij een basis van 7, za'atar-pita 18
+  "dozen" bij een basis van 1) wist via de prep-credit de rauwe regel uit
+  (komkommer, pita 21/23/25-10). Eerst de telling checken, niet de engine.
 - `supplier_delivery_schedules.day_of_week`: 0 = **maandag** (conversie in
   `supplierScheduleDayToJsDay`).
 - Handmatige bewerkingen bevriezen als draft (`order_drafts`, per locatie+dag);

@@ -100,6 +100,12 @@ function parStateForIngredient(
   ing: RawIngredient,
   params: Pick<StockParParams, "currentRawStock" | "prepStockCreditByRawId" | "orderPackByRawId">
 ): { minBase: number; stock: number; orderBase: number } | null {
+  // A 'floor' par guards the raw shelf: the kitchen needs raw on hand to make the next batch,
+  // so finished prep (pickled onion, Sabich, tzatziki, lettuce mix) must not satisfy it. The
+  // recipe-driven line already nets finished prep off; the floor only adds the minimum on top.
+  // Counting prep credit here kept the Pijp red onion floor silent (21–25-10: raw 0, 5 pickled
+  // onion containers = 15 kg credit vs a 12 kg floor) and let Zuidas aubergine suggest 1 of 2.
+  const floor = isFloorParIngredient(ing);
   // Prefer DB columns; fall back to hardcoded map.
   const rule =
     dbParRuleForIngredient(ing) ??
@@ -110,7 +116,8 @@ function parStateForIngredient(
   const minBase = minBaseAmountForPar({ ing, rule, orderPack });
   if (minBase == null || minBase <= 0) return null;
   const stock =
-    (params.currentRawStock[ing.id] ?? 0) + (params.prepStockCreditByRawId?.[ing.id] ?? 0);
+    (params.currentRawStock[ing.id] ?? 0) +
+    (floor ? 0 : (params.prepStockCreditByRawId?.[ing.id] ?? 0));
   let orderBase = Math.max(0, minBase - stock);
   if (rule.kind === "packs" && rule.orderPacks != null && orderPack) {
     const basePerPack = packSizeToBaseAmount(orderPack, ing.unit ?? "");
@@ -127,7 +134,8 @@ function parStateForIngredient(
  * cover-window bulk on top.
  *
  * 'floor' items (stock_par_mode = 'floor'): the recipe-driven suggestion stays as it is; below
- * par the line is raised to at least the par order. Meant for recipe-driven products where the
+ * par the line is raised to at least the par order. The floor compares against **raw** stock
+ * only (finished prep does not count, see parStateForIngredient). Meant for recipe-driven products where the
  * need-based suggestion is right in principle but the kitchen wants a minimum on the shelf.
  */
 export function applyStockParToBaseSuggested(params: StockParParams): Record<string, number> {
